@@ -60,10 +60,14 @@ jobs:
       - name: halyard-cli
         run: cmake --build build --target halyard-cli
 
+      # The binary alone draws every menu and not one character: its font,
+      # translations and images are in resources/, which it reads from beside
+      # itself (RES-1). A tarball, because an artifact's zip drops the
+      # executable bit.
+      - name: package
+        run: tar -czf halyard-linux-x86_64.tar.gz -C build halyard halyard-cli resources
       - uses: actions/upload-artifact@v4
         with:
           name: halyard-linux
-          path: |
-            build/halyard
-            build/halyard-cli
+          path: halyard-linux-x86_64.tar.gz
           if-no-files-found: error

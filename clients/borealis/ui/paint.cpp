@@ -369,11 +369,11 @@ static bool drawPhotoBackground(NVGcontext *vg, float x, float y, float w, float
             if (g_photo > 0) nvgImageSize(vg, g_photo, &g_photo_w, &g_photo_h);
             if (g_photo <= 0 || g_photo_w <= 0 || g_photo_h <= 0) g_photo = -1;
             if (g_photo > 0)
-                JOURNAL_INFO_(JOURNAL_CAT_UI, "[BRAND-1] fond : %s (%dx%d)", path.c_str(),
+                JOURNAL_INFO_(JOURNAL_CAT_UI, "[BRAND-1] background: %s (%dx%d)", path.c_str(),
                               g_photo_w, g_photo_h);
             else
-                JOURNAL_INFO_(JOURNAL_CAT_UI, "[BRAND-1] fond %s illisible - degrade "
-                              "procedural", path.c_str());
+                JOURNAL_INFO_(JOURNAL_CAT_UI, "[BRAND-1] background %s unreadable - "
+                              "procedural gradient instead", path.c_str());
         }
     }
     if (g_photo < 0) return false;

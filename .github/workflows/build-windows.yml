@@ -71,8 +71,12 @@ jobs:
       - name: halyard.exe
         run: cmake --build build_windows --target halyard
 
+      # The .exe alone has no font, translations or images: resources/ ships
+      # beside it, where the app looks (RES-1).
       - uses: actions/upload-artifact@v4
         with:
           name: halyard-windows
-          path: build_windows/halyard.exe
+          path: |
+            build_windows/halyard.exe
+            build_windows/resources/
           if-no-files-found: error

@@ -88,6 +88,12 @@ history (`fetch-depth: 0`) for this reason.
    not say `X.Y.Z`. Then it publishes the `.nro`, the `.vpk` and the GPL
    Corresponding Source under the tag.
 
+**Never tag a commit whose message says `[skip ci]`.** GitHub applies it to the
+tag's push as well, and the release never starts — which is what happened to
+`v0.1.0`. If it does, start it by hand on the tag:
+`gh workflow run release.yml --ref vX.Y.Z` (on a tag ref it publishes exactly as
+the push would have).
+
 The asset names do not carry the version, on purpose: the "latest" links in
 the README and the install guide
 (`releases/latest/download/halyard.nro`) keep working from one release to the

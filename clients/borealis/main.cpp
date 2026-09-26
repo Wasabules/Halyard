@@ -467,10 +467,61 @@ static void diag_user_bitrate_tick()
 }
 #endif
 
+/* === RES-1 2026-09-26 - A DESKTOP BUILD FINDS ITS FILES BESIDE ITSELF ===
+ *
+ * Borealis reads its font, its translations and its images from
+ * "./resources/", relative to the CURRENT directory (BRLS_RESOURCES_DIR "." in
+ * its CMakeLists). Started from anywhere else - the CI artifact unpacked in a
+ * download folder - the window opened with every menu drawn and not one
+ * character of text: no font was found, and nothing said so. When the current
+ * directory has no resources/ but the executable's directory does, move there
+ * first. It runs before anything else because the Windows data directory
+ * ("./halyard-data/") is relative too, and should follow.
+ *
+ * Consoles are untouched: their resources path is absolute (romfs:/, app0:).
+ * SHADOW_RESOURCES_FROM_EXE=0 keeps the current directory; it is read from the
+ * real environment only, since env.txt has not been read yet at this point. */
+static std::string g_res1_moved_to;
+#if (defined(__linux__) || defined(_WIN32)) && !defined(__SWITCH__) && !defined(__ANDROID__)
+static void desktop_find_resources(void)
+{
+    const char *e = std::getenv("SHADOW_RESOURCES_FROM_EXE");
+    if (e && std::atoi(e) == 0) return;
+    struct stat st;
+    if (stat("resources/font", &st) == 0) return;   /* already where Borealis looks */
+
+    std::string dir;
+#if defined(_WIN32)
+    char *pgm = nullptr;
+    if (_get_pgmptr(&pgm) != 0 || !pgm || !*pgm) return;
+    dir = pgm;
+    const size_t cut = dir.find_last_of("/\\");
+#else
+    char exe[4096];
+    const ssize_t n = readlink("/proc/self/exe", exe, sizeof exe - 1);
+    if (n <= 0) return;
+    exe[n] = '\0';
+    dir = exe;
+    const size_t cut = dir.find_last_of('/');
+#endif
+    if (cut == std::string::npos) return;
+    dir.resize(cut);
+    if (stat((dir + "/resources/font").c_str(), &st) != 0) return;
+#if defined(_WIN32)
+    if (_chdir(dir.c_str()) == 0) g_res1_moved_to = dir;
+#else
+    if (chdir(dir.c_str()) == 0) g_res1_moved_to = dir;
+#endif
+}
+#else
+static void desktop_find_resources(void) {}
+#endif
+
 int main(int argc, char *argv[]) {
     /* RELOAD-1: FIRST, because it only reads `argv[0]` and everything that
      * follows may want to hand the console over. */
     devlink::rememberSelf(argc, argv);
+    desktop_find_resources();   /* RES-1: before the data dir, which may be relative */
 
     // S38: the toggles BEFORE everything else - shadow_sockets_init already reads one.
     /* Before the env file and before the journal opens its log: both want the
@@ -597,6 +648,9 @@ int main(int argc, char *argv[]) {
      * diagnosing, and the mirror never sees either. Every log pulled after the
      * fact now says which build produced it - which is worth more than the
      * command, since it costs nothing to have already. */
+    if (!g_res1_moved_to.empty())
+        mnlog("[RES-1] no resources/ in the working directory; using the executable's: %s",
+              g_res1_moved_to.c_str());
     mnlog("[version] %s v%s — nro %s", SHADOW_BUILD_ID, SHADOW_VERSION,
           devlink::selfPath().empty() ? "(hors hbloader)"
                                       : devlink::selfPath().c_str());
