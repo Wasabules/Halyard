@@ -9,23 +9,23 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Wasabules/halyard/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/Wasabules/halyard?label=release&color=2B7BE0"></a>
-  <a href="https://github.com/Wasabules/halyard/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/Wasabules/halyard/total?color=2B7BE0"></a>
+  <a href="https://github.com/Wasabules/Halyard/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/Wasabules/Halyard?label=release&color=2B7BE0"></a>
+  <a href="https://github.com/Wasabules/Halyard/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/Wasabules/Halyard/total?color=2B7BE0"></a>
   <a href="LICENSE"><img alt="Licence: GPL-3.0-or-later" src="https://img.shields.io/badge/licence-GPL--3.0--or--later-2B7BE0"></a>
   <img alt="Platforms: Nintendo Switch, PS Vita" src="https://img.shields.io/badge/runs%20on-Switch%20%C2%B7%20PS%20Vita-1A1B21">
 </p>
 
 <p align="center">
-  <a href="https://github.com/Wasabules/halyard/actions/workflows/build-switch.yml"><img alt="Switch build" src="https://github.com/Wasabules/halyard/actions/workflows/build-switch.yml/badge.svg?branch=main"></a>
-  <a href="https://github.com/Wasabules/halyard/actions/workflows/build-psvita.yml"><img alt="PS Vita build" src="https://github.com/Wasabules/halyard/actions/workflows/build-psvita.yml/badge.svg?branch=main"></a>
-  <a href="https://github.com/Wasabules/halyard/actions/workflows/build-linux.yml"><img alt="Linux build" src="https://github.com/Wasabules/halyard/actions/workflows/build-linux.yml/badge.svg?branch=main"></a>
-  <a href="https://github.com/Wasabules/halyard/actions/workflows/build-windows.yml"><img alt="Windows build" src="https://github.com/Wasabules/halyard/actions/workflows/build-windows.yml/badge.svg?branch=main"></a>
-  <a href="https://github.com/Wasabules/halyard/actions/workflows/tests.yml"><img alt="Tests" src="https://github.com/Wasabules/halyard/actions/workflows/tests.yml/badge.svg?branch=main"></a>
+  <a href="https://github.com/Wasabules/Halyard/actions/workflows/build-switch.yml"><img alt="Switch build" src="https://github.com/Wasabules/Halyard/actions/workflows/build-switch.yml/badge.svg?branch=main"></a>
+  <a href="https://github.com/Wasabules/Halyard/actions/workflows/build-psvita.yml"><img alt="PS Vita build" src="https://github.com/Wasabules/Halyard/actions/workflows/build-psvita.yml/badge.svg?branch=main"></a>
+  <a href="https://github.com/Wasabules/Halyard/actions/workflows/build-linux.yml"><img alt="Linux build" src="https://github.com/Wasabules/Halyard/actions/workflows/build-linux.yml/badge.svg?branch=main"></a>
+  <a href="https://github.com/Wasabules/Halyard/actions/workflows/build-windows.yml"><img alt="Windows build" src="https://github.com/Wasabules/Halyard/actions/workflows/build-windows.yml/badge.svg?branch=main"></a>
+  <a href="https://github.com/Wasabules/Halyard/actions/workflows/tests.yml"><img alt="Tests" src="https://github.com/Wasabules/Halyard/actions/workflows/tests.yml/badge.svg?branch=main"></a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/Wasabules/halyard/releases/latest/download/halyard.nro"><strong>Download for Switch</strong></a> ·
-  <a href="https://github.com/Wasabules/halyard/releases/latest/download/halyard.vpk"><strong>Download for PS Vita</strong></a> ·
+  <a href="https://github.com/Wasabules/Halyard/releases/latest/download/halyard.nro"><strong>Download for Switch</strong></a> ·
+  <a href="https://github.com/Wasabules/Halyard/releases/latest/download/halyard.vpk"><strong>Download for PS Vita</strong></a> ·
   <a href="docs/INSTALL.md">Install guide</a> ·
   <a href="https://wasabules.github.io/Halyard/">Website</a>
 </p>
@@ -271,5 +271,5 @@ until the official client was caught naming its own sockets in its telemetry.
 
 ## Contact
 
-[Issues on GitHub](https://github.com/Wasabules/halyard/issues) — the bug report
+[Issues on GitHub](https://github.com/Wasabules/Halyard/issues) — the bug report
 form asks for what is needed to act on it.
