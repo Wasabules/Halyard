@@ -292,4 +292,5 @@ anything the project has no right to redistribute
 that the packages carry the tag's version. The desktop builds are not attached:
 the Windows `.exe` links MSYS2's libraries statically and their Corresponding
 Source has not been audited, and the Linux binary depends on its build machine's
-libraries. `pages.yml` publishes the website in `site/`.
+libraries. `pages.yml` publishes the website in `site/` to GitHub Pages; it
+runs by hand only, and Pages is not enabled yet.
