@@ -1,0 +1,63 @@
+# The Borealis GUI client plus the headless bench binary.
+# Linux is the reference platform: every measurement in KB.md was taken here or
+# on console, never on Windows.
+name: build-linux
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: build-linux-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with: { submodules: recursive }
+
+      # The pkg_check_modules list of CMakeLists.txt:173-198, plus ALSA for the
+      # audio ring and the X11/GL set GLFW needs to build from source.
+      - name: dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake ninja-build pkg-config \
+            libssl-dev libcurl4-openssl-dev libjansson-dev libopus-dev \
+            libqrencode-dev libavcodec-dev libavformat-dev libavutil-dev \
+            libswresample-dev libswscale-dev libasound2-dev \
+            libgl1-mesa-dev xorg-dev
+
+      # third_party/ is not in git: without these two steps there is no
+      # Borealis and no wolfSSL, and CMake cannot even configure. This job ran
+      # without them until 2026-09-26 - it had never been run from a clean clone.
+      # (The distro's libwolfssl-dev it used to install was never linked: the
+      # build takes our own, built with the flags the code expects.)
+      - name: fetch and patch the libraries
+        run: bash tools/bootstrap-libs.sh
+      - name: build wolfSSL for the desktop
+        run: bash tools/build-libs.sh linux
+      - name: configure
+        run: cmake -S . -B build -G Ninja
+             -DPLATFORM_DESKTOP=ON -DSHADOW_BUILD_TEST_CLI=ON
+
+      - name: halyard
+        run: cmake --build build --target halyard
+
+      # main_test.c drives bench_runner.py and every A/B script. Its display
+      # path is a NO-OP STUB, so nothing visual is ever concluded from it --
+      # but it has to keep building or the whole bench toolchain goes with it.
+      - name: halyard-cli
+        run: cmake --build build --target halyard-cli
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: halyard-linux
+          path: |
+            build/halyard
+            build/halyard-cli
+          if-no-files-found: error

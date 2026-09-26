@@ -1,0 +1,40 @@
+# The offline protocol suite: no console, no VM, no network.
+# 47 suites, ~139 000 checks, 37 s measured locally on 2026-09-12.
+# Each suite carries its COUNTER-CASE -- the exact input that broke the picture
+# or hung the client -- so a failure names the campaign you just undid.
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  offline:
+    name: offline suite
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      # test_ctrl_msgs and test_encryption want wolfSSL and are SKIPPED without
+      # it -- the runner says so rather than failing. We install it so they run:
+      # test_encryption checks the RFC 8439 reference vector byte by byte, which
+      # is the only thing that proves each crypto parameter reaches its slot.
+      - name: dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential libwolfssl-dev
+
+      - name: run the suites
+        run: ./tests/run_tests.sh
+
+      # verify_i18n.py is the net under the i18n key renames: it asserts that
+      # every key the code ASKS for exists in the catalogues. 85 keys were
+      # renamed on 2026-09-12 and this is what caught the misses.
+      - name: i18n keys
+        run: python3 tests/verify_i18n.py

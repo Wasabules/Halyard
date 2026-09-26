@@ -1,0 +1,68 @@
+# gitleaks configuration for halyard.
+#
+# Rule of thumb for this repo: a value that a SERVER minted for a SESSION is a
+# secret and must never be committed. A constant that is part of the PROGRAM --
+# the token obfuscation key, the official client_id extracted by RE -- is not,
+# and pretending otherwise trains people to ignore the scanner.
+
+title = "halyard"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "shadow-session-key"
+description = "A 64-hex chacha20 session key, in the clear"
+regex = '''(?i)(key_hex|chacha20_key|session_key|debug_key)\s*[:=]\s*["'][0-9a-f]{64}["']'''
+tags = ["shadow", "session"]
+
+[[rules]]
+id = "shadow-pem-body"
+description = "A PEM private key with an actual body (not a marker)"
+regex = '''-----BEGIN [A-Z ]*PRIVATE KEY-----[\r\n]+[A-Za-z0-9+/=\s]{100,}'''
+tags = ["shadow", "pem"]
+
+[allowlist]
+description = "Reviewed on 2026-09-12 and 2026-09-26; each entry says why it is not a secret"
+# Match the regexes below against the whole LINE. The default target is the
+# extracted secret, against which an entry like `SHADOW_OAUTH_CLIENT_ID` could
+# never match - so that entry was silently doing nothing.
+regexTarget = "line"
+
+paths = [
+  # Upstream FFmpeg's own test vectors and fixtures. Not ours, not secret.
+]
+
+regexes = [
+  # tests/test_ann_reply.c holds `-----BEGIN OPENSSH PRIVATE KEY-----MARKER`.
+  # It is a FIXTURE, and it exists precisely to prove that ann_reply.c never
+  # copies the server's key into its output. Removing it would delete the test
+  # that guards the leak.
+  '''BEGIN OPENSSH PRIVATE KEY-----MARKER''',
+
+  # shadow/oauth.c::xor_obfuscate. A compiled-in constant that keeps the
+  # refresh_token from being readable at a glance on an SD card. Its own
+  # comment says it is not strong crypto, and CLAUDE.md says the app lock
+  # explicitly does not protect the data on the card. Shipping in the binary,
+  # it is not a secret a scanner can help with.
+  '''Sh4dow2Sw1tchT0k3n0bfu5c2026''',
+
+  # config.h's SHADOW_OAUTH_CLIENT_ID values. These identify the OFFICIAL
+  # Shadow clients and were read out of the desktop binary; they are public
+  # identifiers of a third party, not credentials of ours.
+  '''SHADOW_OAUTH_CLIENT_ID''',
+
+  # The redaction placeholder itself, left where a value used to be.
+  '''<session-key-removed>''',
+
+  # 2026-09-26, the first gitleaks run on the public edition:
+  # - a memory note quoting another OFFICIAL client's OAuth client_id. Device
+  #   grant, a PUBLIC client: the id ships in clear in every copy of that app,
+  #   and no client secret exists anywhere in this repository.
+  '''Client_id OAuth prod extrait''',
+  # - the redactor's own test: a synthetic "openssh-key-v1 / none / none"
+  #   header that proves the redactor removes a key body. Not a key.
+  '''RED\("ssh: reply carries -----BEGIN OPENSSH PRIVATE KEY-----''',
+  # - a KB sentence naming the masking helper's path, read as a key name.
+  '''The rule now \(`core/services/log_mask\.h`\)''',
+]

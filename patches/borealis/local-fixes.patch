@@ -1,0 +1,597 @@
+--- a/library/include/borealis/extern/nanovg/nanovg_gxm_utils.h
++++ b/library/include/borealis/extern/nanovg/nanovg_gxm_utils.h
+@@ -319,8 +319,15 @@
+             return "SCE_GXM_ERROR_INVALID_SAMPLER_RESULT_TYPE_COMPONENT_COUNT";
+         case SCE_GXM_ERROR_UNIFORM_BUFFER_NOT_RESERVED:
+             return "SCE_GXM_ERROR_UNIFORM_BUFFER_NOT_RESERVED";
++        /* LOCAL FIX halyard 2026-09-13 (PSV1) - this constant is not in
++         * every vitasdk: the one this repo builds against (arm-vita-eabi-gcc
++         * 15.2.0, vdpm 2026-09) does not declare it, and the whole table is
++         * error STRINGS - losing one name costs a message, not a behaviour.
++         * Guarded rather than deleted so it comes back on an SDK that has it. */
++#ifdef SCE_GXM_ERROR_INVALID_AUXILIARY_SURFACE
+         case SCE_GXM_ERROR_INVALID_AUXILIARY_SURFACE:
+             return "SCE_GXM_ERROR_INVALID_AUXILIARY_SURFACE";
++#endif
+         case SCE_GXM_ERROR_INVALID_PRECOMPUTED_DRAW:
+             return "SCE_GXM_ERROR_INVALID_PRECOMPUTED_DRAW";
+         case SCE_GXM_ERROR_INVALID_PRECOMPUTED_VERTEX_STATE:
+@@ -504,7 +511,18 @@
+     SceGxmInitializeParams gxm_init_params;
+     memset(&gxm_init_params, 0, sizeof(gxm_init_params));
+     gxm_init_params.flags = 0;
+-    gxm_init_params.displayQueueMaxPendingCount = MAX_PENDING_SWAPS;
++    /* LOCAL FIX halyard (LAT-V1, 2026-09-26): how many finished frames may
++     * wait for the display. Two is the upstream default - smooth, but up to two
++     * frames (~33 ms at 60 Hz) between drawing a picture and showing it. A
++     * streaming client wants the picture shown as soon as it is drawn.
++     * SHADOW_GXM_PENDING=1 or 2; anything else keeps the default. */
++    {
++        unsigned int pending = MAX_PENDING_SWAPS;
++        const char *e = getenv("SHADOW_GXM_PENDING");
++        if (e && (atoi(e) == 1 || atoi(e) == 2)) pending = (unsigned int)atoi(e);
++        gxm_init_params.displayQueueMaxPendingCount = pending;
++        sceClibPrintf("gxm: display queue max pending = %u\n", pending);
++    }
+     gxm_init_params.displayQueueCallback = display_queue_callback;
+     gxm_init_params.displayQueueCallbackDataSize = sizeof(struct display_queue_callback_data);
+     gxm_init_params.parameterBufferSize = SCE_GXM_DEFAULT_PARAMETER_BUFFER_SIZE;
+@@ -1005,26 +1023,65 @@
+ }
+ 
+ void gxmBeginFrame(void) {
++    /* === GXM-1 2026-09-14 - A FRAME THAT DOES NOT OPEN MUST SAY SO =======
++     *
++     * These two `return`s were silent, and that silence costs the process:
++     * `gxmEndFrame` has no matching guard, so it calls `sceGxmEndScene`
++     * regardless and prints one NOT_WITHIN_SCENE - which reads like a stray
++     * warning. Meanwhile every nanovg draw of that frame is issued outside a
++     * scene, and the application dies a couple of seconds later inside
++     * `gxmnvg__renderFlush`, with a backtrace pointing at the renderer and
++     * nothing pointing at the cause.
++     *
++     * That is exactly the shape this repository keeps paying for: the failure
++     * is detected, handled by doing nothing, and never published. One line
++     * here - capped, because it would otherwise fire sixty times a second -
++     * names which of the two is missing. */
+     NVGXMwindow *window = gxm_internal.window;
+-    if (!window) return;
+-    NVGXMframebuffer *fb = window->fb;
+-    if (!fb) return;
+-    gxmBeginFrameEx(fb, 0);
++    static int warned = 0;
++    if (!window || !window->fb) {
++        if (warned < 3) {
++            warned++;
++            sceClibPrintf("[GXM1] frame not opened: window=%p fb=%p\n",
++                          (void *)window, (void *)(window ? window->fb : NULL));
++        }
++        return;
++    }
++    gxmBeginFrameEx(window->fb, 0);
+ }
+ 
++/* GXM-1 - WHICH frame, and whether its scene opened.
++ * The NOT_WITHIN_SCENE line carries no frame number, so "once at startup" and
++ * "once, two seconds in" read identically in the log - and they are completely
++ * different defects. This counter is what tells them apart. */
++unsigned int gxmnvg__frame_no = 0;
++int gxmnvg__in_scene = 0;
++
+ void gxmBeginFrameEx(NVGXMframebuffer *fb, unsigned int flags) {
+-    GXM_CHECK_VOID(sceGxmBeginScene(gxm_internal.context,
+-                                    flags,
+-                                    fb->gxm_render_target,
+-                                    NULL,
+-                                    NULL,
+-                                    fb->gxm_color_surfaces[fb->gxm_back_buffer_index].sync_object,
+-                                    &fb->gxm_color_surfaces[fb->gxm_back_buffer_index].surface,
+-                                    &fb->gxm_depth_stencil_surface));
++    gxmnvg__frame_no++;
++    int st = sceGxmBeginScene(gxm_internal.context,
++                              flags,
++                              fb->gxm_render_target,
++                              NULL,
++                              NULL,
++                              fb->gxm_color_surfaces[fb->gxm_back_buffer_index].sync_object,
++                              &fb->gxm_color_surfaces[fb->gxm_back_buffer_index].surface,
++                              &fb->gxm_depth_stencil_surface);
++    if (st != SCE_OK) {
++        sceClibPrintf("[GXM1] frame %u: beginScene refused: %s\n",
++                      gxmnvg__frame_no, gxmnvg__easy_strerror(st));
++        return;
++    }
++    gxmnvg__in_scene = 1;
+ }
+ 
+ void gxmEndFrame(void) {
+-    GXM_CHECK_VOID(sceGxmEndScene(gxm_internal.context, NULL, NULL));
++    int st = sceGxmEndScene(gxm_internal.context, NULL, NULL);
++    if (st != SCE_OK) {
++        sceClibPrintf("[GXM1] frame %u: endScene refused (in_scene=%d): %s\n",
++                      gxmnvg__frame_no, gxmnvg__in_scene, gxmnvg__easy_strerror(st));
++    }
++    gxmnvg__in_scene = 0;
+ }
+ 
+ void gxmSwapBuffer(void) {
+--- a/library/lib/core/application.cpp
++++ b/library/lib/core/application.cpp
+@@ -17,7 +17,10 @@
+     limitations under the License.
+ */
+ 
++
+ #include <cstdio>
++
++
+ #include <cstdlib>
+ #include <cmath>
+ #include <yoga/YGNode.h>
+@@ -165,8 +168,10 @@
+     return Application::platform->runLoop(internalMainLoop);
+ }
+ 
++
+ bool Application::internalMainLoop()
+ {
++
+     Application::updateFPS();
+     Application::frameStartTime = getCPUTimeUsec();
+     Application::setActiveEvent(false);
+@@ -179,6 +184,7 @@
+         return false;
+     }
+ 
++
+     // Mouse and touch
+     if (Application::blockInputsTokens == 0)
+     {
+@@ -197,9 +203,11 @@
+ #endif
+     Ticking::updateTickings();
+ 
++
+     // Render
+     Application::frame();
+ 
++
+     // Run sync functions
+     Threading::performSyncTasks();
+ 
+@@ -655,6 +663,23 @@
+     frameContext.theme      = Application::getTheme();
+ 
+     // Begin frame and clear
++    /* LOCAL FIX halyard 2026-09-14 (GXM-1) - THE FRAME WAS NEVER OPENED.
++     *
++     * This line was absent, and on PS Vita `beginFrame()` is what calls
++     * `sceGxmBeginScene`. Without it every nanovg draw of every frame was
++     * issued outside a scene: the GPU had nowhere to put them, `sceGxmEndScene`
++     * answered SCE_GXM_ERROR_NOT_WITHIN_SCENE once, and the system killed the
++     * application about two seconds into the main loop - long before the user
++     * could touch anything.
++     *
++     * MEASURED, not deduced: a frame counter placed in `gxmBeginFrameEx` stayed
++     * at ZERO for the whole life of the process, while `gxmEndFrame` ran. The
++     * console dies with its main thread inside `gxmnvg__renderFlush`, which is
++     * the flush of a frame that was never begun.
++     *
++     * On the desktop backends `beginFrame()` is nearly a no-op (GLFW/SDL only
++     * forward it to D3D11), which is why the omission was invisible everywhere
++     * except the one platform where it carries the scene. */
+     videoContext->beginFrame();
+     videoContext->clear(Application::getTheme().getColor("brls/clear"));
+     float scaleFactor = videoContext->getScaleFactor();
+@@ -709,6 +734,7 @@
+     nvgResetTransform(Application::getNVGContext()); // scale
+     nvgEndFrame(Application::getNVGContext());
+ 
++
+     Application::platform->getVideoContext()->endFrame();
+ }
+ 
+@@ -783,6 +809,27 @@
+     View* oldFocus = Application::currentFocus;
+     View* newFocus = view ? view->getDefaultFocus() : nullptr;
+ 
++    /* LOCAL FIX halyard 2026-08-27 (S63) — `giveFocus(nullptr)`
++     * was a COMPLETE NO-OP: the `newFocus != nullptr` guard below skipped the
++     * whole body, so `Application::currentFocus` was NEVER reset to nullptr
++     * (its only two writers: line 136 at init, and the `= newFocus` further
++     * down, always non-null). Consequence: the "Focus sanity check" in
++     * `View::~View()` (view.cpp:1486-1487), which calls exactly
++     * `giveFocus(nullptr)`, was DEAD CODE - any view destroyed while it held
++     * the focus left `currentFocus` dangling, and the next virtual call on it
++     * (`oldFocus->onFocusLost()` below, reached from
++     * `ScrollingFrame::naturalScrollingBehaviour()`) jumped into a freed
++     * vtable => "Instruction Abort".
++     * We do NOT notify `oldFocus->onFocusLost()` here: the only caller is this
++     * view's destructor, and its derived part is already destroyed.
++     * A safety net: the real fix is not to destroy the focused view (see
++     * vm_list_activity.cpp, S63). */
++    if (view == nullptr)
++    {
++        Application::currentFocus = nullptr;
++        return;
++    }
++
+     if (oldFocus != newFocus && newFocus != nullptr)
+     {
+         if (oldFocus)
+--- a/library/lib/core/thread.cpp
++++ b/library/lib/core/thread.cpp
+@@ -213,6 +213,32 @@
+ {
+ #ifdef BOREALIS_USE_STD_THREAD
+     task_loop_thread = new std::thread(std_task_loop);
++#elif defined(__vita__) || defined(__psp2__)
++    /* LOCAL FIX halyard 2026-09-13 (PSV2) - THE TASK LOOP NEEDS A REAL
++     * STACK.
++     *
++     * `pthread_create(..., NULL, ...)` takes the platform default, and on the
++     * Vita that is small. Everything an application does off the main thread
++     * runs here - for halyard, the whole session: TLS, HTTP, the protocol
++     * bootstrap. OpenSSL's ARM assembly is what found the ceiling first.
++     *
++     * MEASURED, not guessed: a coredump from a real console
++     * (psp2core-1789263606) puts the faulting thread at `pthread`, stop reason
++     * 0x30004 - a DATA ABORT - with PC in `sha512_block_data_order` and LR in
++     * `SHA512_Update`. That routine's ARM path carries a large frame (the
++     * 80-entry message schedule and its working set), so it is the first thing
++     * to walk off the end of a short stack. The crash landed a second after the
++     * connecting screen appeared, every time.
++     *
++     * 1 MB: generous against a 512 MB console, and the same order as the
++     * desktop default this code was written against. */
++    {
++        pthread_attr_t attr;
++        pthread_attr_init(&attr);
++        pthread_attr_setstacksize(&attr, 1024 * 1024);
++        pthread_create(&task_loop_thread, &attr, task_loop, NULL);
++        pthread_attr_destroy(&attr);
++    }
+ #else
+     pthread_create(&task_loop_thread, NULL, task_loop, NULL);
+ #endif
+--- a/library/lib/platforms/glfw/glfw_input.cpp
++++ b/library/lib/platforms/glfw/glfw_input.cpp
+@@ -24,6 +24,11 @@
+ #include <GLFW/glfw3.h>
+ #include <unistd.h>
+ 
++/* LOCAL FIX halyard 2026-09-10 (K20) - see `updateGamepadState`
++ * below. A WEAK symbol: null when the application does not define it, so
++ * Borealis still compiles and links on its own, exactly as before. */
++extern "C" __attribute__((weak)) bool halyard_ui_keys_blocked(void);
++
+ namespace brls
+ {
+ 
+@@ -251,6 +256,15 @@
+     return controllersCount;
+ }
+ 
++
++/* LOCAL FIX halyard 2026-09-12 (INJ-1) — injection d'entree depuis
++ * the development machine. WEAK SYMBOLS: null when the application does not
++ * define them, so Borealis still compiles and links on its own, as before.
++ * See demo/src/devlink/inject.h and patches/borealis/README.md. */
++extern "C" __attribute__((weak)) void halyard_inject_controller(bool *buttons, size_t nb,
++                                                                      float *axes, size_t na);
++extern "C" __attribute__((weak)) bool halyard_inject_touch(float *x, float *y);
++
+ void GLFWInputManager::updateUnifiedControllerState(ControllerState* state)
+ {
+     for (size_t i = 0; i < _BUTTON_MAX; i++)
+@@ -260,7 +274,16 @@
+         state->axes[i] = 0;
+ 
+     if (!glfwGetWindowAttrib(window, GLFW_FOCUSED))
++    {
++        /* INJ-1: we inject here TOO. A test bench drives the window from a
++         * terminal, so it almost never has the focus - returning without
++         * injecting would make the engine useless on the desktop, which is where
++         * this repo asks you to reproduce before blaming the console. */
++        if (halyard_inject_controller)
++            halyard_inject_controller(state->buttons, _BUTTON_MAX,
++                                            state->axes, _AXES_MAX);
+         return;
++    }
+ 
+     for (int i = 0; i < GAMEPADS_MAX; i++)
+     {
+@@ -301,12 +324,54 @@
+         state->buttons[BUTTON_B] |= glfwGetKey(this->window, GLFW_KEY_ESCAPE) != 0;
+         state->buttons[BUTTON_B] |= glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS;
+     }
++    /* LOCAL FIX halyard 2026-09-10 (K20) - THE KEYS THE DOCS
++     * PROMISED WITHOUT THEM EXISTING.
++     *
++     * `docs/DESKTOP_KEYS.md` had announced X, Y, L, R, F1, F2, Q and P for
++     * months. NONE was mapped: only Enter, Escape and the arrows were (plus the
++     * mouse). Someone reading "(Y) Parametres" in the bottom bar pressed Y,
++     * and nothing happened.
++     *
++     * THE GUARD MATTERS AS MUCH AS THE MAPPING. During a stream session,
++     * `stream_view.cpp` already sends the physical keyboard to the VM; without
++     * this test, typing X or Y in a game would ALSO trigger the interface's
++     * action - `stream_activity` registers BUTTON_Y and BUTTON_START - and a
++     * menu would open in the middle of a game.
++     *
++     * Enter, Escape and the arrows deliberately stay OUTSIDE the guard: they
++     * were mapped before this fix, and neutralising them during a session
++     * would be a behaviour change nothing here has measured.
++     *
++     * KNOWN LIMIT: polling cannot tell whether text entry is in progress, so
++     * typing "x" in a field also triggers the X action. The defect already
++     * existed for Enter and Escape; these keys extend it. */
++    if (!(halyard_ui_keys_blocked && halyard_ui_keys_blocked()))
++    {
++        state->buttons[BUTTON_X]     |= glfwGetKey(this->window, GLFW_KEY_X) != 0;
++        state->buttons[BUTTON_Y]     |= glfwGetKey(this->window, GLFW_KEY_Y) != 0;
++        state->buttons[BUTTON_LB]    |= glfwGetKey(this->window, GLFW_KEY_L) != 0;
++        state->buttons[BUTTON_RB]    |= glfwGetKey(this->window, GLFW_KEY_R) != 0;
++        state->buttons[BUTTON_BACK]  |= glfwGetKey(this->window, GLFW_KEY_F1) != 0;
++        state->buttons[BUTTON_START] |= glfwGetKey(this->window, GLFW_KEY_F2) != 0;
++        state->buttons[BUTTON_LSB]   |= glfwGetKey(this->window, GLFW_KEY_Q) != 0;
++        state->buttons[BUTTON_RSB]   |= glfwGetKey(this->window, GLFW_KEY_P) != 0;
++    }
++
+     state->buttons[BUTTON_X] |= (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_MIDDLE) == GLFW_PRESS);
+ 
+     state->buttons[BUTTON_NAV_UP] |= state->buttons[BUTTON_UP];
+     state->buttons[BUTTON_NAV_RIGHT] |= state->buttons[BUTTON_RIGHT];
+     state->buttons[BUTTON_NAV_DOWN] |= state->buttons[BUTTON_DOWN];
+     state->buttons[BUTTON_NAV_LEFT] |= state->buttons[BUTTON_LEFT];
++
++    /* INJ-1: AFTER the d-pad -> NAV propagation above, so that the engine
++     * decides both itself (it presses both, like a real gamepad).
++     * And through an OR: what is injected is ADDED to the real gamepad, it does
++     * not replace it - a script driving the console must not stop a human from
++     * taking over. */
++    if (halyard_inject_controller)
++        halyard_inject_controller(state->buttons, _BUTTON_MAX,
++                                        state->axes, _AXES_MAX);
+ }
+ 
+ void GLFWInputManager::updateControllerState(ControllerState* state, int controller)
+@@ -343,6 +408,22 @@
+ 
+ void GLFWInputManager::updateTouchStates(std::vector<RawTouchState>* states)
+ {
++    /* INJ-1: the synthetic touch is added to the real fingers. `fingerId` is
++     * 900 so that it crosses no hardware identifier. */
++    if (halyard_inject_touch)
++    {
++        float ix = 0, iy = 0;
++        if (halyard_inject_touch(&ix, &iy))
++        {
++            RawTouchState t;
++            t.pressed    = true;
++            t.fingerId   = 900;
++            t.position.x = ix;
++            t.position.y = iy;
++            states->push_back(t);
++        }
++    }
++
+     if (getTouchState()) {
+         touchState.pressed = true;
+         states->push_back(touchState);
+--- a/library/lib/platforms/psv/psv_input.cpp
++++ b/library/lib/platforms/psv/psv_input.cpp
+@@ -92,10 +92,23 @@
+     state->buttons[BUTTON_X] = pad.buttons & SCE_CTRL_SQUARE;
+     state->buttons[BUTTON_Y] = pad.buttons & SCE_CTRL_TRIANGLE;
+ 
+-    state->axes[LEFT_X]  = pad.lx / 255.0f - 1.0f;
+-    state->axes[LEFT_Y]  = pad.ly / 255.0f - 1.0f;
+-    state->axes[RIGHT_X] = pad.rx / 255.0f - 1.0f;
+-    state->axes[RIGHT_Y] = pad.ry / 255.0f - 1.0f;
++    /* LOCAL FIX halyard 2026-09-13 (PSV3) - THE STICKS WERE STUCK LEFT.
++     *
++     * The divisor was 255, which maps the pad's 0..255 onto -1..0 instead of
++     * -1..+1: at rest (0x80) the axis read 128/255 - 1 = -0.498, a permanent
++     * half-deflection to the left, and a stick pushed fully right could only
++     * ever reach 0. The centre is at 127.5, so 127.5 is the divisor.
++     *
++     * Why it had never shown: Borealis' own navigation does not read these
++     * axes at all - `BUTTON_NAV_*` just below is computed from the RAW
++     * `pad.lx`/`pad.ly` thresholds. The values were only wrong for a consumer
++     * that reads the axes, and until the stream's pause menu reached this
++     * console there was none. Reported from hardware as "the left button stays
++     * pressed, values race when I enter a menu". */
++    state->axes[LEFT_X]  = pad.lx / 127.5f - 1.0f;
++    state->axes[LEFT_Y]  = pad.ly / 127.5f - 1.0f;
++    state->axes[RIGHT_X] = pad.rx / 127.5f - 1.0f;
++    state->axes[RIGHT_Y] = pad.ry / 127.5f - 1.0f;
+ 
+     state->buttons[BUTTON_NAV_UP]    = pad.ly < 0x20 || pad.ry < 0x20 || state->buttons[BUTTON_UP];
+     state->buttons[BUTTON_NAV_RIGHT] = pad.lx > 0xe0 || pad.rx > 0xe0 || state->buttons[BUTTON_RIGHT];
+--- a/library/lib/platforms/psv/psv_video.cpp
++++ b/library/lib/platforms/psv/psv_video.cpp
+@@ -14,6 +14,7 @@
+ limitations under the License.
+ */
+ 
++#include <cstdlib>
+ #include <borealis/core/application.hpp>
+ #include <borealis/platforms/psv/psv_video.hpp>
+ 
+@@ -34,8 +35,17 @@
+ #endif
+ 
+     // Initialize nanovg
++    /* LOCAL FIX halyard (LAT-V1, 2026-09-26): the multisampling level, fixed
++     * at 4X upstream, is paid on every pixel of every frame - the video quad
++     * included, which gains nothing from it. SHADOW_GXM_MSAA=0|2|4. */
++    SceGxmMultisampleMode msaa = SCE_GXM_MULTISAMPLE_4X;
++    if (const char *e = getenv("SHADOW_GXM_MSAA")) {
++        const int v = atoi(e);
++        msaa = v == 0 ? SCE_GXM_MULTISAMPLE_NONE
++             : v == 2 ? SCE_GXM_MULTISAMPLE_2X : SCE_GXM_MULTISAMPLE_4X;
++    }
+     NVGXMinitOptions initOptions = {
+-        .msaa = SCE_GXM_MULTISAMPLE_4X,
++        .msaa = msaa,
+         .swapInterval = VideoContext::swapInterval,
+         .dumpShader = 0,
+         .scenesPerFrame = 1,
+--- a/library/lib/platforms/switch/switch_input.cpp
++++ b/library/lib/platforms/switch/switch_input.cpp
+@@ -150,6 +150,15 @@
+     sendRumbleInternal(m_vibration_device_handles[controller], m_vibration_values[controller], 160.0f, 320.0f, 0.0f, 0.0f);
+ }
+ 
++
++/* LOCAL FIX halyard 2026-09-12 (INJ-1) — injection d'entree depuis
++ * the development machine. WEAK SYMBOLS: null when the application does not
++ * define them, so Borealis still compiles and links on its own, as before.
++ * See demo/src/devlink/inject.h and patches/borealis/README.md. */
++extern "C" __attribute__((weak)) void halyard_inject_controller(bool *buttons, size_t nb,
++                                                                      float *axes, size_t na);
++extern "C" __attribute__((weak)) bool halyard_inject_touch(float *x, float *y);
++
+ void SwitchInputManager::updateUnifiedControllerState(ControllerState* state)
+ {
+     for (size_t i = 0; i < _BUTTON_MAX; i++)
+@@ -176,6 +185,13 @@
+                 state->axes[j] = 1;
+         }
+     }
++
++    /* INJ-1: through an OR, after the real gamepads are merged - what is
++     * injected is ADDED, it replaces nothing. See the same fix in
++     * glfw_input.cpp et patches/borealis/README.md. */
++    if (halyard_inject_controller)
++        halyard_inject_controller(state->buttons, _BUTTON_MAX,
++                                        state->axes, _AXES_MAX);
+ }
+ 
+ short SwitchInputManager::getControllersConnectedCount()
+@@ -265,6 +281,21 @@
+ 
+ void SwitchInputManager::updateTouchStates(std::vector<RawTouchState>* states)
+ {
++    /* INJ-1: the synthetic touch is added to the real fingers. */
++    if (halyard_inject_touch)
++    {
++        float ix = 0, iy = 0;
++        if (halyard_inject_touch(&ix, &iy))
++        {
++            RawTouchState t;
++            t.pressed    = true;
++            t.fingerId   = 900;
++            t.position.x = ix;
++            t.position.y = iy;
++            states->push_back(t);
++        }
++    }
++
+     // Get touchscreen state
+     static HidTouchScreenState hidState;
+ 
+--- a/library/lib/views/hint.cpp
++++ b/library/lib/views/hint.cpp
+@@ -79,6 +79,54 @@
+ 
+ std::string Hint::getKeyIcon(ControllerButton button, bool ignoreKeysSwap)
+ {
++    /* LOCAL FIX halyard 2026-09-10 (K20) - NAME THE KEY, NOT THE
++     * BUTTON.
++     *
++     * On desktop this bar announced "(A) Connecter" to someone with neither an
++     * (A) nor a gamepad under their fingers. Borealis' keyboard mapping is
++     * nonetheless REAL - `glfw_input.cpp` makes Enter = A and Escape = B - but
++     * nothing on screen said so and nothing in the application wrote it down:
++     * you had to open `docs/DESKTOP_KEYS.md` to learn it.
++     *
++     * The condition is on the NUMBER OF GAMEPADS, not on the platform: on a
++     * desktop with a gamepad plugged in, the glyphs are right and the keyboard
++     * label would lie. Zero gamepads is the only case where the answer is
++     * certain.
++     *
++     * The A/B swap is read HERE, before `mapControllerState`, because the
++     * button received is the LOGICAL button: it is what the action registered,
++     * and `glfw_input.cpp` decides which key feeds it from that same setting.
++     * Going after the mapping would swap Enter and Escape one time in two.
++     *
++     * Short English labels on purpose: they must fit in the bar, and this file
++     * belongs to Borealis - it does not go through our `resources/i18n/`. */
++#ifdef __GLFW__
++    if (Application::getPlatform()->getInputManager()->getControllersConnectedCount() == 0)
++    {
++        const bool swap = Application::isSwapInputKeys();
++        switch (button)
++        {
++            case BUTTON_A:     return swap ? "Esc" : "Enter";
++            case BUTTON_B:     return swap ? "Enter" : "Esc";
++            case BUTTON_X:     return "X";
++            case BUTTON_Y:     return "Y";
++            case BUTTON_LB:    return "L";
++            case BUTTON_RB:    return "R";
++            case BUTTON_BACK:  return "F1";
++            case BUTTON_START: return "F2";
++            case BUTTON_LSB:   return "Q";
++            case BUTTON_RSB:   return "P";
++            case BUTTON_UP:    return "↑";
++            case BUTTON_DOWN:  return "↓";
++            case BUTTON_LEFT:  return "←";
++            case BUTTON_RIGHT: return "→";
++            /* ZL/ZR and the rest have no key: they keep their glyph, which is
++             * still the most honest answer. */
++            default: break;
++        }
++    }
++#endif
++
+     if (!ignoreKeysSwap)
+         button = InputManager::mapControllerState(button);
+ 
+--- a/library/lib/views/h_scrolling_frame.cpp
++++ b/library/lib/views/h_scrolling_frame.cpp
+@@ -159,6 +159,20 @@
+         // If current focus view is outside scrolling bounds,
+         // change focus to this.
+         View* currentFocus = Application::getCurrentFocus();
++        /* LOCAL FIX halyard 2026-08-27 (S63) — garde de nullite.
++         * CAREFUL: the first version of this comment claimed that
++         * `Application::currentFocus` is reset to nullptr when an activity is
++         * popped. THAT IS FALSE - before application.cpp's S63 fix it was
++         * reset to nullptr NOWHERE after init (line 136). So this
++         * guard fixed nothing about the "B from the settings" crash:
++         * the pointer there was not NULL but DANGLING (a VM card freed by
++         * `refreshVms()`), and the crash came from the VIRTUAL call
++         * `oldFocus->onFocusLost()` dans `giveFocus()` juste dessous.
++         * The cause is handled in vm_list_activity.cpp (S63) plus application.cpp's
++         * safety net (S63). The guard is still useful: since that
++         * net, `currentFocus` CAN now be nullptr. */
++        if (!currentFocus)
++            return;
+         if (!currentFocus->getFrame().inscribed(getFrame()))
+         {
+             Application::giveFocus(this);
+--- a/library/lib/views/scrolling_frame.cpp
++++ b/library/lib/views/scrolling_frame.cpp
+@@ -159,6 +159,20 @@
+         // If current focus view is outside scrolling bounds,
+         // change focus to this.
+         View* currentFocus = Application::getCurrentFocus();
++        /* LOCAL FIX halyard 2026-08-27 (S63) — garde de nullite.
++         * CAREFUL: the first version of this comment claimed that
++         * `Application::currentFocus` is reset to nullptr when an activity is
++         * popped. THAT IS FALSE - before application.cpp's S63 fix it was
++         * reset to nullptr NOWHERE after init (line 136). So this
++         * guard fixed nothing about the "B from the settings" crash:
++         * the pointer there was not NULL but DANGLING (a VM card freed by
++         * `refreshVms()`), and the crash came from the VIRTUAL call
++         * `oldFocus->onFocusLost()` dans `giveFocus()` juste dessous.
++         * The cause is handled in vm_list_activity.cpp (S63) plus application.cpp's
++         * safety net (S63). The guard is still useful: since that
++         * net, `currentFocus` CAN now be nullptr. */
++        if (!currentFocus)
++            return;
+         if (!currentFocus->getFrame().inscribed(getFrame()))
+         {
+             Application::giveFocus(this);

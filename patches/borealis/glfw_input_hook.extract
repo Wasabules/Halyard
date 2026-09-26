@@ -1,0 +1,9 @@
+/* An extract of platforms/glfw/glfw_input.cpp - the local halyard fix (K20, 2026-09-10).
+   To be put back after a fresh clone or a re-vendoring of Borealis.
+   See README.md for the why. */
+
+/* LOCAL FIX halyard 2026-09-10 (K20) - see `updateGamepadState`
+ * below. A WEAK symbol: null when the application does not define it, so
+ * Borealis still compiles and links on its own, exactly as before. */
+extern "C" __attribute__((weak)) bool halyard_ui_keys_blocked(void);
+

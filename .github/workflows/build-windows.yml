@@ -1,0 +1,76 @@
+# The one loop this repo most needed and did not have.
+#
+# The Windows client stopped building between May and September 2026 on FOUR
+# independent portability regressions (setenv/unsetenv, <poll.h>, setsockopt
+# wanting a DWORD of milliseconds, and wolfSSL's DTLS), and NOTHING caught any
+# of them -- because no loop built Windows. This is that loop.
+name: build-windows
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: build-windows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-2022
+    defaults:
+      run:
+        shell: 'msys2 {0}'
+    steps:
+      - uses: actions/checkout@v4
+        with: { submodules: recursive }
+
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            git make pkg-config
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja
+            mingw-w64-ucrt-x86_64-curl
+            mingw-w64-ucrt-x86_64-jansson
+            mingw-w64-ucrt-x86_64-opus
+            mingw-w64-ucrt-x86_64-qrencode
+            mingw-w64-ucrt-x86_64-ffmpeg
+            mingw-w64-ucrt-x86_64-glfw
+
+      # NOT optional, and not interchangeable with the packaged wolfSSL:
+      # MSYS2's package carries `#undef WOLFSSL_DTLS`, so its libwolfssl.a has
+      # no wolfSSL_set_dtls_fd_connected at all. The channel that needs DTLS is
+      # INPUT, not audio (ctrl_audio_dtls.c keeps a name whose premise was
+      # refuted in August), so a build without it costs the mouse and keyboard.
+      # Both packages announce 5.9.1, so cmake's output does NOT say which was
+      # taken -- check WOLFSSL_INCLUDEDIR in CMakeCache.txt.
+      # third_party/ is not in git: fetch it first, or the wolfSSL step below
+      # has no directory to run in. Added 2026-09-26, NOT yet run - no machine
+      # here builds Windows; the first CI run is its test.
+      - name: fetch and patch the libraries
+        run: bash tools/bootstrap-libs.sh
+      # The shared recipe, not a private one: tools/build-libs.sh builds the
+      # pinned, patched wolfSSL with DTLS (MSYS2's package has none, and the
+      # input channel needs it) and installs it where CMake looks.
+      - name: wolfSSL with DTLS
+        run: bash tools/build-libs.sh windows wolfssl
+
+      - name: configure
+        run: |
+          export PKG_CONFIG_PATH="$PWD/third_party/wolfssl/build_windows/install/lib/pkgconfig"
+          cmake -B build_windows -G Ninja -DPLATFORM_DESKTOP=ON -DCMAKE_BUILD_TYPE=Release
+          grep WOLFSSL_INCLUDEDIR build_windows/CMakeCache.txt || true
+
+      - name: halyard.exe
+        run: cmake --build build_windows --target halyard
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: halyard-windows
+          path: build_windows/halyard.exe
+          if-no-files-found: error

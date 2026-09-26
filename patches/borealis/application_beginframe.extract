@@ -1,0 +1,28 @@
+GXM-1 (2026-09-14) - `Application::frame()` must OPEN the frame.
+
+File: library/lib/core/application.cpp, in `Application::frame()`.
+
+WHAT WAS WRONG. The function called `clear()` then `nvgBeginFrame()`, drew,
+called `nvgEndFrame()` and `videoContext->endFrame()` - but never
+`videoContext->beginFrame()`. On PS Vita that is the call carrying
+`sceGxmBeginScene` (see platforms/psv/psv_video.cpp), so no scene was ever
+opened: every nanovg draw went to a context with nowhere to put it,
+`sceGxmEndScene` answered SCE_GXM_ERROR_NOT_WITHIN_SCENE exactly once, and the
+system killed the application about two seconds into the main loop.
+
+HOW IT WAS PROVEN. A frame counter placed inside `gxmBeginFrameEx` stayed at
+ZERO for the whole life of the process while `gxmEndFrame` ran. The core dump
+puts the main thread inside `gxmnvg__renderFlush` - the flush of a frame that
+was never begun.
+
+WHY NOTHING ELSE NOTICED. On the desktop backends `beginFrame()` is nearly a
+no-op (GLFW and SDL only forward it to D3D11) and on Switch it is cheap. The PS
+Vita is the one platform where that call is the frame.
+
+Put this back, immediately above the `clear()` call:
+
+    // Begin frame and clear
+    /* LOCAL FIX halyard 2026-09-14 (GXM-1) - THE FRAME WAS NEVER OPENED.
+     * ... (keep the full comment from the patch) ... */
+    videoContext->beginFrame();
+    videoContext->clear(Application::getTheme().getColor("brls/clear"));

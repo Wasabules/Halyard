@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Configured by CMake into template.xml. The title and the version are
+     substituted from the single identity block in CMakeLists.txt, so the
+     LiveArea bubble, the NRO's homebrew-browser entry and the in-app About
+     screen cannot drift apart. Do not edit the generated template.xml. -->
+<livearea style="a1" format-ver="01.00" content-rev="1">
+	<livearea-background>
+		<image>bg.png</image>
+	</livearea-background>
+
+	<gate>
+		<startup-image>startup.png</startup-image>
+	</gate>
+
+	<frame id="frame1">
+		<liveitem>
+			<text align="left" text-align="left" word-wrap="on" ellipsis="on">
+				<str size="20" color="#ffffff">@APP_TITLE@ @SHADOW_VERSION_STR@</str>
+			</text>
+		</liveitem>
+		<liveitem>
+			<text align="left" text-align="left" word-wrap="on" ellipsis="on">
+				<str size="14" color="#c8c8c8">@APP_DESCRIPTION@</str>
+			</text>
+		</liveitem>
+	</frame>
+</livearea>

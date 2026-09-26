@@ -1,0 +1,37 @@
+/* An extract of platforms/glfw/glfw_input.cpp - the local halyard fix (K20, 2026-09-10).
+   To be put back after a fresh clone or a re-vendoring of Borealis.
+   See README.md for the why. */
+
+    /* LOCAL FIX halyard 2026-09-10 (K20) - THE KEYS THE DOCS
+     * PROMISED WITHOUT THEM EXISTING.
+     *
+     * `docs/DESKTOP_KEYS.md` had announced X, Y, L, R, F1, F2, Q and P for
+     * months. NONE was mapped: only Enter, Escape and the arrows were (plus the
+     * mouse). Someone reading "(Y) Parametres" in the bottom bar pressed Y,
+     * and nothing happened.
+     *
+     * THE GUARD MATTERS AS MUCH AS THE MAPPING. During a stream session,
+     * `stream_view.cpp` already sends the physical keyboard to the VM; without
+     * this test, typing X or Y in a game would ALSO trigger the interface's
+     * action - `stream_activity` registers BUTTON_Y and BUTTON_START - and a
+     * menu would open in the middle of a game.
+     *
+     * Enter, Escape and the arrows deliberately stay OUTSIDE the guard: they
+     * were mapped before this fix, and neutralising them during a session
+     * would be a behaviour change nothing here has measured.
+     *
+     * KNOWN LIMIT: polling cannot tell whether text entry is in progress, so
+     * typing "x" in a field also triggers the X action. The defect already
+     * existed for Enter and Escape; these keys extend it. */
+    if (!(halyard_ui_keys_blocked && halyard_ui_keys_blocked()))
+    {
+        state->buttons[BUTTON_X]     |= glfwGetKey(this->window, GLFW_KEY_X) != 0;
+        state->buttons[BUTTON_Y]     |= glfwGetKey(this->window, GLFW_KEY_Y) != 0;
+        state->buttons[BUTTON_LB]    |= glfwGetKey(this->window, GLFW_KEY_L) != 0;
+        state->buttons[BUTTON_RB]    |= glfwGetKey(this->window, GLFW_KEY_R) != 0;
+        state->buttons[BUTTON_BACK]  |= glfwGetKey(this->window, GLFW_KEY_F1) != 0;
+        state->buttons[BUTTON_START] |= glfwGetKey(this->window, GLFW_KEY_F2) != 0;
+        state->buttons[BUTTON_LSB]   |= glfwGetKey(this->window, GLFW_KEY_Q) != 0;
+        state->buttons[BUTTON_RSB]   |= glfwGetKey(this->window, GLFW_KEY_P) != 0;
+    }
+

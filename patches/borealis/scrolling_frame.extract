@@ -1,0 +1,18 @@
+        /* LOCAL FIX halyard 2026-08-27 (S63) — garde de nullite.
+         * CAREFUL: the first version of this comment claimed that
+         * `Application::currentFocus` is reset to nullptr when an activity is
+         * popped. THAT IS FALSE - before application.cpp's S63 fix it was
+         * reset to nullptr NOWHERE after init (line 136). So this
+         * guard fixed nothing about the "B from the settings" crash:
+         * the pointer there was not NULL but DANGLING (a VM card freed by
+         * `refreshVms()`), and the crash came from the VIRTUAL call
+         * `oldFocus->onFocusLost()` dans `giveFocus()` juste dessous.
+         * The cause is handled in vm_list_activity.cpp (S63) plus application.cpp's
+         * safety net (S63). The guard is still useful: since that
+         * net, `currentFocus` CAN now be nullptr. */
+        if (!currentFocus)
+            return;
+        if (!currentFocus->getFrame().inscribed(getFrame()))
+        {
+            Application::giveFocus(this);
+        }

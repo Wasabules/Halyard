@@ -1,0 +1,103 @@
+// OAuth 2.0 Device Authorization Grant (RFC 8628) for Shadow / Hydra.
+// Flow:
+//   1. oauth_discover()    - fetch <issuer>/.well-known/openid-configuration
+//   2. oauth_device_init() - POST device_authorization_endpoint, gets user_code
+//   3. show user_code to the user, who confirms on shadow.tech/device
+//   4. oauth_device_poll() - POST token_endpoint in a loop, until success/denied
+//   5. ShadowAuthState then holds the bearer and the refresh token
+
+#pragma once
+#include <stdbool.h>
+#include <time.h>
+
+typedef struct {
+    char *device_authorization_endpoint;
+    char *token_endpoint;
+    char *revocation_endpoint;
+    char *userinfo_endpoint;
+    char *issuer;
+} OidcDiscovery;
+
+void oauth_discovery_free(OidcDiscovery *d);
+bool oauth_discover(OidcDiscovery *out, long *http_status);
+
+typedef struct {
+    char *device_code;                // secret used for polling
+    char *user_code;                  // to be shown to the user
+    char *verification_uri;           // ex: https://shadow.tech/device
+    char *verification_uri_complete;  // ex: https://shadow.tech/device?user_code=XYZ
+    int   expires_in;                 // seconds before the overall expiry
+    int   interval;                   // seconds between two polls
+} DeviceGrantInit;
+
+void oauth_device_init_free(DeviceGrantInit *g);
+bool oauth_device_init(const OidcDiscovery *d, DeviceGrantInit *out, long *http_status);
+
+typedef struct {
+    char *access_token;
+    char *refresh_token;   // may be NULL
+    char *id_token;        // may be NULL
+    char *token_type;      // typiquement "Bearer"
+    time_t expires_at;     // Unix epoch local
+} ShadowAuthState;
+
+void oauth_state_free(ShadowAuthState *s);
+
+// Result of one poll:
+typedef enum {
+    OAUTH_POLL_PENDING       = 0,    // keep waiting
+    OAUTH_POLL_SUCCESS       = 1,    // out filled in with the tokens
+    OAUTH_POLL_SLOW_DOWN     = 2,    // server demande de polling moins vite
+    OAUTH_POLL_DENIED        = -1,   // the user refused
+    OAUTH_POLL_EXPIRED       = -2,   // device_code expired
+    OAUTH_POLL_NETWORK_ERROR = -3,   // HTTP or network error
+    OAUTH_POLL_OTHER_ERROR   = -4,
+} OAuthPollResult;
+
+OAuthPollResult oauth_device_poll(const OidcDiscovery *d, const char *device_code,
+                                   const char *client_id, ShadowAuthState *out);
+
+// Refreshes an access_token through the refresh_token. Updates `s` in place.
+bool oauth_refresh(const OidcDiscovery *d, const char *client_id, ShadowAuthState *s);
+
+// Persist / load into /switch/halyard/refresh_token.
+// UX3 B1 2026-05-18: format v2 is obfuscated (XOR keystream). Automatic
+// backward compatibility with v1 plaintext (= legacy tokens are read
+// correctly).
+bool oauth_save_refresh(const ShadowAuthState *s);
+
+/* === CHANGING THE TOKEN'S FORM, WITHOUT CHANGING THE TOKEN ===
+ *
+ * Reads the stored refresh token and writes it straight back. Which FORMAT it
+ * lands in is decided by whether the application lock is open at that moment
+ * (see the magic bytes in oauth.c), so this one call is what moves a token
+ * between the weakly-obfuscated form and the sealed one.
+ *
+ * Call it at the two moments the answer changes:
+ *   - just after the FIRST lock method is armed, so the token stops being
+ *     readable from a computer immediately rather than at the next rotation,
+ *     which may be days away;
+ *   - just BEFORE the lock is removed, while the master key can still open it -
+ *     afterwards nothing could, and turning the lock off would throw the
+ *     session away.
+ *
+ * Returns true when there was a token and it was rewritten. No token at all
+ * returns false and is not an error: there is simply nothing to convert. */
+bool oauth_reencrypt_refresh(void);
+
+/* Takes the token OUT of the sealed form, for when the lock is being removed.
+ *
+ * The three steps - read while the key is still loaded, forget the key, write
+ * back - are one call because the order between them is the whole thing, and it
+ * is the kind of order a later edit reverses without noticing. Getting it wrong
+ * leaves a file nothing in the world can decrypt: the lock gone and the session
+ * with it, for having turned off a setting.
+ *
+ * Returns true when a token was converted. */
+bool oauth_unseal_refresh(void);
+bool oauth_load_refresh(char **refresh_out);   // allocated, to be freed
+
+// UX3 B5 2026-05-18: checks whether expiry < now + threshold_sec (= a refresh
+// is advised). Returns false when the state is empty or expires_at is not
+// set.
+bool oauth_token_needs_refresh(const ShadowAuthState *s, int threshold_sec);

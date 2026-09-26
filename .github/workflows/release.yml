@@ -1,0 +1,133 @@
+# Publishes a release on a `vX.Y.Z` tag: the Switch `.nro`, the PS Vita `.vpk`,
+# and the source the GPL requires to go with them.
+#
+# IT REFUSES BEFORE IT BUILDS. Two gates run first and every other job waits on
+# them: nothing in the tree may be someone else's to redistribute
+# (tools/check-redistributable.py), and the tag must be the version the
+# binaries will announce. The moment this workflow uploads a package, whatever
+# it contains is being distributed by us, automatically and at scale.
+#
+# === THE .vpk, AND WHY IT WAS MISSING UNTIL 2026-09-26 ==================
+#
+# The PS Vita package used to link the vitasdk's libcurl, built on OpenSSL
+# 1.0.2, statically, next to GPL code (ours and wolfSSL's). The OpenSSL 1.x
+# licence carries an advertising clause the GPL does not allow, so the package
+# could not be redistributed and was built but not attached. libcurl is now
+# rebuilt for the Vita on Mbed TLS (tools/build-libs.sh vita curl) and the ELF
+# holds no OpenSSL code. The same day, the vitasdk's FFmpeg (with LAME and
+# mpg123, all LGPL, at versions vdpm does not pin) was replaced by our own
+# FLAC-only build of the tarball the Switch pins - so the source bundled below
+# is exactly what the package contains. build-psvita.yml checks both on the ELF.
+#
+# The build jobs are CALLED, not copied. build-psvita.yml once carried its own
+# copy of the wolfSSL recipe; the copy drifted, lost the seed macro, and would
+# have shipped a package that cannot open a TLS socket while reporting success.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # Nothing builds until this passes.
+  redistributable:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: is everything here ours to ship?
+        run: python3 tools/check-redistributable.py
+      # The version lives in CMakeLists.txt (VERSION_MAJOR/MINOR/ALTER) and is
+      # compiled into both packages and the About screen. A tag that says
+      # otherwise would publish a binary announcing the wrong version.
+      - name: the tag is the version the binaries will announce
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          set -euo pipefail
+          v() { sed -n "s/^set(VERSION_$1 \"\([0-9]*\)\")/\1/p" CMakeLists.txt; }
+          want="v$(v MAJOR).$(v MINOR).$(v ALTER)"
+          echo "tag ${GITHUB_REF_NAME}, CMakeLists.txt says ${want}"
+          test "${GITHUB_REF_NAME}" = "${want}"
+
+  switch:
+    needs: redistributable
+    uses: ./.github/workflows/build-switch.yml
+
+  psvita:
+    needs: redistributable
+    uses: ./.github/workflows/build-psvita.yml
+
+  # GPL-3.0 section 6: the Corresponding Source of the object code is ALL the
+  # source needed to build it - ours, every library at the exact commit it was
+  # built from, and the scripts. The first version of this bundle held the
+  # libraries and the scripts but not our own code, and not FFmpeg, which the
+  # Switch build compiles outside third_party/.
+  corresponding-source:
+    needs: redistributable
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: fetch the libraries at their pinned commits
+        run: bash tools/bootstrap-libs.sh
+      # FFmpeg, for both consoles: the official release tarball, checked
+      # against the pinned hash. The Switch's nvtegra patch and both build
+      # recipes (build-ffmpeg-switch.sh, build-libs.sh vita ffmpeg) are in the
+      # repository, so tarball + repo = the exact source of both packages.
+      - name: fetch the FFmpeg source at its pinned hash
+        run: |
+          set -euo pipefail
+          . tools/pins.env
+          mkdir -p switch-portlibs
+          curl -sSfL -o "switch-portlibs/ffmpeg-$FFMPEG_VERSION.tar.xz" \
+               "https://ffmpeg.org/releases/ffmpeg-$FFMPEG_VERSION.tar.xz"
+          echo "$FFMPEG_SHA256  switch-portlibs/ffmpeg-$FFMPEG_VERSION.tar.xz" | sha256sum -c -
+      - name: bundle
+        run: |
+          set -euo pipefail
+          tar --exclude-vcs --exclude='build_*' --exclude='./corresponding-source.tar.gz' \
+              -czf corresponding-source.tar.gz .
+          ls -la corresponding-source.tar.gz
+      - uses: actions/upload-artifact@v4
+        with: { name: corresponding-source, path: corresponding-source.tar.gz }
+
+  publish:
+    needs: [switch, psvita, corresponding-source]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { path: dist }
+      - name: what came back
+        run: find dist -type f -printf '%10s  %p\n'
+      - name: release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/halyard-switch/halyard.nro
+            dist/halyard-psvita/halyard.vpk
+            dist/corresponding-source/corresponding-source.tar.gz
+          fail_on_unmatched_files: true
+          body: |
+            Unofficial client for the Shadow cloud PC service, on Nintendo
+            Switch and PS Vita. You need your own Shadow subscription.
+
+            **Not affiliated with, endorsed by, or sponsored by Shadow,
+            Nintendo, or Sony Interactive Entertainment.**
+
+            - `halyard.nro` — Nintendo Switch (Atmosphère), copy to `/switch/`
+            - `halyard.vpk` — PS Vita (HENkaku/Ensō), install with VitaShell
+            - `corresponding-source.tar.gz` — the GPL-3.0-or-later Corresponding
+              Source of the packages above: this repository at the tag, every
+              library at the exact commit it was built from, the FFmpeg 7.1.5
+              release tarball and the nvtegra patch for the Switch decoder, our
+              other patches, and the build scripts.
+
+            These packages are built by CI. A green build means they link and
+            package — it does **not** mean a session was played on hardware.

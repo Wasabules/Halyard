@@ -1,0 +1,52 @@
+/* An extract of views/hint.cpp - the local halyard fix (K20, 2026-09-10).
+   To be put back after a fresh clone or a re-vendoring of Borealis.
+   See README.md for the why. */
+
+    /* LOCAL FIX halyard 2026-09-10 (K20) - NAME THE KEY, NOT THE
+     * BUTTON.
+     *
+     * On desktop this bar announced "(A) Connecter" to someone with neither an
+     * (A) nor a gamepad under their fingers. Borealis' keyboard mapping is
+     * nonetheless REAL - `glfw_input.cpp` makes Enter = A and Escape = B - but
+     * nothing on screen said so and nothing in the application wrote it down:
+     * you had to open `docs/DESKTOP_KEYS.md` to learn it.
+     *
+     * The condition is on the NUMBER OF GAMEPADS, not on the platform: on a
+     * desktop with a gamepad plugged in, the glyphs are right and the keyboard
+     * label would lie. Zero gamepads is the only case where the answer is
+     * certain.
+     *
+     * The A/B swap is read HERE, before `mapControllerState`, because the
+     * button received is the LOGICAL button: it is what the action registered,
+     * and `glfw_input.cpp` decides which key feeds it from that same setting.
+     * Going after the mapping would swap Enter and Escape one time in two.
+     *
+     * Short English labels on purpose: they must fit in the bar, and this file
+     * belongs to Borealis - it does not go through our `resources/i18n/`. */
+#ifdef __GLFW__
+    if (Application::getPlatform()->getInputManager()->getControllersConnectedCount() == 0)
+    {
+        const bool swap = Application::isSwapInputKeys();
+        switch (button)
+        {
+            case BUTTON_A:     return swap ? "Esc" : "Enter";
+            case BUTTON_B:     return swap ? "Enter" : "Esc";
+            case BUTTON_X:     return "X";
+            case BUTTON_Y:     return "Y";
+            case BUTTON_LB:    return "L";
+            case BUTTON_RB:    return "R";
+            case BUTTON_BACK:  return "F1";
+            case BUTTON_START: return "F2";
+            case BUTTON_LSB:   return "Q";
+            case BUTTON_RSB:   return "P";
+            case BUTTON_UP:    return "↑";
+            case BUTTON_DOWN:  return "↓";
+            case BUTTON_LEFT:  return "←";
+            case BUTTON_RIGHT: return "→";
+            /* ZL/ZR and the rest have no key: they keep their glyph, which is
+             * still the most honest answer. */
+            default: break;
+        }
+    }
+#endif
+

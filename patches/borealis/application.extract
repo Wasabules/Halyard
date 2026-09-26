@@ -1,0 +1,38 @@
+    /* LOCAL FIX halyard 2026-08-27 (S63) — `giveFocus(nullptr)`
+     * was a COMPLETE NO-OP: the `newFocus != nullptr` guard below skipped the
+     * whole body, so `Application::currentFocus` was NEVER reset to nullptr
+     * (its only two writers: line 136 at init, and the `= newFocus` further
+     * down, always non-null). Consequence: the "Focus sanity check" in
+     * `View::~View()` (view.cpp:1486-1487), which calls exactly
+     * `giveFocus(nullptr)`, was DEAD CODE - any view destroyed while it held
+     * the focus left `currentFocus` dangling, and the next virtual call on it
+     * (`oldFocus->onFocusLost()` below, reached from
+     * `ScrollingFrame::naturalScrollingBehaviour()`) jumped into a freed
+     * vtable => "Instruction Abort".
+     * We do NOT notify `oldFocus->onFocusLost()` here: the only caller is this
+     * view's destructor, and its derived part is already destroyed.
+     * A safety net: the real fix is not to destroy the focused view (see
+     * vm_list_activity.cpp, S63). */
+    if (view == nullptr)
+    {
+        Application::currentFocus = nullptr;
+        return;
+    }
+
+    if (oldFocus != newFocus && newFocus != nullptr)
+    {
+        if (oldFocus)
+            oldFocus->onFocusLost();
+
+        Application::currentFocus = newFocus;
+        Application::globalFocusChangeEvent.fire(newFocus);
+
+        if (newFocus)
+        {
+            newFocus->onFocusGained();
+            Logger::debug("Giving focus to {}", newFocus->describe());
+        }
+
+        Application::globalHintsUpdateEvent.fire();
+    }
+}

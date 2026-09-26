@@ -1,0 +1,23 @@
+# No Git LFS any more, deliberately.
+#
+# Until 2026-09-12 four rules routed *.log, *.pcap, *.bin and the
+# ShadowPCDisplay binary through LFS. Every file they covered has moved to
+# `shadow2switch-lab/` beside the checkout, so ZERO tracked files match them
+# today -- and keeping the filters would force `git lfs` on anyone cloning a
+# 974-file source repo for nothing.
+#
+# The material those rules used to carry is still in the HISTORY (the initial
+# commit `1c2d0b1` holds tls_plain.log, 75 MB, and with it a live ED25519 SSH
+# private key in the clear). Removing it from the index does not remove it from
+# there: that needs an LFS-aware history rewrite, to be done ONCE, immediately
+# before the repository is ever made public.
+
+# Encoding: one line ending, whatever the platform of the day.
+*.md   text eol=lf
+*.c    text eol=lf
+*.h    text eol=lf
+*.cpp  text eol=lf
+*.hpp  text eol=lf
+*.py   text eol=lf
+*.sh   text eol=lf
+*.yml  text eol=lf

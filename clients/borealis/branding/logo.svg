@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1932 1932" width="1932" height="1932">
+  <!-- Fond (supprime ce rect pour un fond transparent) -->
+  <rect width="1932" height="1932" fill="#1A1B21"/>
+
+  <!-- Barre verticale -->
+  <rect x="696" y="328" width="77" height="1275" fill="#2B7BE0"/>
+
+  <!-- Triangle évidé à hypoténuse légèrement galbée -->
+  <path fill="#2B7BE0" fill-rule="evenodd" d="
+    M841 369
+    Q1145 825 1348 1352
+    L841 1352 Z
+    M917 640
+    L917 1275
+    L1225 1275
+    Q1085 940 917 640 Z"/>
+
+  <!-- Barre horizontale -->
+  <rect x="584" y="927" width="764" height="77" fill="#E8EAF4"/>
+</svg>

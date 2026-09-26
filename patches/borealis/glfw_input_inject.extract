@@ -1,0 +1,51 @@
+/* An extract of glfw/glfw_input.cpp - the local halyard fix (INJ-1, 2026-09-12).
+   To be put back after a fresh clone or a re-vendoring of Borealis.
+   See README.md for the why. */
+
+/* LOCAL FIX halyard 2026-09-12 (INJ-1) — injection d'entree depuis
+ * the development machine. WEAK SYMBOLS: null when the application does not
+ * define them, so Borealis still compiles and links on its own, as before.
+ * See clients/borealis/devlink/inject.h and patches/borealis/README.md. */
+extern "C" __attribute__((weak)) void halyard_inject_controller(bool *buttons, size_t nb,
+                                                                      float *axes, size_t na);
+extern "C" __attribute__((weak)) bool halyard_inject_touch(float *x, float *y);
+
+
+/* INJ-1: we inject here TOO. A test bench drives the window from a
+         * terminal, so it almost never has the focus - returning without
+         * injecting would make the engine useless on the desktop, which is where
+         * this repo asks you to reproduce before blaming the console. */
+        if (halyard_inject_controller)
+            halyard_inject_controller(state->buttons, _BUTTON_MAX,
+                                            state->axes, _AXES_MAX);
+        return;
+    }
+
+
+/* INJ-1: AFTER the d-pad -> NAV propagation above, so that the engine
+     * decides both itself (it presses both, like a real gamepad).
+     * And through an OR: what is injected is ADDED to the real gamepad, it does
+     * not replace it - a script driving the console must not stop a human from
+     * taking over. */
+    if (halyard_inject_controller)
+        halyard_inject_controller(state->buttons, _BUTTON_MAX,
+                                        state->axes, _AXES_MAX);
+}
+
+
+/* INJ-1: the synthetic touch is added to the real fingers. `fingerId` is
+     * 900 so that it crosses no hardware identifier. */
+    if (halyard_inject_touch)
+    {
+        float ix = 0, iy = 0;
+        if (halyard_inject_touch(&ix, &iy))
+        {
+            RawTouchState t;
+            t.pressed    = true;
+            t.fingerId   = 900;
+            t.position.x = ix;
+            t.position.y = iy;
+            states->push_back(t);
+        }
+    }
+

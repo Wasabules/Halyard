@@ -1,0 +1,43 @@
+diff --git a/src/tls13.c b/src/tls13.c
+index 65378db..b1fcc74 100644
+--- a/src/tls13.c
++++ b/src/tls13.c
+@@ -4691,6 +4691,38 @@ int SendTls13ClientHello(WOLFSSL* ssl)
+         args->idx += DTLS_RECORD_EXTRA + DTLS_HANDSHAKE_EXTRA;
+ #endif /* WOLFSSL_DTLS13 */
+ 
++    /* RFC 8701 GREASE - halyard local patch. It is NOT legacy-only.
++     *
++     * Chrome puts a 0xXaXa cipher at the head of the list so that servers
++     * cannot fingerprint the client. Written for the WebRTC path's t=120 s
++     * freeze, a hypothesis the freeze refuted. But it patches EVERY TLS 1.3
++     * ClientHello, and the native channels open with wolfSSLv23_client_method:
++     * every native session since May has been validated WITH it. Removing it
++     * changes the native TLS fingerprint - a decision for a live A/B, not a
++     * cleanup (the WebRTC path itself was deleted on 2026-09-26).
++     *
++     * `suites` is const; the cast reaches the underlying memory, which comes
++     * from ssl->suites and is mutable. */
++    {
++        Suites *ms = (Suites *)suites;  /* cast away const */
++        size_t suite_cap = sizeof(ms->suites);
++        int already_grease = (ms->suiteSz >= 2 &&
++                              ms->suites[0] == ms->suites[1] &&
++                              (ms->suites[0] & 0x0F) == 0x0A);
++        if (!ssl->options.dtls && !already_grease &&
++            (size_t)ms->suiteSz + 2 <= suite_cap) {
++            byte g = 0;
++            if (wc_RNG_GenerateBlock(ssl->rng, &g, 1) == 0) {
++                g = (g & 0xF0) | 0x0A;  /* 0xXa */
++                XMEMMOVE(ms->suites + 2, ms->suites, ms->suiteSz);
++                ms->suites[0] = g;
++                ms->suites[1] = g;
++                ms->suiteSz += 2;
++                WOLFSSL_MSG("GREASE cipher injected at head of ciphers list");
++            }
++        }
++    }
++
+     /* Version | Random | Cipher Suites | Compression */
+     args->length = VERSION_SZ + RAN_LEN + suites->suiteSz +
+             SUITE_LEN + COMP_LEN + ENUM_LEN;

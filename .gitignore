@@ -1,0 +1,150 @@
+# halyard — what never enters the repository.
+#
+# Since the 2026-09-12 tidy-up, the biggest section of this file is gone: the
+# RE MATERIAL NO LONGER LIVES HERE AT ALL. Captures, Ghidra and IDA dumps, the
+# official ShadowPCDisplay binary and the vendored FFmpeg tree moved beside the
+# checkout, into a private lab directory beside it.
+# That took the repo from 12 418 tracked files to 974.
+#
+# The rule that decides: RAW MATERIAL goes to the lab, CONCLUSIONS stay here.
+# KB.md, memory/ and the 67 reports under tools/ida/out/ are the conclusions.
+
+# --- the lab, should it ever be created inside the checkout by mistake ---
+/shadow2switch-lab/
+
+# --- capture output, wherever a tool drops it ---
+# The first version of this rule listed only `captures_[0-9]*` and
+# `captures_input_*`. The prefixes added later (scripted, manual, states) went
+# straight through it, and 47 LFS files ended up tracked -- the policy was
+# cancelled by its own pattern. Hence the wildcards.
+/captures/
+/captures_*/
+**/*.pcap
+**/sslkeys.log
+PCAPdroid_*.pcap
+
+# --- build artifacts (regenerable) ---
+build_linux/
+build_switch/
+build_windows/
+build_psv/
+*/build_linux/
+*/build_switch/
+*/build_windows/
+**/build/
+builddir
+libromfs-generator
+build_libromfs_generator
+**/CMakeFiles/
+**/CMakeCache.txt
+**/*.o
+**/*.a
+**/cmake_install.cmake
+**/Makefile
+!CMakeLists.txt
+
+# --- compiled outputs ---
+*.elf
+*.nso
+*.nsp
+*.nro
+*.self
+*.vpk
+*.nacp
+*.dksh
+*.suprx
+
+# --- vendored libraries (checked out, not committed; submodules are step 5) ---
+third_party/borealis/
+third_party/libopus/
+third_party/wolfssl/
+third_party/curl/
+third_party/ffmpeg/
+# No longer fetched (the WebRTC path and the QUIC trial, removed 2026-09-26),
+# but older checkouts still hold them: keep them out of `git status`.
+third_party/libdatachannel/
+third_party/libjuice/
+third_party/libsrtp/
+third_party/ngtcp2/
+
+# --- official clients downloaded for RE (they belong in the lab) ---
+*.dmg
+*.deb
+*.exe
+*.AppImage
+*.msi
+*.xapk
+*.i64
+
+# --- Ghidra databases (regenerable, huge) ---
+**/*.rep/
+**/*.gpr
+**/*.lock
+**/projectState.xml
+
+# --- AUTHENTICATION. Never committed, under any name. ---
+*shadow_jwt*
+*streaming_token*
+*refresh_token*
+.shadow/
+# The desktop client's session token: a backup copy, because /tmp gets cleaned.
+.jeton/
+# HAR files carry whole authenticated sessions, headers included.
+*.har
+
+# --- large debug output (regenerable by re-running) ---
+**/strace.log
+**/shadow_chunks.bin
+**/shadow_frame_*.ppm
+**/shadow_cuda.log
+**/webrtc.log
+**/webrtc_prev.log
+*.err
+*.log.old
+# Intermediate output of the migration tool (comment-block extraction). Three
+# were committed by mistake on 2026-09-02: 150 KB nobody reads, ageing beside
+# the code they describe.
+*.comments
+
+# --- cache / IDE / OS / temp ---
+__pycache__/
+*.pyc
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+Thumbs.db
+/tmp/
+*.bak
+*.stock-bak
+tools/switch-ftp.env
+
+# Worktrees and scratch state of the assistant tooling.
+.claude/
+third_party/jansson/
+.vita-ip
+
+# Output of the PS Vita tools (tools/vita-push.sh) and libraries built
+# out-of-band: these are not versioned, they are rebuilt.
+config.txt.vita.bak
+/vita-logs/
+/vita-dumps/
+
+# Build artefacts of the RE hook - rebuilt by its own scripts.
+recon/tls_hook/*.so
+
+# A hook plaintext log carries the ed25519 SFTP key, JWTs and Bearer tokens.
+# docs/WSL2_WOLFSSL_HOOK_SETUP.md used to point its output here, inside the
+# checkout, where nothing ignored it.
+recon/captures/
+# The English name of the credential directory tools/campaign_latency.sh
+# documents. Only the French-era `.jeton/` was covered, so `.token/device.uuid`
+# was one `git add -A` away from being published.
+.token/
+
+# vitacompanion is somebody else -- install it from upstream.
+third_party/vitacompanion/
+
+# A compiled test helper; build it from virtual_gamepad.c.
+tools/test/virtual_gamepad

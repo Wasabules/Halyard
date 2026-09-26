@@ -1,0 +1,96 @@
+# The PS Vita .vpk.
+#
+# The library builds ARE scripted now (`tools/build-libs.sh`), so the reason
+# this stayed manual is gone. It runs on push to main and on pull requests.
+#
+# WHAT A GREEN RUN HERE MEANS, AND WHAT IT DOES NOT. It means the target links
+# and packages, with a wolfSSL whose seed function is verified present. It does
+# NOT mean the Vita streams - no runner has a console. Hardware behaviour is
+# established by a session log, never by this tick.
+name: build-psvita
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  # Callable, so `release.yml` REUSES this job instead of copying its steps.
+  # A copied recipe is what went stale here: build-psvita carried its own
+  # wolfSSL invocation, it lost `CUSTOM_RAND_GENERATE_SEED`, and the job would
+  # have gone green for a package whose every TLS socket returns NULL.
+  workflow_call:
+
+concurrency:
+  group: build-psvita-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  vpk:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: vitasdk
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends cmake ninja-build pacman-package-manager
+          git clone --depth 1 https://github.com/vitasdk/vdpm /tmp/vdpm
+          export VITASDK=$HOME/vitasdk
+          (cd /tmp/vdpm && ./bootstrap-vitasdk.sh)
+          sudo ln -sf "$(command -v pacman)" "$VITASDK/bin/pacman"
+          # Only what the build takes from the SDK - `sdl2` for the headers
+          # Borealis' Vita input includes (no SDL symbol is linked). Its curl and FFmpeg
+          # (with LAME and mpg123) are NOT installed: ours replace them
+          # (tools/build-libs.sh vita), and an SDK copy left lying around is
+          # one `-lcurl` away from putting OpenSSL 1.0.2 back in the package.
+          sudo pacman --noconfirm --root "$VITASDK" --dbpath "$VITASDK/var/lib/pacman" \
+               --cachedir "$VITASDK/var/cache/pacman/pkg" --config "$VITASDK/etc/pacman.conf" \
+               -Sy zlib opus mbedtls zstd sdl2
+          sudo chown -R "$USER" "$VITASDK"
+          echo "VITASDK=$VITASDK" >> "$GITHUB_ENV"
+          echo "$VITASDK/bin" >> "$GITHUB_PATH"
+
+      # ONE recipe, and it is `tools/build-libs.sh`. This step used to carry a
+      # COPY of the cmake invocation, and the copy had drifted: it was missing
+      # `-DCUSTOM_RAND_GENERATE_SEED=switch_rand_seed`, so the wolfSSL built
+      # here kept `wc_GenerateSeed`, which reads /dev/urandom - a file the Vita
+      # does not have. Every `wolfSSL_new` would have returned NULL, and this
+      # job would have reported a green tick for a .vpk that cannot open a
+      # single TLS socket. The script also VERIFIES the symbol and fails if it
+      # is absent, which is the only reason that defect is catchable at all.
+      - name: fetch and patch the libraries
+        run: bash tools/bootstrap-libs.sh
+
+      - name: build wolfSSL, libcurl (on Mbed TLS) and FFmpeg (FLAC only) for the Vita
+        run: bash tools/build-libs.sh vita
+
+      - name: how much of the core ports
+        run: bash tools/vita-survey.sh
+
+      - name: configure
+        run: cmake -S . -B build_psv -G Ninja -DPLATFORM_PSV=ON -DUSE_GXM=ON
+             -DCMAKE_TOOLCHAIN_FILE="$VITASDK/share/vita.toolchain.cmake"
+
+      - name: halyard.vpk
+        run: cmake --build build_psv
+
+      # LICENCE GUARD. The .vpk is redistributable because it links neither
+      # OpenSSL (the vitasdk's curl carries 1.0.2, whose licence the GPL does
+      # not allow) nor LAME/mpg123 (LGPL, pulled by the vitasdk's FFmpeg at a
+      # version no release could name). Both used to be on the link line, and
+      # a -lcurl or -lavcodec that comes back would bring them back silently.
+      # Checked on the ELF, without pipes (grep -q under pipefail lies).
+      - name: the package links no OpenSSL, no LAME, no mpg123
+        run: |
+          arm-vita-eabi-nm build_psv/halyard > nm.txt
+          strings -a build_psv/halyard > strings.txt
+          if grep -qiE 'OpenSSL 1\.|SSLeay' strings.txt; then echo "OpenSSL is in the package" >&2; exit 1; fi
+          if grep -qE ' [TtDd] (lame_|mpg123_)' nm.txt; then echo "LAME/mpg123 are in the package" >&2; exit 1; fi
+          grep -q 'Curl_ssl_mbedtls' nm.txt || { echo "libcurl is not the Mbed TLS build" >&2; exit 1; }
+          echo "ok: libcurl on Mbed TLS, no OpenSSL, no LAME, no mpg123"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: halyard-psvita
+          path: build_psv/halyard.vpk
+          if-no-files-found: error

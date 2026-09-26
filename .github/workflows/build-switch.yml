@@ -1,0 +1,97 @@
+# The release target. __SWITCH__ blocks are NEVER traversed by the Linux or
+# Windows compilers, so nothing else can tell you this still builds - and on
+# 2026-09-13 the DESKTOP build sat broken for a whole session for exactly the
+# mirror-image reason: the local loop builds the two consoles and never the
+# desktop. Both directions need a machine watching them.
+#
+# The decoder stack is FFmpeg 7.1.5 + the nvtegra patch, built by
+# tools/build-ffmpeg-switch.sh - the same script a human runs, and proven to
+# reproduce the working .nro's libraries byte for byte. Cached on the tarball
+# hash and the patch: the build takes minutes and must not run per push.
+#
+# 2026-09-26 - this job used to build Averne's FFmpeg + Envideo, the `envideo`
+# generation that is broken on the console (5.2 s per transfer, empty
+# surfaces). A .nro from here would have fallen back to software decoding;
+# nothing in CI could have seen it. patches/ffmpeg/README.md.
+name: build-switch
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  # Callable, so `release.yml` REUSES this job instead of copying its steps.
+  # A copied recipe is what went stale here: build-psvita carried its own
+  # wolfSSL invocation, it lost `CUSTOM_RAND_GENERATE_SEED`, and the job would
+  # have gone green for a package whose every TLS socket returns NULL.
+  workflow_call:
+
+concurrency:
+  group: build-switch-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  nro:
+    runs-on: ubuntu-24.04
+    # Dated, not `latest`: see DEVKITA64_IMAGE in tools/pins.env, which must
+    # say the same thing (a workflow cannot read a file before choosing its container).
+    container: devkitpro/devkita64:20260219
+    steps:
+      - uses: actions/checkout@v4
+        with: { submodules: recursive }
+
+      # PINNED by hash: `pins.env` names the release and its SHA-256, the patch
+      # lives in the repository. A video regression is the single most
+      # expensive thing to diagnose here - the decoder must not move under us.
+      - name: pins
+        id: pins
+        run: |
+          . tools/pins.env
+          echo "ffmpeg=$FFMPEG_VERSION-$FFMPEG_SHA256" >> "$GITHUB_OUTPUT"
+          # the container line above cannot read this file: check it agrees.
+          grep -qx "DEVKITA64_IMAGE=devkitpro/devkita64:20260219" tools/pins.env
+
+      - name: cache FFmpeg + nvtegra
+        id: ffmpeg
+        uses: actions/cache@v4
+        with:
+          path: /opt/devkitpro/portlibs/switch
+          key: ffmpeg-${{ steps.pins.outputs.ffmpeg }}-${{ hashFiles('patches/ffmpeg/*.patch', 'tools/build-ffmpeg-switch.sh') }}-v2
+
+      - name: build FFmpeg 7.1.5 + nvtegra
+        if: steps.ffmpeg.outputs.cache-hit != 'true'
+        run: |
+          set -euxo pipefail
+          apt-get update && apt-get install -y --no-install-recommends curl xz-utils patch make
+          bash tools/build-ffmpeg-switch.sh
+
+      # A cache that restored the wrong thing must not read as success. This is
+      # the same rule as `vita-check-gap.py`: a dice roll is acceptable only
+      # while losing is loud.
+      - name: the decoder is really there
+        run: |
+          test -f /opt/devkitpro/portlibs/switch/lib/libavcodec.a
+          grep -q 'FFMPEG_VERSION "7.1.5"' /opt/devkitpro/portlibs/switch/include/libavutil/ffversion.h
+          grep -q 'AV_HWDEVICE_TYPE_NVTEGRA,' /opt/devkitpro/portlibs/switch/include/libavutil/hwcontext.h
+          echo "libavcodec.a present, FFmpeg 7.1.5 with the nvtegra device"
+
+      - name: fetch and patch the libraries
+        run: bash tools/bootstrap-libs.sh
+
+      - name: build wolfSSL and libopus for the Switch
+        run: bash tools/build-libs.sh switch
+
+      - name: configure
+        run: /opt/devkitpro/devkitA64/bin/aarch64-none-elf-cmake
+             -S . -B build_switch -DPLATFORM_SWITCH=ON
+
+      - name: halyard.nro
+        run: cmake --build build_switch --target halyard.nro -j"$(nproc)"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: halyard-switch
+          path: |
+            build_switch/halyard.nro
+            build_switch/halyard.elf
+          if-no-files-found: error
