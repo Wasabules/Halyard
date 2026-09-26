@@ -20,8 +20,11 @@ jobs:
       - uses: actions/checkout@v4
         with: { submodules: recursive }
 
-      # The pkg_check_modules list of CMakeLists.txt:173-198, plus ALSA for the
-      # audio ring and the X11/GL set GLFW needs to build from source.
+      # The pkg_check_modules list of CMakeLists.txt, plus ALSA for the audio
+      # ring, the X11/GL and Wayland sets GLFW needs to build from source, and
+      # D-Bus, which Borealis links on Linux. Checked from a bare ubuntu:24.04
+      # container on 2026-09-26: the developer machine had all of these, so
+      # nothing local could say they were missing.
       - name: dependencies
         run: |
           sudo apt-get update
@@ -31,7 +34,7 @@ jobs:
             libqrencode-dev libavcodec-dev libavformat-dev libavutil-dev \
             libswresample-dev libswscale-dev libasound2-dev \
             libgl1-mesa-dev xorg-dev \
-            libwayland-dev libxkbcommon-dev wayland-protocols
+            libwayland-dev libxkbcommon-dev wayland-protocols libdbus-1-dev
 
       # third_party/ is not in git: without these two steps there is no
       # Borealis and no wolfSSL, and CMake cannot even configure. This job ran

@@ -1,5 +1,13 @@
 cmake_minimum_required(VERSION 3.10)
 
+# Borealis vendors tweeny, whose CMakeLists asks for CMake 3.0. CMake 4 removed
+# compatibility below 3.5 and refuses to configure it: MSYS2 ships CMake 4, and
+# the first public Windows run died there. Older CMake ignores the variable. A
+# cache default, so a `-D` on the command line still wins.
+if (NOT DEFINED CMAKE_POLICY_VERSION_MINIMUM)
+    set(CMAKE_POLICY_VERSION_MINIMUM 3.5 CACHE STRING "Oldest policy version a vendored CMakeLists may ask for")
+endif ()
+
 set(BOREALIS_LIBRARY ${CMAKE_CURRENT_SOURCE_DIR}/third_party/borealis/library)
 
 # build options
