@@ -18,7 +18,7 @@
 #include <cstdio>
 #include "activity/stream_activity.hpp"
 extern "C" {
-#include "../../core/services/atomic_file.h"   /* shadow_file_remove/_rename */
+#include "../../../core/services/atomic_file.h"   /* shadow_file_remove/_rename */
 }
 #include "activity/shadow_app.hpp"
 #include "settings.hpp"
