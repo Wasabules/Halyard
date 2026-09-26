@@ -485,8 +485,16 @@ void Settings::eqWriteBands(const eq_band_t *bands)
 
 void Settings::applyEq() const
 {
-#ifdef __SWITCH__
+    /* EQ-VITA 2026-09-26 - the Vita answers the question too (a handheld is
+     * never docked, a PS TV always is: device_mode.cpp), but only the Switch
+     * asked it, so a handheld Vita played the DOCKED profile through its own
+     * speakers while the equaliser page said "handheld".
+     * SHADOW_EQ_MODE_VITA=0 restores the docked profile on the Vita. */
+#if defined(__SWITCH__)
     const bool dock = device::isDocked();
+#elif defined(__vita__) || defined(__psp2__)
+    const char *vita_mode = getenv("SHADOW_EQ_MODE_VITA");
+    const bool dock = (vita_mode && atoi(vita_mode) == 0) ? true : device::isDocked();
 #else
     const bool dock = true;    /* a desktop has no 3 cm speakers */
 #endif

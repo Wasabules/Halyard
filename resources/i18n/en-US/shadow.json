@@ -9,7 +9,8 @@
     "close_menu": "Close menu",
     "validate": "Select",
     "connect": "Connect",
-    "ok": "OK"
+    "ok": "OK",
+    "cancel": "Cancel"
   },
   "boot": {
     "net_init": "Setting up the network…",
@@ -37,7 +38,9 @@
     "grant_title": "Link this console",
     "grant_no_qr": "QR unavailable — enter the address below",
     "grant_waiting": "Waiting for approval… ({} left)",
-    "auth_failed": "Authentication failed or expired."
+    "auth_failed": "Authentication failed or expired.",
+    "retry_dc": "The data centre is not answering — new attempt {}/3 in {} s…",
+    "err_device_init": "Could not start the sign-in (HTTP {})."
   },
   "shutdown": {
     "title": "Closing…",
@@ -212,7 +215,7 @@
     "chart_packets": "Packets/s",
     "chart_interval": "Interval",
     "latency_head": "Stage",
-    "latency_off": "instrumentation disabled (SHADOW_LATENCE=0)",
+    "latency_off": "measurement turned off (env.txt)",
     "latency_silent": "no sample in the last window",
     "latency_wait": "first report in under 10 s",
     "session": "Session length",
@@ -243,7 +246,20 @@
     "kernel_drops": "Dropped by the system (our buffers)",
     "rtt": "Round trip to the VM",
     "rtt_spread": "avg / p90",
-    "jitter": "jitter"
+    "jitter": "jitter",
+    "stage_burst": "Network burst",
+    "stage_hold": "Wait for next picture",
+    "stage_dec_queue": "Decode queue",
+    "stage_decode": "Decode",
+    "stage_disp_queue": "Display queue",
+    "stage_upload": "Upload to the screen",
+    "stage_cadence": "Draw interval",
+    "stage_e2e": "End to end",
+    "stage_input": "Mouse and keyboard sent",
+    "stage_pad": "Gamepad sent",
+    "stage_pad_rate": "Gamepad sampling",
+    "stage_audio_queue": "Audio queue",
+    "stage_rx_pass": "Receive loop"
   },
   "kbd": {
     "tab_azerty": "AZERTY",
@@ -319,7 +335,7 @@
     "title": "Menu",
     "touch": "Touch",
     "touch_absolute": "absolute",
-    "touch_desc": "1 finger = click, 2 fingers = double click",
+    "touch_desc": "Relative: slide like a trackpad. Absolute: the pointer goes where you touch. Taps and gestures are set in Settings › Controls.",
     "touch_off": "off",
     "touch_relative": "relative",
     "touch_sens": "Pointing sensitivity",
@@ -376,7 +392,8 @@
     "pad_mouse_group_desc": "Pointing with the Joy-Cons: mode, sensor, sensitivity, test.",
     "pad_mouse_gyro_both": "Both (average)",
     "pad_mouse_gyro_split_dg": "Split: right horizontal, left vertical",
-    "pad_mouse_gyro_split_gd": "Split: left horizontal, right vertical"
+    "pad_mouse_gyro_split_gd": "Split: left horizontal, right vertical",
+    "info_fps_received": "{} fps — {} received"
   },
   "pad": {
     "btn_a": "A",
@@ -486,7 +503,11 @@
     "rear_slide_desc": "How far a finger travels to reach the end of an analog trigger",
     "rear_test": "Rear panel",
     "rear_test_desc": "what the panel reads, and what each zone sends",
-    "rear_off_hint": "Off — switch it on in the gamepad settings"
+    "rear_off_hint": "Off — switch it on in the gamepad settings",
+    "ps_square": "Square",
+    "ps_triangle": "Triangle",
+    "ps_cross": "Cross",
+    "ps_circle": "Circle"
   },
   "quality": {
     "title": "Stream quality",
@@ -501,19 +522,19 @@
     "profile_speed": "Lowest latency",
     "profile_quality": "Best quality",
     "bitrate": "Maximum bitrate",
-    "bitrate_desc": "Cap requested from the server, which treats it as a MAXIMUM, not a target. ⚠ Above ~25 Mb/s the picture degrades in-game on console - measured, exact knee unknown.",
+    "bitrate_desc": "Cap requested from the server, which treats it as a MAXIMUM, not a target. ⚠ Above about 25 Mb/s the picture degrades in play on a console over Wi-Fi.",
     "fps": "Frames per second",
     "fps_desc": "Beyond what the screen shows, the surplus is encoded for nothing. Takes effect on the next connection.",
     "resolution": "Resolution",
     "resolution_desc": "The built-in screen is 1280x720: asking for more in handheld encodes twice the pixels for nothing.",
-    "codec_desc": "H.264 and H.265 are validated end to end (K16); H.265 lowers the bitrate at equal quality. AV1 is allowed by the account but its protocol value has never been observed, and the Switch has no AV1 hardware decoding. Takes effect on next connection.",
+    "codec_desc": "H.264 and H.265 both work end to end; H.265 needs less bitrate for the same picture. AV1 is allowed by the account but has never been verified, and the Switch has no hardware AV1 decoding. Takes effect on next connection.",
     "profile_desc": "Speed favours latency, Quality favours the picture.",
     "chroma444": "4:4:4 colour",
     "vsync": "Vertical sync",
     "vsync_desc": "ON (default): the picture only changes between refreshes, no visible break. OFF: it changes as soon as it is ready — about 8 ms less waiting, but a tear line may show during fast motion. Applies to the stream only, not the menus. Takes effect on next connection.",
     "chroma444_desc": "Full-resolution chroma: sharper text, but decoding falls back to SOFTWARE and the bitrate rises sharply. Takes effect on next connection.",
     "chroma444_switch": "Unavailable on Switch — the Tegra X1 hardware decoder handles 4:4:4 on no codec, and software cannot keep up.",
-    "bitrate_overridden": "No effect: \"Bitrate per link\" is on and decides instead (Settings > Picture).",
+    "bitrate_overridden": "No effect: \"Bitrate per link\" is on and decides instead (Settings > Video).",
     "mode": "Resolution and frame rate",
     "mode_fixed": "Fixed by this console: the panel is 960x544 at 60 Hz, and the hardware decoder picks its geometry by what it can allocate.",
     "codec_fixed": "H.264. This console's hardware decoder does not do HEVC."
@@ -632,7 +653,7 @@
     "cursor_image": "Received image",
     "cursor_arrow": "Arrow",
     "rate_wifi_desc": "Cap requested from the server on Wi-Fi. High values have never been validated in-game: see the warning on the Ethernet rate.",
-    "rate_eth_desc": "Cap requested from the server on Ethernet. ⚠ Above ~25 Mb/s the picture degrades in-game on console (artefacts, the previous frame persisting) - measured 2026-09-03: 100 Mb/s breaks, 25 Mb/s holds. The exact knee is not known.",
+    "rate_eth_desc": "Cap requested from the server on Ethernet. ⚠ Above ~25 Mb/s the picture degrades in play on console (artefacts, the previous frame persisting): 100 Mb/s breaks, 25 Mb/s holds.",
     "video_tcp": "Video over TCP (reliability)",
     "video_tcp_desc": "The official client's \"reliability\" profile: no loss, but the server's ADAPTIVE BITRATE is turned off. Takes effect on the next connection.",
     "forced_env": "⚠ Forced by env.txt ({}) — what you see here is not what is running.",

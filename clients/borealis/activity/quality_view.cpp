@@ -60,7 +60,7 @@ const OptU32 CODEC_OPTS[] = {
      * so, rather than letting anyone believe otherwise.
      * On Switch there is no hardware AV1 decoding at all anyway: the Tegra X1 is
      * 2015 Maxwell, hardware AV1 arrives with Ampere. */
-    {"AV1 (non verifie)", 2},
+    {nullptr, 2},   /* quality/codec_av1 - translated where it is shown */
 };
 const OptU32 PROFILE_OPTS[] = {
     {nullptr, 0},   /* quality/auto */
@@ -202,7 +202,7 @@ void QualityView::rebuild()
     v.push_back(choiceItem(QUAL_CODEC, ui::tr("quality/codec"),
                            ui::envNote("SHADOW_CODEC", ui::tr("quality/codec_desc")),
                            labels(CODEC_OPTS, sizeof CODEC_OPTS / sizeof CODEC_OPTS[0],
-                                  "quality/auto"),
+                                  "quality/auto", nullptr, "quality/codec_av1"),
                            indexU32(CODEC_OPTS, s.codec)));
 #endif   /* SHADOW_HAS_DECODER_CHOICE */
 

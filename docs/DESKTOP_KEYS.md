@@ -36,8 +36,8 @@ vendored library**, not in our code, so it cannot be adjusted from the app.
 | `Y` | **Y** | Settings (machine list), a section's detail (pause menu), previous session (log) |
 | `L` | **L** | previous section |
 | `R` | **R** | next section |
-| `F1` | **−** | virtual keyboard (long press in session) |
-| `F2` | **+** | pause menu (long press), confirming block placement |
+| `F1` | **−** | the − button outside a stream |
+| `F2` | **+** | the + button outside a stream |
 | `Q` | **L3** | left stick click |
 | `P` | **R3** | right stick click |
 | `↑ ↓ ← →` | d-pad | navigation, adjusting a value |
@@ -79,7 +79,12 @@ event.
 - **Replay, pairing included** — forgets the token, so the code to scan reappears.
   That is the one that lets you film from pairing to disconnection in one take.
 
-`Settings › Advanced` carries the **demo pointer**: a disc that marks the click,
+**During a stream these keys belong to the machine** (see above), so neither
+F1 nor F2 opens anything there: on desktop, the pause menu and the on-screen
+keyboard are in the developer menu bar at the top of the window (*Actions*).
+The long presses of + and − exist on the consoles only.
+
+`Settings › Account` carries the **demo pointer**: a disc that marks the click,
 with a ripple that stays visible for half a second. Without it, a capture shows a
 menu opening without showing the gesture that opened it.
 

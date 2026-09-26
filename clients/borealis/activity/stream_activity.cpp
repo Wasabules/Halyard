@@ -25,6 +25,7 @@ extern "C" {
 #include "../ui/i18n.hpp"
 #include "../ui/env_note.hpp"
 #include "../device_mode.hpp"
+#include "../device_caps.h"     /* UIFIX-1 - SHADOW_HAS_MODE_CHOICE */
 #include "../../../core/input/pad_mouse_hid.hpp"   /* PM1 - the Joy-Cons as a mouse */
 
 #include <cmath>
@@ -202,6 +203,7 @@ static void buildVideoPage(StreamView *sv, ui::Page &page)
      * the resolution: it travels only in the channel announcement. This used
      * to say it applied live "in the same message as the bitrate" - that
      * message has carried no frame-rate field since S18. */
+#if SHADOW_HAS_MODE_CHOICE   /* UIFIX-1 - hidden like on the quality page */
     page.choice(ui::tr("menu/fps"),
                 ui::envNote("SHADOW_FPS", ui::tr("menu/fps_desc")),
         [] {
@@ -214,6 +216,7 @@ static void buildVideoPage(StreamView *sv, ui::Page &page)
             cfg.target_fps = FRAMERATES[cycleIndex(FRAMERATES, cfg.target_fps, dir)];
             cfg.save();
         });
+#endif
 
     /* Explicit send: the bitrate already leaves on every change, but you cannot
      * see the message go. This entry gives a definite gesture - and it is what
@@ -242,6 +245,7 @@ static void buildVideoPage(StreamView *sv, ui::Page &page)
     /* Its description now says that it waits: the server does not renegotiate
      * the resolution mid-session, so changing it here produced NOTHING
      * visible - you changed it, you looked, you concluded it was broken. */
+#if SHADOW_HAS_MODE_CHOICE   /* UIFIX-1 */
     page.choice(ui::tr("menu/resolution"), ui::tr("menu/resolution_next"),
         [] {
             auto &cfg = Settings::instance();
@@ -259,6 +263,7 @@ static void buildVideoPage(StreamView *sv, ui::Page &page)
             cfg.display_height = RESOLUTIONS[idx][1];
             cfg.save();
         });
+#endif
 
     /* 2026-09-02 - the stretch, reachable DURING the stream: it trades the
      * black bars for a distorted picture, and that trade can only be judged
@@ -593,7 +598,7 @@ static void buildPauseMenu(StreamView *sv)
         .choice(ui::tr("menu/pad_deadzone"), ui::tr("menu/pad_deadzone_desc"),
                 [] { return std::to_string(Settings::instance().pad_deadzone) + " %"; },
                 [](int dir) {
-                    static const uint32_t STEPS[] = { 0, 5, 10, 15, 20, 25, 30 };
+                    static const uint32_t STEPS[] = { 0, 5, 10, 15, 20, 25, 30, 35, 40 };   /* as the gamepad page */
                     const int n = (int)(sizeof(STEPS) / sizeof(STEPS[0]));
                     auto &cfg = Settings::instance();
                     int i = 2;   /* 10 % */

@@ -185,7 +185,7 @@ void VmListActivity::onContentAvailable() {
              * someone writes in a button tomorrow. */
             if (vmView)
                 vmView->ask(ui::tr("vm/quit_question"), {
-                    { ui::tr("quit/stay"), nullptr, false },
+                    { ui::tr("action/cancel"), nullptr, false },
                     { ui::tr("action/quit"), []() { brls::Application::quit(); }, true },
                 });
             return true;

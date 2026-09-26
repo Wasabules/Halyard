@@ -56,10 +56,10 @@ inline std::string padSourceLabel(padmap::Btn b)
          * and rendered as a tofu box on the console - reported from the
          * hardware 2026-09-13. Checked against the font's own cmap: the
          * other three shapes are present, this one alone was not. */
-        case padmap::Btn::A:      return "\u00D7  Croix";
-        case padmap::Btn::B:      return "\u25CB  Cercle";
-        case padmap::Btn::X:      return "\u25A1  Carre";
-        case padmap::Btn::Y:      return "\u25B3  Triangle";
+        case padmap::Btn::A:      return "\u00D7  " + tr("pad/ps_cross");
+        case padmap::Btn::B:      return "\u25CB  " + tr("pad/ps_circle");
+        case padmap::Btn::X:      return "\u25A1  " + tr("pad/ps_square");
+        case padmap::Btn::Y:      return "\u25B3  " + tr("pad/ps_triangle");
         case padmap::Btn::L:      return "L";
         case padmap::Btn::R:      return "R";
         case padmap::Btn::Minus:  return "SELECT";
@@ -90,6 +90,12 @@ inline bool padSourceExists(padmap::Btn b)
 /* A target's displayable name in a given family's vocabulary. */
 inline std::string padTargetLabel(int target, padmap::Family f)
 {
+    /* The PlayStation face buttons have names, and names are translated -
+     * targets 0..3 are left, top, bottom, right in the protocol's order. */
+    static const char *const PS_FACE[4] = {
+        "pad/ps_square", "pad/ps_triangle", "pad/ps_cross", "pad/ps_circle" };
+    if (f == padmap::Family::Playstation && target >= 0 && target < 4)
+        return tr(PS_FACE[target]);
     const char *sigle = padmap::targetSigle(target, f);
     if (sigle && sigle[0]) return sigle;
     return tr(padmap::targetGenericKey(target));

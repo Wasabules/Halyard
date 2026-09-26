@@ -163,11 +163,12 @@ void BootActivity::startBootFlow() {
             /* S1: trace every failure. `http=0` means the request never got
              * through at all (DNS or TLS); the curl detail is in stderr.log. */
             brls::Logger::error("TINAG FAILED attempt {}/3 http={} (0 = no answer: "
-                                "DNS/TLS, voir stderr.log)", attempt, http);
+                                "DNS/TLS, see stderr.log)", attempt, http);
             if (attempt < 3) {
                 int delay_s = 2 << (attempt - 1);  /* 2, 4, 8 */
-                std::string msg = "Retry TINAG (" + std::to_string(attempt) + "/3) in "
-                                + std::to_string(delay_s) + "s...";
+                /* UIFIX-1 - it used to read "Retry TINAG (1/3) in 2s...", an
+                 * internal service name, in English whatever the language. */
+                std::string msg = ui::tr("boot/retry_dc", attempt, delay_s);
                 ui_set(v, alive_flag, msg);
                 /* AF3 2026-09-10 - sliced: a single sleep of 2, 4 then 8 s never
                  * read `alive_flag`, and the exit joins this thread (rule 1:
@@ -263,7 +264,7 @@ void BootActivity::startBootFlow() {
             long http = 0;
             if (!oauth_device_init(&disc, &grant, &http)) {
                 ui_error(v, alive_flag,
-                         "Device init HTTP=" + std::to_string(http), self);
+                         ui::tr("boot/err_device_init", http), self);
                 oauth_discovery_free(&disc);
                 return;
             }

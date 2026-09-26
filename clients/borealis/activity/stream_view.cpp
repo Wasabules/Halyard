@@ -728,12 +728,26 @@ std::string StreamView::videoFormatText() const
     return buf;
 }
 
+/* UIFIX-1 2026-09-26 - a stage's name for a person, from the same order as
+ * latency.c's k_names. A stage without a key (added later) shows its id. */
+static std::string stageLabel(latency_stage_t e)
+{
+    static const char *const KEYS[] = {
+        "hud/stage_burst", "hud/stage_hold", "hud/stage_dec_queue", "hud/stage_decode",
+        "hud/stage_disp_queue", "hud/stage_upload", "hud/stage_cadence", "hud/stage_e2e",
+        "hud/stage_input", "hud/stage_pad", "hud/stage_pad_rate", "hud/stage_audio_queue",
+        "hud/stage_rx_pass",
+    };
+    const int i = (int)e;
+    if (i >= 0 && i < (int)(sizeof KEYS / sizeof KEYS[0])) return ui::tr(KEYS[i]);
+    return latency_stage_name(e);
+}
+
 std::string StreamView::videoRateText() const
 {
-    char buf[96];
-    snprintf(buf, sizeof(buf), "%.1f fps — %u recues", stat_fps.mean(),
-             frames_received);
-    return buf;
+    char fps[16];
+    snprintf(fps, sizeof(fps), "%.1f", stat_fps.mean());
+    return ui::tr("menu/info_fps_received", fps, frames_received);
 }
 
 /* Declaration of the metrics panel sections.
@@ -849,17 +863,18 @@ void StreamView::setupHud()
             seen++;
             if (!fed) {
                 b.row(latency_stage_name((latency_stage_t)e),
-                      latency_stage_name((latency_stage_t)e),
+                      stageLabel((latency_stage_t)e).c_str(),
                       "%s   max %.1f ms", ui::tr("hud/latency_silent").c_str(),
                       r.worst_session_us / 1000.0);
                 continue;
             }
             /* The SESSION worst, not the window worst: it is what keeps the
              * trace of a past drop-out, which a clean window would erase. */
-            /* The identifier IS the stage name: it comes from the measurement
-             * module, it is stable, and it depends on no translation. */
+            /* The row's identifier stays the measurement module's stable name
+             * (what the log and the saved panel layout use); the LABEL is
+             * translated - "video/televerse" meant nothing to a user. */
             b.row(latency_stage_name((latency_stage_t)e),
-                  latency_stage_name((latency_stage_t)e),
+                  stageLabel((latency_stage_t)e).c_str(),
                   "%.1f / %.1f / %.1f / %.1f ms",
                   r.p50_us / 1000.0, r.p90_us / 1000.0,
                   r.p99_us / 1000.0, r.worst_session_us / 1000.0);
@@ -988,7 +1003,7 @@ void StreamView::setupHud()
         b.row("gamepad", ui::tr("hud/gamepad").c_str(), "%s", ctrl_gamepad_active() ? ui::tr("hud/connected").c_str() : ui::tr("hud/absent").c_str());
         int probe = ctrl_gamepad_axis_probing();
         if (probe >= 0)
-            b.graded("axis_probe", ui::tr("hud/axis_probe").c_str(), ui::Grade::Warn, "indice %d", probe);
+            b.graded("axis_probe", ui::tr("hud/axis_probe").c_str(), ui::Grade::Warn, "#%d", probe);
     });
 
     /* Audio section. The channel long seemed absent, and the counters that did

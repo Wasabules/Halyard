@@ -9,7 +9,8 @@
     "close_menu": "Fermer le menu",
     "validate": "Valider",
     "connect": "Se connecter",
-    "ok": "OK"
+    "ok": "OK",
+    "cancel": "Annuler"
   },
   "boot": {
     "net_init": "Initialisation du réseau…",
@@ -37,7 +38,9 @@
     "grant_title": "Associer cette console",
     "grant_no_qr": "QR indisponible — saisis l'adresse ci-dessous",
     "grant_waiting": "En attente de validation… ({} restant)",
-    "auth_failed": "Authentification échouée ou expirée."
+    "auth_failed": "Authentification échouée ou expirée.",
+    "retry_dc": "Le centre de données ne répond pas — nouvel essai {}/3 dans {} s…",
+    "err_device_init": "Impossible de lancer la connexion au compte (HTTP {})."
   },
   "shutdown": {
     "title": "Fermeture en cours…",
@@ -212,7 +215,7 @@
     "chart_packets": "Paquets/s",
     "chart_interval": "Intervalle",
     "latency_head": "Etage",
-    "latency_off": "instrumentation desactivee (SHADOW_LATENCE=0)",
+    "latency_off": "mesure désactivée (env.txt)",
     "latency_silent": "aucun échantillon sur la dernière fenêtre",
     "latency_wait": "premier releve dans moins de 10 s",
     "session": "Durée de session",
@@ -243,7 +246,20 @@
     "kernel_drops": "Jetés par le système (nos tampons)",
     "rtt": "Aller-retour vers la VM",
     "rtt_spread": "moy / p90",
-    "jitter": "gigue"
+    "jitter": "gigue",
+    "stage_burst": "Rafale réseau",
+    "stage_hold": "Attente image suivante",
+    "stage_dec_queue": "File de décodage",
+    "stage_decode": "Décodage",
+    "stage_disp_queue": "File d'affichage",
+    "stage_upload": "Envoi vers l’écran",
+    "stage_cadence": "Cadence d'affichage",
+    "stage_e2e": "De bout en bout",
+    "stage_input": "Envoi souris et clavier",
+    "stage_pad": "Envoi manette",
+    "stage_pad_rate": "Échantillonnage manette",
+    "stage_audio_queue": "File audio",
+    "stage_rx_pass": "Boucle de réception"
   },
   "kbd": {
     "tab_azerty": "AZERTY",
@@ -330,7 +346,7 @@
     "title": "Menu",
     "touch": "Tactile",
     "touch_absolute": "absolu",
-    "touch_desc": "1 doigt = clic, 2 doigts = double-clic",
+    "touch_desc": "Relatif : on glisse comme sur un pavé tactile. Absolu : le pointeur va là où l’on touche. Les tapes et les gestes se règlent dans Paramètres › Commandes.",
     "touch_off": "inactif",
     "touch_relative": "relatif",
     "touch_sens": "Sensibilité du pointage",
@@ -376,7 +392,8 @@
     "pad_mouse_group_desc": "Pointer avec les Joy-Con : mode, capteur, sensibilite, test.",
     "pad_mouse_gyro_both": "Les deux (moyenne)",
     "pad_mouse_gyro_split_dg": "Separe : D horizontal, G vertical",
-    "pad_mouse_gyro_split_gd": "Separe : G horizontal, D vertical"
+    "pad_mouse_gyro_split_gd": "Separe : G horizontal, D vertical",
+    "info_fps_received": "{} i/s — {} reçues"
   },
   "pad": {
     "btn_a": "A",
@@ -486,7 +503,11 @@
     "rear_slide_desc": "La distance parcourue par le doigt pour aller au bout d'une gâchette analogique",
     "rear_test": "Pavé arrière",
     "rear_test_desc": "ce que le pavé lit, et ce que chaque zone envoie",
-    "rear_off_hint": "Désactivé — à activer dans les paramètres de manette"
+    "rear_off_hint": "Désactivé — à activer dans les paramètres de manette",
+    "ps_square": "Carré",
+    "ps_triangle": "Triangle",
+    "ps_cross": "Croix",
+    "ps_circle": "Rond"
   },
   "quality": {
     "title": "Qualité du flux",
@@ -501,12 +522,12 @@
     "profile_speed": "Latence minimale",
     "profile_quality": "Qualité maximale",
     "bitrate": "Debit maximal",
-    "bitrate_desc": "Plafond demandé au serveur. Le serveur le traite comme un MAXIMUM, pas une cible. ⚠ Au-delà de ~25 Mb/s l'image se dégrade en jeu sur console — mesuré, point de rupture exact inconnu.",
+    "bitrate_desc": "Plafond demandé au serveur, qui le traite comme un MAXIMUM, pas comme une cible. ⚠ Au-delà d’environ 25 Mb/s, l’image se dégrade en jeu sur console en Wi-Fi.",
     "fps": "Images par seconde",
     "fps_desc": "Au-delà de ce que l'écran affiche, le surplus est encodé pour rien. Prend effet à la prochaine connexion.",
     "resolution": "Resolution",
     "resolution_desc": "L'ecran integre fait 1280x720 : demander plus en portable encode deux fois trop de pixels.",
-    "codec_desc": "H.264 et H.265 sont valides de bout en bout (K16) ; le H.265 reduit le debit a qualite egale. L'AV1 est autorise par le compte mais sa valeur de protocole n'a jamais ete observee, et la Switch n'a aucun decodage AV1 materiel. Prend effet a la prochaine connexion.",
+    "codec_desc": "H.264 et H.265 fonctionnent tous deux de bout en bout ; le H.265 demande moins de débit à image égale. L’AV1 est autorisé par le compte mais n’a jamais été vérifié, et la Switch n’a aucun décodage AV1 matériel. Prend effet à la prochaine connexion.",
     "profile_desc": "Rapidite privilegie la latence, Qualite privilegie l'image.",
     "chroma444": "Couleur 4:4:4",
     "vsync": "Synchronisation verticale",
@@ -632,7 +653,7 @@
     "cursor_image": "Image reçue",
     "cursor_arrow": "Flèche",
     "rate_wifi_desc": "Plafond demandé au serveur en Wi-Fi. Les valeurs hautes n'ont jamais été validées en jeu : voir l'avertissement sur le débit Ethernet.",
-    "rate_eth_desc": "Plafond demandé au serveur en Ethernet. ⚠ Au-delà de ~25 Mb/s, l'image se dégrade en jeu sur console (artefacts, image précédente qui persiste) — mesuré le 2026-09-03 : 100 Mb/s casse, 25 Mb/s tient. Le point de rupture exact n'est pas connu.",
+    "rate_eth_desc": "Plafond demandé au serveur en Ethernet. ⚠ Au-delà de ~25 Mb/s, l’image se dégrade en jeu sur console (artefacts, image précédente qui persiste) : 100 Mb/s casse, 25 Mb/s tient.",
     "video_tcp": "Video en TCP (fiabilite)",
     "video_tcp_desc": "Profil « reliability » du client officiel : aucune perte, mais le DEBIT ADAPTATIF du serveur est desactive. Prend effet a la prochaine connexion.",
     "forced_env": "⚠ Forcé par env.txt ({}) — ce que tu vois ici n'est pas ce qui tourne.",

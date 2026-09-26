@@ -69,7 +69,9 @@ const Vocabulary VOCAB[] = {
       { "X", "Y", "A", "B", "RS", "LS", "RB", "LB",
         "Menu", "", "Guide", "LT", "RT", "" } },
     { "PlayStation",
-      { "Carre", "Triangle", "Croix", "Cercle", "R3", "L3", "R1", "L1",
+      /* The four face buttons are localised (pad/ps_*): they were French
+       * words in every language. */
+      { "", "", "", "", "R3", "L3", "R1", "L1",
         "Options", "Share", "PS", "L2", "R2", "" } },
     { "Nintendo",
       { "Y", "X", "B", "A", "", "", "R", "L",
@@ -105,6 +107,27 @@ const char *key(Btn b)
 void resetDefaults()
 {
     for (size_t i = 0; i < count(); i++) g_target[i] = TABLE[i].deflt;
+#if defined(__vita__) || defined(__psp2__)
+    /* === PADV-1 2026-09-26 - ON THE VITA, "A" IS THE BOTTOM BUTTON ===
+     *
+     * The table above is the Switch's: its A sits on the RIGHT of the diamond,
+     * so A goes to the right-hand target. The Vita's shim reads CROSS as A
+     * (Borealis' convention, which makes Cross confirm in the menus), and Cross
+     * is the BOTTOM button - so by default Cross was sent as Circle, Circle as
+     * Cross, Square as Triangle and Triangle as Square, in every game. By
+     * position on this console the mapping is the identity.
+     *
+     * Only the defaults change: a mapping the user saved (settings.txt
+     * `pad_map`) is read on top and kept. SHADOW_VITA_PAD_BY_POSITION=0 restores
+     * the Switch table. */
+    const char *e = std::getenv("SHADOW_VITA_PAD_BY_POSITION");
+    if (!e || std::atoi(e) != 0) {
+        g_target[(size_t)Btn::A] = SHADOW_PAD_CROSS;
+        g_target[(size_t)Btn::B] = SHADOW_PAD_CIRCLE;
+        g_target[(size_t)Btn::X] = SHADOW_PAD_SQUARE;
+        g_target[(size_t)Btn::Y] = SHADOW_PAD_TRIANGLE;
+    }
+#endif
     g_loaded = true;
 }
 

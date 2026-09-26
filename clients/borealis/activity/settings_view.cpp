@@ -42,7 +42,7 @@ const uint32_t SCALES[] = { 75, 100, 125, 150, 200 };
 struct Lang { const char *code; const char *label; };
 const Lang LANGS[] = {
     { "",      nullptr },        /* automatic - label translated at use */
-    { "fr",    "Francais" },
+    { "fr",    "Fran\u00E7ais" },
     { "en-US", "English"  },
 };
 
@@ -911,7 +911,7 @@ void SettingsView::askClearLogs()
     dlg->setCancelable(true);
     /* Refusing comes FIRST: it is the default answer to a destructive dialog,
      * and the console puts the cursor on the first button. */
-    dlg->addButton(ui::tr("quit/stay"), []() { });
+    dlg->addButton(ui::tr("action/cancel"), []() { });
     dlg->addButton(ui::tr("settings/log_clear"), [mailbox]() {
         const int n = journal_purge();
         brls::Application::notify(ui::tr("settings/log_cleared", n));
@@ -938,7 +938,7 @@ void SettingsView::askReset()
     dlg->setCancelable(true);
     /* Refusing FIRST: the console puts the cursor on the first button, and the
      * default answer to a destructive dialog is no. */
-    dlg->addButton(ui::tr("quit/stay"), []() { });
+    dlg->addButton(ui::tr("action/cancel"), []() { });
     dlg->addButton(ui::tr("settings/reset"), [mailbox]() {
         Settings::instance().resetToDefaults();
         brls::Application::notify(ui::tr("settings/reset_done"));
@@ -961,7 +961,7 @@ void SettingsView::askRemoveLock()
 
     brls::Dialog *dlg = new brls::Dialog(ui::tr("settings/lock_remove_question"));
     dlg->setCancelable(true);
-    dlg->addButton(ui::tr("quit/stay"), []() { });
+    dlg->addButton(ui::tr("action/cancel"), []() { });
     dlg->addButton(ui::tr("settings/lock_remove"), [mailbox]() {
         /* === THE ORDER IS THE WHOLE THING ===
          *

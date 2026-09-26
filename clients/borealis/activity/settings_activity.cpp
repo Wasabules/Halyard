@@ -55,7 +55,7 @@ void SettingsActivity::onContentAvailable()
                 dlg->setCancelable(true);
                 /* S66 - no `close()`: `Dialog::buttonClick` already removes the
                  * dialog, and a second pop would take this screen with it. */
-                dlg->addButton(ui::tr("quit/stay"), []() { });
+                dlg->addButton(ui::tr("action/cancel"), []() { });
                 dlg->addButton(ui::tr("action/logout"), []() {
                     ShadowApp::instance().logout();
                 });

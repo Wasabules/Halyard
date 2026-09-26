@@ -747,7 +747,17 @@ void ConnectingActivity::runConnectionFlow() {
              * encodes, transmits and decodes twice as many pixels as anyone will
              * ever see — and on the Switch each of those three stages is a
              * scarce resource. Docked, we render the chosen resolution. */
-            if (cfg.auto_resolution) {
+            /* UIFIX-1 2026-09-26 - only where the console HAS a handheld mode.
+             * A desktop reports "not docked" (device_mode.cpp), so it asked for
+             * 720p whatever its resolution setting said.
+             * SHADOW_DESKTOP_RES_CLAMP=1 restores that. */
+#if defined(__SWITCH__) || defined(__vita__) || defined(__psp2__)
+            const bool has_modes = true;
+#else
+            const char *clamp_env = getenv("SHADOW_DESKTOP_RES_CLAMP");
+            const bool has_modes = clamp_env && atoi(clamp_env) != 0;
+#endif
+            if (cfg.auto_resolution && has_modes) {
                 const bool docked = device::isDocked();
                 if (!docked && np.display_height > 720) {
                     np.display_width  = 1280;
