@@ -46,6 +46,13 @@ jobs:
       # and a shallow clone has no tag to read - it would stamp 0.0.0-dev.
       - uses: actions/checkout@v4
         with: { submodules: recursive, fetch-depth: 0 }
+      # The container runs as root over a workspace the runner's user owns, and
+      # checkout only marks it safe in a TEMPORARY git config. Without this,
+      # every later git call is refused: CMake could not read the tag and the
+      # first v0.1.0 release stamped the .nro "0.0.0-dev" (the Vita, built
+      # outside a container, said 0.1.0).
+      - name: let git read the checkout
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
       # PINNED by hash: `pins.env` names the release and its SHA-256, the patch
       # lives in the repository. A video regression is the single most
