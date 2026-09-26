@@ -36,6 +36,11 @@ jobs:
     # Dated, not `latest`: see DEVKITA64_IMAGE in tools/pins.env, which must
     # say the same thing (a workflow cannot read a file before choosing its container).
     container: devkitpro/devkita64:20260219
+    # Inside a container a `run:` step defaults to `sh`, which is dash here and
+    # knows no `pipefail`: the first public run died on it.
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
         with: { submodules: recursive }

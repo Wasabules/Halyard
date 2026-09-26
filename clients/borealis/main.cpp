@@ -601,9 +601,9 @@ int main(int argc, char *argv[]) {
           devlink::selfPath().empty() ? "(hors hbloader)"
                                       : devlink::selfPath().c_str());
 
-    /* Le banc crypto, juste apres la ligne de version : c'est la que le lecteur
-     * du journal cherche « quel binaire, et va-t-il bien ». Il ne tourne que si
-     * env.txt le demande, et il n'ouvre aucune connexion. */
+    /* The crypto bench, right after the version line: that is where someone
+     * reading the log looks for "which binary, and is it healthy". It runs only
+     * when env.txt asks for it, and it opens no connection. */
     /* The profile BEFORE the bench: otherwise it would measure a throttled
      * console, and its figures would describe nothing that runs afterwards. */
     shadow_power_profile_apply();

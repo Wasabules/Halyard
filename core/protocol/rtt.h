@@ -104,7 +104,7 @@ static inline uint32_t rtt_send_gap_avg_us(const rtt_t *r)
 static inline void rtt_sent(rtt_t *r, uint32_t seq, int64_t now_us)
 {
     if (!r) return;
-    /* L'intervalle depuis l'envoi precedent, avant d'ecraser quoi que ce soit. */
+    /* The interval since the previous send, taken before anything is overwritten. */
     if (r->last_send_us > 0) {
         const int64_t gap = now_us - r->last_send_us;
         if (gap > 0 && gap < 60000000) {          /* resuming a session is not an interval */

@@ -21,3 +21,14 @@
 *.py   text eol=lf
 *.sh   text eol=lf
 *.yml  text eol=lf
+
+# Patches are applied with `git apply` to trees cloned with LF endings: a
+# CRLF checkout (a Windows runner's default) makes every hunk fail. Never
+# converted, in either direction.
+*.patch -text
+# Read by bash or by a toolchain that must see LF on every host.
+*.env           text eol=lf
+*.toml          text eol=lf
+*.ld            text eol=lf
+*.in            text eol=lf
+CMakeLists.txt  text eol=lf

@@ -66,7 +66,8 @@ sudo apt-get install build-essential cmake ninja-build pkg-config git \
     libssl-dev libcurl4-openssl-dev libjansson-dev libopus-dev \
     libqrencode-dev libavcodec-dev libavformat-dev libavutil-dev \
     libswresample-dev libswscale-dev libasound2-dev \
-    libgl1-mesa-dev xorg-dev
+    libgl1-mesa-dev xorg-dev \
+    libwayland-dev libxkbcommon-dev wayland-protocols
 
 tools/bootstrap-libs.sh
 tools/build-libs.sh linux

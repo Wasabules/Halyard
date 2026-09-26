@@ -617,7 +617,7 @@ void StreamView::pushYuvFrame(int width, int height,
         linesize_u = (int)uv_stride;
         is_nv12 = true;  /* makes draw() switch to the GPU shader path */
     }
-    }   /* fin du chemin AVEC copie ; les dimensions ci-dessous valent pour les deux */
+    }   /* end of the path WITH a copy; the dimensions below hold for both paths */
     writer_slot.w = width;
     writer_slot.h = height;
     writer_slot.ys = linesize_y;
@@ -1619,8 +1619,8 @@ void StreamView::draw(NVGcontext* vg, float x, float y, float width, float heigh
          * loader `vp_w`/`vp_h` stay 0 and its own guard skips it. */
         {
             const int64_t lat_tex0 = latency_enabled() ? latency_now_us() : 0;
-            /* `ext_y` non nul = les plans vivent encore dans le tampon du
-             * decodeur et n'ont jamais ete copies (voir stream_view.hpp). */
+            /* A non-null `ext_y` means the planes still live in the decoder's
+             * buffer and were never copied (see stream_view.hpp). */
             const uint8_t *py = consumer_slot.ext_y ? consumer_slot.ext_y
                                                     : consumer_slot.y.data();
             const uint8_t *pu = consumer_slot.ext_u ? consumer_slot.ext_u

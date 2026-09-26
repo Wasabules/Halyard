@@ -89,10 +89,10 @@ run test_eq           test_eq.c      ../core/protocol/eq.c -lm
 # relates them.
 run test_journal_line test_journal_line.c   # header-only
 
-# Les chemins PS Vita : arithmetique pure, aucun appel systeme. Tout ce que le
-# port a gagne le 2026-09-13 n'avait que la console pour temoin, et trois des
-# defauts trouves ce jour-la etaient de l'arithmetique -- verifiable ici en
-# quelques microsecondes plutot qu'en un deploiement et une session.
+# The PS Vita paths: pure arithmetic, no system call. Everything the port gained
+# on 2026-09-13 had only the console as a witness, and three of the defects found
+# that day were arithmetic - checkable here in a few microseconds rather than in
+# a deployment and a session.
 run test_vita_paths test_vita_paths.c   # header-only
 run test_bitrate      test_bitrate.c        # header-only: the one bitrate ladder (B1)
 run test_bitrate_ctl  test_bitrate_ctl.c    # header-only: G19 and the user's cap (CFG-1)

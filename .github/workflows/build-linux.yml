@@ -30,7 +30,8 @@ jobs:
             libssl-dev libcurl4-openssl-dev libjansson-dev libopus-dev \
             libqrencode-dev libavcodec-dev libavformat-dev libavutil-dev \
             libswresample-dev libswscale-dev libasound2-dev \
-            libgl1-mesa-dev xorg-dev
+            libgl1-mesa-dev xorg-dev \
+            libwayland-dev libxkbcommon-dev wayland-protocols
 
       # third_party/ is not in git: without these two steps there is no
       # Borealis and no wolfSSL, and CMake cannot even configure. This job ran
