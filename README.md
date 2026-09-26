@@ -151,6 +151,14 @@ with hardware decode and sound, and the numbers are good — but it has far fewe
 hours on it, and the two limitations above (no rumble, no gyro) are permanent
 rather than pending.
 
+## How it was made
+
+Halyard was built over about six months with extensive help from an AI coding
+assistant (Claude Code), which wrote most of the code and documentation under
+the author's direction. Every change is tested on real hardware, and the
+reverse-engineering notes in [`KB.md`](KB.md) and [`memory/`](memory/MEMORY.md)
+record how each finding was made, with its date.
+
 ## How it works
 
 Shadow's desktop client opens about ten sockets to your VM, each with its own
