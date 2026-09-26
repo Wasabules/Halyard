@@ -12,6 +12,18 @@ a client for a service you pay for.
 > deliberately does **not** do and where EU law stands on interoperability
 > research, is in [`LEGAL.md`](LEGAL.md). Decide with that in hand.
 
+## Download
+
+Every release is on the [releases page](https://github.com/Wasabules/halyard/releases).
+The latest one, directly:
+
+- **Nintendo Switch** — [`halyard.nro`](https://github.com/Wasabules/halyard/releases/latest/download/halyard.nro)
+- **PS Vita / PS TV** — [`halyard.vpk`](https://github.com/Wasabules/halyard/releases/latest/download/halyard.vpk)
+
+Each release also carries `corresponding-source.tar.gz`, the complete source of
+those two packages as the GPL requires. The version you are running is in
+Settings › About, and on the Switch homebrew menu's entry.
+
 ## Nintendo Switch
 
 **Requires** Atmosphère (or an equivalent CFW) and the homebrew menu.
@@ -106,8 +118,22 @@ Other files the app reads from the same directory:
 
 ## Updating
 
-Replace the `.nro`, or reinstall the `.vpk`. Settings and your token survive —
-they are in the data directory, which the package does not touch.
+Download the new release, then replace the `.nro`, or reinstall the `.vpk` over
+the old one. Settings and your token survive — they are in the data directory,
+which the package does not touch.
+
+## Coming from `shadow-client`
+
+Builds from before 2026-09-13 were named `shadow-client` and kept their data in
+`/switch/shadow-client/` (Switch) or `ux0:data/shadow-client/` (Vita). Halyard
+looks in `/switch/halyard/` and `ux0:data/halyard/`, and never in the old
+folder, so on first launch it asks you to sign in again.
+
+To keep your session and settings instead, copy these files from the old folder
+to the new one before launching: `refresh_token`, `device.uuid`,
+`settings.txt`, and `env.txt` if you have one. Then delete the old
+`shadow-client.nro` (Switch) or uninstall the old bubble (Vita) — the two apps
+are separate entries.
 
 ## Uninstalling
 

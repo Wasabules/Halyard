@@ -44,10 +44,53 @@ add_compile_options(-ffile-prefix-map=${CMAKE_SOURCE_DIR}=.)
 
 # project info
 project(halyard)
-set(VERSION_MAJOR "0")
-set(VERSION_MINOR "3")
-set(VERSION_ALTER "0")
+# === THE VERSION IS THE TAG (2026-09-26) ================================
+#
+# A release is a `vX.Y.Z` git tag, and nothing else: every package reads its
+# number from here - the Switch NACP, the Vita's APP_VER and LiveArea, the
+# Windows resource, the About screen, the log. It used to be three literals in
+# this file, which a release workflow then had to compare with the tag; a tag
+# pushed without the edit was refused, and an edit without the tag shipped a
+# number nobody could trace.
+#
+#   on the tag            -> "0.1.0"
+#   commits after it      -> "0.1.0-dev" (the hash in build_id.h says which)
+#   no tag, a VERSION file -> its X.Y.Z (the release's source bundle, no git)
+#   neither               -> "0.0.0-dev" (a shallow or tag-less clone)
+#
+# `-DHALYARD_VERSION=X.Y.Z` overrides all of it. Read at
+# CONFIGURE time: re-run cmake after tagging in an existing build directory.
+set(HALYARD_VERSION "" CACHE STRING "X.Y.Z to stamp on every package; empty = the latest vX.Y.Z tag")
+set(VERSION_SUFFIX "")
+set(_hv "${HALYARD_VERSION}")
+if (_hv STREQUAL "")
+    execute_process(
+        COMMAND git -C "${CMAKE_CURRENT_SOURCE_DIR}" describe --tags --long --match "v[0-9]*.[0-9]*.[0-9]*"
+        OUTPUT_VARIABLE _hdesc OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET RESULT_VARIABLE _hres)
+    if (_hres EQUAL 0 AND _hdesc MATCHES "^v([0-9]+)\\.([0-9]+)\\.([0-9]+)-([0-9]+)-g[0-9a-f]+$")
+        set(_hv "${CMAKE_MATCH_1}.${CMAKE_MATCH_2}.${CMAKE_MATCH_3}")
+        if (NOT CMAKE_MATCH_4 EQUAL 0)
+            set(VERSION_SUFFIX "-dev")
+        endif ()
+    elseif (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/VERSION")
+        # The release's source bundle has no git; the release workflow writes
+        # the tag's number into VERSION beside it.
+        file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/VERSION" _hv LIMIT_COUNT 1)
+        string(STRIP "${_hv}" _hv)
+    else ()
+        set(_hv "0.0.0")
+        set(VERSION_SUFFIX "-dev")
+    endif ()
+endif ()
+if (NOT _hv MATCHES "^([0-9]+)\\.([0-9]+)\\.([0-9]+)$")
+    message(FATAL_ERROR "HALYARD_VERSION must be X.Y.Z, got '${_hv}'")
+endif ()
+set(VERSION_MAJOR "${CMAKE_MATCH_1}")
+set(VERSION_MINOR "${CMAKE_MATCH_2}")
+set(VERSION_ALTER "${CMAKE_MATCH_3}")
 set(VERSION_BUILD "0")
+set(VERSION_STRING "${_hv}${VERSION_SUFFIX}")
+message(STATUS "Halyard version: ${VERSION_STRING}")
 # S3 2026-08-22 - THE BUILD FINGERPRINT. The version "0.3.0" is frozen: with the
 # console in hand there is no way to tell whether the .nro that just launched is
 # the one we just pushed (we lost a whole test round trip to that). So we stamp
@@ -100,7 +143,7 @@ if(NOT RG EQUAL 0 OR G STREQUAL \"\")\n\
   set(G \"\")\n\
 endif()\n\
 file(WRITE \"${SHADOW_BUILD_ID_H}\"\n\
-  \"#define SHADOW_VERSION    \\\"${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_ALTER}\\\"\\n\"\n\
+  \"#define SHADOW_VERSION    \\\"${VERSION_STRING}\\\"\\n\"\n\
   \"#define SHADOW_BUILD_DATE \\\"\${T}Z\\\"\\n\"\n\
   \"#define SHADOW_BUILD_HASH \\\"\${H}\\\"\\n\"\n\
   \"#define SHADOW_BUILD_TAG  \\\"\${G}\\\"\\n\"\n\
@@ -146,10 +189,26 @@ set(PSN_TITLE_ID  "HLYD00001")
 # encodings of one number, so the first bump to 0.4.0 would have shipped a
 # package still numbered 00.30, silently. Same lesson as `version.h`: a value
 # that is "the same as" another must be COMPUTED from it.
-if (VERSION_MINOR LESS 10)
-    set(PSN_VERSION "0${VERSION_MAJOR}.${VERSION_MINOR}0")
+# "MM.mm" has room for two digits after the dot: minor and patch take one each
+# (0.1.2 -> "00.12"), and a minor of 10 or more takes both (the patch is then
+# not representable, so the build says so). APP_VER must only grow between
+# installs, which this order preserves.
+if (VERSION_MAJOR LESS 10)
+    set(_psn_major "0${VERSION_MAJOR}")
 else ()
-    set(PSN_VERSION "0${VERSION_MAJOR}.${VERSION_MINOR}")
+    set(_psn_major "${VERSION_MAJOR}")
+endif ()
+if (VERSION_MINOR LESS 10 AND VERSION_ALTER LESS 10)
+    set(PSN_VERSION "${_psn_major}.${VERSION_MINOR}${VERSION_ALTER}")
+elseif (VERSION_MINOR LESS 100)
+    if (VERSION_MINOR LESS 10)
+        set(PSN_VERSION "${_psn_major}.0${VERSION_MINOR}")
+    else ()
+        set(PSN_VERSION "${_psn_major}.${VERSION_MINOR}")
+    endif ()
+    message(WARNING "PS Vita APP_VER ${PSN_VERSION} cannot carry the patch of ${VERSION_STRING}")
+else ()
+    message(FATAL_ERROR "PS Vita APP_VER cannot encode ${VERSION_STRING}")
 endif ()
 # What the console's HOME menu shows. Separate from `project()`, which names
 # the build targets and has to stay lowercase: a target called `Halyard` and a
@@ -502,7 +561,7 @@ elseif (PLATFORM_PSV)
     # The LiveArea bubble's text comes from the identity block, not from a
     # second copy typed into the XML. `sce_sys` is copied into the build tree so
     # the generated template.xml sits beside the images the package expects.
-    set(SHADOW_VERSION_STR "${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_ALTER}")
+    set(SHADOW_VERSION_STR "${VERSION_STRING}")
     set(PSV_SCE_SYS ${CMAKE_BINARY_DIR}/sce_sys)
     file(COPY ${CMAKE_SOURCE_DIR}/clients/borealis/psv/sce_sys/ DESTINATION ${PSV_SCE_SYS})
     file(REMOVE ${PSV_SCE_SYS}/livearea/contents/template.xml.in)
@@ -536,7 +595,7 @@ elseif (PLATFORM_PS4)
                 # eg: `cmake-build/ps4/resources/icon.png` -> `/app0/resources/icon.png`
                 ${CMAKE_BINARY_DIR}/ps4
                 ${PSN_TITLE_ID}
-                "Borealis DEMO"
+                "${APP_TITLE}"
                 ${PSN_VERSION}
                 # https://psdevwiki.com/ps4/param.sfo#ATTRIBUTE
                 # Support ps4 pro
@@ -568,7 +627,7 @@ elseif (PLATFORM_SWITCH)
     add_dependencies(${PROJECT_NAME} shadow_build_id)
 
     add_custom_target(${PROJECT_NAME}.nro DEPENDS ${PROJECT_NAME}
-        COMMAND ${NX_NACPTOOL_EXE} --create "${APP_TITLE}" "${PROJECT_AUTHOR}" "${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_ALTER}" ${PROJECT_NAME}.nacp --titleid=${PROJECT_TITLEID}
+        COMMAND ${NX_NACPTOOL_EXE} --create "${APP_TITLE}" "${PROJECT_AUTHOR}" "${VERSION_STRING}" ${PROJECT_NAME}.nacp --titleid=${PROJECT_TITLEID}
         # REMOVE FIRST. `copy_directory` copies, it never deletes: an asset
         # dropped from the source tree stays in the build tree and keeps
         # shipping in the romfs. Found 2026-09-13 - 18 Pokemon sprites deleted

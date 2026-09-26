@@ -24,7 +24,7 @@ relicensed.
 | [Borealis](https://github.com/xfangfang/borealis) | Apache-2.0 | `third_party/borealis/LICENSE`, text in `licenses/apache-2.0.txt` |
 | [libopus](https://opus-codec.org) | BSD-3-Clause | `third_party/libopus/COPYING` |
 | [Material Icons](https://github.com/google/material-design-icons) | Apache-2.0 | `resources/material/LICENSE.txt` |
-| [Inter](https://rsms.me/inter/) | SIL OFL 1.1 | `resources/font/LICENSE-Inter.txt` |
+| [Inter](https://rsms.me/inter/) | SIL OFL 1.1 | `resources/font/LICENSE-Inter.txt` (the app); `site/fonts/LICENSE-Inter.txt` (the website, Inter 4.1 variable) |
 | [Mozilla CA bundle](https://curl.se/docs/caextract.html) | MPL-2.0 | `resources/cacert.pem` |
 | The UI sound set (`resources/sfx/`, 17 files) | generated for this project | see below |
 | [libcurl](https://curl.se) | curl (MIT-style) | Switch: devkitPro's, over the console's own TLS service (no TLS library linked). PS Vita: 8.17.0 rebuilt on Mbed TLS by `tools/build-libs.sh vita curl` |

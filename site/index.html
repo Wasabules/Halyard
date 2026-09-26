@@ -1,0 +1,412 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Halyard</title>
+<meta name="description" content="An unofficial client for the Shadow cloud PC service, on Nintendo Switch and PS Vita. Free software, GPL-3.0-or-later.">
+<meta name="theme-color" content="#121318">
+<meta property="og:title" content="Halyard">
+<meta property="og:description" content="Play your Shadow cloud PC on a Nintendo Switch or a PS Vita. Unofficial, free software.">
+<meta property="og:image" content="https://wasabules.github.io/halyard/assets/logo-512.png">
+<link rel="icon" type="image/png" href="assets/logo-64.png">
+<link rel="apple-touch-icon" href="assets/logo-192.png">
+<!-- The site is published from site/ by .github/workflows/pages.yml, which
+     copies the logo and the background from the app's own resources into
+     assets/ - one copy of each image in the repository. Inter is self-hosted
+     (SIL OFL 1.1, fonts/LICENSE-Inter.txt): no request leaves for a font CDN. -->
+<style>
+@font-face {
+  font-family: "Inter";
+  src: url("fonts/InterVariable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+/* One deliberate world: the app is dark, so is its page. Every colour is
+   declared here and painted explicitly, whatever the visitor's theme. */
+:root {
+  color-scheme: dark;
+  --ground: #121318;
+  --panel: #1a1b21;          /* the logo's own ground */
+  --panel-2: #20222a;
+  --line: #2c2f3a;
+  --text: #e8eaf4;           /* the logo's light bar */
+  --muted: #a3a7ba;
+  --faint: #767a8e;
+  --accent: #2b7be0;         /* the logo's mast */
+  --accent-hi: #5c9cf0;
+  --warn-ground: #2a2317;
+  --warn-line: #5a4622;
+  --warn-text: #f0d7a6;
+  --radius: 10px;
+  --col: 68rem;
+  --sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, "SF Mono", "Cascadia Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+}
+
+* { box-sizing: border-box; }
+html { background: var(--ground); }
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--text);
+  font: 400 1.0625rem/1.6 var(--sans);
+  font-feature-settings: "cv11", "ss01";
+  -webkit-font-smoothing: antialiased;
+}
+img { max-width: 100%; height: auto; }
+a { color: var(--accent-hi); text-underline-offset: 0.18em; }
+a:hover { color: var(--text); }
+:focus-visible { outline: 2px solid var(--accent-hi); outline-offset: 3px; border-radius: 4px; }
+
+.wrap {
+  width: 100%;
+  max-width: var(--col);
+  margin-inline: auto;
+  padding-inline: max(1.25rem, env(safe-area-inset-left, 0px));
+}
+
+/* ---- hero ------------------------------------------------------------- */
+.hero {
+  position: relative;
+  isolation: isolate;
+  min-height: min(88vh, 46rem);
+  display: grid;
+  align-items: end;
+  padding-block: 7rem 4rem;
+  background: var(--panel);
+  overflow: hidden;
+}
+.hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  background: url("assets/background.jpg") center / cover no-repeat;
+}
+.hero::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background:
+    linear-gradient(180deg, rgba(18, 19, 24, 0.35) 0%, rgba(18, 19, 24, 0.55) 45%, var(--ground) 100%),
+    linear-gradient(90deg, rgba(18, 19, 24, 0.85) 0%, rgba(18, 19, 24, 0.2) 70%);
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1.75rem;
+}
+.brand img { width: 3.5rem; height: 3.5rem; border-radius: 12px; }
+.brand span {
+  font-size: 0.75rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+h1 {
+  margin: 0;
+  font-size: clamp(3.25rem, 11vw, 7.5rem);
+  line-height: 0.92;
+  font-weight: 800;
+  letter-spacing: -0.045em;
+}
+.lede {
+  max-width: 36rem;
+  margin: 1.25rem 0 0;
+  font-size: clamp(1.125rem, 2.4vw, 1.375rem);
+  line-height: 1.45;
+  color: var(--text);
+  text-wrap: balance;
+}
+
+.downloads {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 2.25rem;
+}
+.dl {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 13.5rem;
+  padding: 0.85rem 1.1rem;
+  border-radius: var(--radius);
+  text-decoration: none;
+  color: var(--text);
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+.dl:hover { background: #3a88ea; color: var(--text); }
+.dl.alt { background: rgba(26, 27, 33, 0.72); border-color: var(--line); }
+.dl.alt:hover { background: var(--panel-2); border-color: var(--accent); }
+.dl strong { font-size: 1.0625rem; font-weight: 650; }
+.dl code { font: 0.8125rem/1.3 var(--mono); color: rgba(232, 234, 244, 0.78); }
+.release-line {
+  margin-top: 1rem;
+  font-size: 0.875rem;
+  color: var(--muted);
+}
+.release-line a { color: var(--muted); }
+
+/* ---- sections --------------------------------------------------------- */
+section { padding-block: 4.5rem 0; }
+.eyebrow {
+  margin: 0 0 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent-hi);
+}
+h2 {
+  margin: 0 0 1.5rem;
+  font-size: clamp(1.75rem, 4vw, 2.5rem);
+  line-height: 1.1;
+  font-weight: 750;
+  letter-spacing: -0.03em;
+  text-wrap: balance;
+  max-width: 40rem;
+}
+p.intro { max-width: 40rem; margin: -0.5rem 0 2rem; color: var(--muted); }
+p.intro.after { margin: 1.5rem 0 0; }
+
+.features {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
+  gap: 2rem 2.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.features li { border-top: 1px solid var(--line); padding-top: 1rem; }
+.features h3 { margin: 0 0 0.35rem; font-size: 1.0625rem; font-weight: 650; letter-spacing: -0.01em; }
+.features p { margin: 0; color: var(--muted); font-size: 0.975rem; }
+
+.table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); }
+table { width: 100%; border-collapse: collapse; font-size: 0.95rem; min-width: 30rem; }
+th, td { padding: 0.8rem 1rem; text-align: left; border-bottom: 1px solid var(--line); vertical-align: top; }
+thead th { font-size: 0.75rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); font-weight: 600; background: var(--panel-2); }
+tbody tr:last-child td { border-bottom: 0; }
+tbody th { font-weight: 500; color: var(--text); }
+.yes { color: var(--text); }
+.no { color: var(--faint); }
+
+.install {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr));
+  gap: 1.25rem;
+}
+.card {
+  padding: 1.5rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+}
+.card h3 { margin: 0 0 0.25rem; font-size: 1.125rem; font-weight: 650; }
+.card .needs { margin: 0 0 1rem; font-size: 0.875rem; color: var(--muted); }
+.card ol { margin: 0; padding-left: 1.25rem; display: grid; gap: 0.45rem; }
+.card code, .expect code { font: 0.875em var(--mono); color: var(--text); background: var(--panel-2); padding: 0.1em 0.35em; border-radius: 4px; }
+
+.expect { display: grid; gap: 1.25rem; max-width: 46rem; }
+.expect p { margin: 0; color: var(--muted); }
+.expect strong { color: var(--text); font-weight: 600; }
+
+.notice {
+  margin-top: 4.5rem;
+  padding: 1.5rem 1.5rem 1.6rem;
+  border: 1px solid var(--warn-line);
+  border-radius: var(--radius);
+  background: var(--warn-ground);
+  color: var(--warn-text);
+}
+.notice h2 { color: var(--warn-text); font-size: 1.25rem; margin-bottom: 0.75rem; }
+.notice p { margin: 0 0 0.75rem; max-width: 48rem; }
+.notice p:last-child { margin-bottom: 0; }
+.notice a { color: var(--warn-text); }
+
+footer {
+  margin-top: 5rem;
+  padding-block: 2rem calc(2.5rem + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid var(--line);
+  color: var(--faint);
+  font-size: 0.875rem;
+}
+footer .row { display: flex; flex-wrap: wrap; gap: 0.75rem 1.5rem; justify-content: space-between; }
+footer nav { display: flex; flex-wrap: wrap; gap: 0.5rem 1.25rem; }
+footer a { color: var(--muted); }
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; }
+}
+@media (max-width: 30rem) {
+  .dl { min-width: 100%; }
+  .hero { padding-block: 5rem 3rem; }
+}
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="brand">
+      <img src="assets/logo-128.png" width="56" height="56" alt="">
+      <span>Unofficial · Free software</span>
+    </div>
+    <h1>Halyard</h1>
+    <p class="lede">Play your Shadow cloud PC on a Nintendo Switch or a PS Vita — hardware video decoding, sound, and your controls going back to the machine.</p>
+    <div class="downloads">
+      <a class="dl" href="https://github.com/Wasabules/halyard/releases/latest/download/halyard.nro">
+        <strong>Nintendo Switch</strong>
+        <code>halyard.nro</code>
+      </a>
+      <a class="dl alt" href="https://github.com/Wasabules/halyard/releases/latest/download/halyard.vpk">
+        <strong>PS Vita / PS TV</strong>
+        <code>halyard.vpk</code>
+      </a>
+    </div>
+    <p class="release-line" id="release-line">
+      <a href="https://github.com/Wasabules/halyard/releases/latest">Latest release</a> ·
+      <a href="https://github.com/Wasabules/halyard/blob/main/docs/INSTALL.md">Install guide</a> ·
+      <a href="https://github.com/Wasabules/halyard">Source</a>
+    </p>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <section aria-labelledby="what">
+    <p class="eyebrow">What it does</p>
+    <h2 id="what">Your cloud machine, on a console that fits in a bag.</h2>
+    <p class="intro">Sign in with your Shadow account, pick your machine, play. Halyard speaks the same protocol as Shadow's desktop client, reimplemented from scratch for homebrew.</p>
+    <ul class="features">
+      <li>
+        <h3>Hardware video decoding</h3>
+        <p>H.264 and HEVC on Switch, H.264 on Vita, drawn with the GPU's own colour conversion.</p>
+      </li>
+      <li>
+        <h3>Opus or FLAC audio</h3>
+        <p>Whichever the server grants, with a 5-band equaliser and profiles that follow the console's mode.</p>
+      </li>
+      <li>
+        <h3>Your controls reach the VM</h3>
+        <p>Gamepad, a mouse driven from the sticks or the touchscreen, an on-screen keyboard. Rumble and gyro aiming on Switch.</p>
+      </li>
+      <li>
+        <h3>The real pointer</h3>
+        <p>The VM's own mouse cursor is drawn, rather than a local approximation.</p>
+      </li>
+      <li>
+        <h3>It measures itself</h3>
+        <p>Latency by stage at p50/p90/p99, packet loss and the link's estimated capacity — in the pause menu, while you play.</p>
+      </li>
+      <li>
+        <h3>Settings that stay</h3>
+        <p>Testers for the network, the pad and the mouse, and an optional lock on opening the app.</p>
+      </li>
+    </ul>
+  </section>
+
+  <section aria-labelledby="consoles">
+    <p class="eyebrow">Per console</p>
+    <h2 id="consoles">What works where</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th scope="col"></th><th scope="col">Nintendo Switch</th><th scope="col">PS Vita</th></tr>
+        </thead>
+        <tbody>
+          <tr><th scope="row">Hardware video decode</th><td class="yes">H.264 + HEVC</td><td class="yes">H.264</td></tr>
+          <tr><th scope="row">Audio (Opus / FLAC)</th><td class="yes">Yes</td><td class="yes">Yes</td></tr>
+          <tr><th scope="row">Gamepad to the VM</th><td class="yes">Yes</td><td class="yes">Yes</td></tr>
+          <tr><th scope="row">Mouse (sticks / touch) and keyboard</th><td class="yes">Yes</td><td class="yes">Yes</td></tr>
+          <tr><th scope="row">Rumble</th><td class="yes">Yes</td><td class="no">No — no such hardware</td></tr>
+          <tr><th scope="row">Gyroscope aiming</th><td class="yes">Yes</td><td class="no">No</td></tr>
+          <tr><th scope="row">Validated over long sessions</th><td class="yes">Yes</td><td class="no">Early</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section aria-labelledby="install">
+    <p class="eyebrow">Install</p>
+    <h2 id="install">Three steps, on a console that already runs homebrew</h2>
+    <div class="install">
+      <div class="card">
+        <h3>Nintendo Switch</h3>
+        <p class="needs">Needs Atmosphère and the homebrew menu.</p>
+        <ol>
+          <li>Download <code>halyard.nro</code>.</li>
+          <li>Copy it to <code>/switch/</code> on the SD card.</li>
+          <li>Open the homebrew menu and launch Halyard.</li>
+        </ol>
+      </div>
+      <div class="card">
+        <h3>PS Vita / PS TV</h3>
+        <p class="needs">Needs HENkaku or h-encore, and VitaShell.</p>
+        <ol>
+          <li>Download <code>halyard.vpk</code>.</li>
+          <li>Copy it to the console and install it from VitaShell.</li>
+          <li>Launch Halyard from LiveArea.</li>
+        </ol>
+      </div>
+    </div>
+    <p class="intro after">The first launch shows a short code: type it at the address shown, on a phone or a computer, and the console signs in by itself. Details in the <a href="https://github.com/Wasabules/halyard/blob/main/docs/INSTALL.md">install guide</a>.</p>
+  </section>
+
+  <section aria-labelledby="expect">
+    <p class="eyebrow">Before you play</p>
+    <h2 id="expect">What to expect</h2>
+    <div class="expect">
+      <p><strong>Your network matters more than the console.</strong> The software spends a few milliseconds on a frame; a Wi-Fi stall lasts hundreds. A wired link, where you can have one, changes more than any setting.</p>
+      <p><strong>Cap the bitrate around 25 Mb/s.</strong> Above that, the picture breaks up in play over Wi-Fi. The setting is in the pause menu — hold <code>+</code> on Switch or <code>START</code> on Vita.</p>
+      <p><strong>You need your own Shadow subscription.</strong> Halyard is a client: it signs in as you, to your machine.</p>
+    </div>
+  </section>
+
+  <aside class="notice" aria-labelledby="unofficial">
+    <h2 id="unofficial">Unofficial, and at your own risk</h2>
+    <p>Halyard is not affiliated with, endorsed by, or sponsored by Shadow, Nintendo, or Sony Interactive Entertainment. Those names appear here only to say which service it talks to and which hardware it runs on.</p>
+    <p>Using an unofficial client may breach Shadow's terms of service, and your account is what is at risk. It circumvents nothing — no authentication, no payment, no DRM. Read <a href="https://github.com/Wasabules/halyard/blob/main/docs/LEGAL.md">the legal notes</a> before you install.</p>
+  </aside>
+
+</main>
+
+<footer>
+  <div class="wrap row">
+    <span>Halyard is free software under the GPL-3.0-or-later.</span>
+    <nav aria-label="Project">
+      <a href="https://github.com/Wasabules/halyard">Source</a>
+      <a href="https://github.com/Wasabules/halyard/releases">Releases</a>
+      <a href="https://github.com/Wasabules/halyard/blob/main/CHANGELOG.md">Changelog</a>
+      <a href="https://github.com/Wasabules/halyard/issues">Issues</a>
+      <a href="https://github.com/Wasabules/halyard/blob/main/THIRD_PARTY_NOTICES.md">Notices</a>
+    </nav>
+  </div>
+</footer>
+
+<script>
+/* Name the latest release beside the buttons. The page works without it: on
+   any failure the generic "Latest release" link simply stays. */
+(function () {
+  var line = document.getElementById("release-line");
+  if (!line || !window.fetch) return;
+  fetch("https://api.github.com/repos/Wasabules/halyard/releases/latest", { headers: { Accept: "application/vnd.github+json" } })
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (rel) {
+      if (!rel || !rel.tag_name) return;
+      var a = line.querySelector("a");
+      var when = rel.published_at ? new Date(rel.published_at).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" }) : "";
+      a.textContent = "Latest: " + rel.tag_name + (when ? " (" + when + ")" : "");
+      a.href = rel.html_url;
+    })
+    .catch(function () {});
+})();
+</script>
+</body>
+</html>

@@ -25,7 +25,7 @@ useful here.
 `CMakeLists.txt` declares it once, near the top:
 
 ```cmake
-set(VERSION_MAJOR/MINOR/ALTER)     # 0.3.0
+# the version: read from the latest vX.Y.Z git tag (see below)
 set(APP_TITLE       "Halyard")
 set(APP_AUTHOR      "Wasabules")
 set(APP_URL         "https://github.com/Wasabules/halyard")
@@ -40,8 +40,9 @@ Everything downstream is **derived** from it, never retyped:
 | `build_id.h` (regenerated every build) | version, build date, git hash **with a `-dirty` suffix**, the exact tag if HEAD sits on one, plus the name, author, URL and licence |
 | Settings › About, on the console | all of the above — on a console there is no `--version` to run, so this screen is the only place a licence and a source URL can be read |
 | Switch NACP | title, author, version — what the homebrew browser lists |
-| PS Vita `param.sfo` | title and `PSN_VERSION`, **computed** from the version numbers (0.3.0 → `00.30`) |
+| PS Vita `param.sfo` | title and `PSN_VERSION`, **computed** from the version (0.1.0 → `00.10`, 0.1.2 → `00.12`) |
 | PS Vita LiveArea bubble | `template.xml`, configured from `template.xml.in` with the title, version and description |
+| Windows `.exe` resource | the file and product version |
 
 Two of those used to be hand-typed copies and are now computed: `PSN_VERSION`
 (typed `00.30` beside a `0.3.0`, so the first bump would have shipped a package
@@ -52,6 +53,45 @@ artefact** — change `template.xml.in` instead.
 The `-dirty` suffix matters more than it looks: a hash that does not move lies,
 and this project has twice tested a stale binary believing otherwise. A build
 made from a modified tree now says so on the About screen.
+
+### The version is the tag
+
+There is no version number to edit. CMake reads it from git when it configures:
+
+| The tree | The version every package carries |
+|---|---|
+| exactly on the tag `v0.1.0` | `0.1.0` |
+| commits after `v0.1.0` | `0.1.0-dev` (the hash says which commit) |
+| no git, but a `VERSION` file (the release's source bundle) | what the file says |
+| no tag reachable (a shallow clone) | `0.0.0-dev` |
+
+`-DHALYARD_VERSION=X.Y.Z` overrides all of it. The version is read at
+**configure** time: after tagging, re-run `cmake` in an existing build
+directory, or it keeps the number it was configured with. CI checks out full
+history (`fetch-depth: 0`) for this reason.
+
+### Making a release
+
+1. Add a `## [X.Y.Z] - date` section to [`CHANGELOG.md`](../CHANGELOG.md),
+   written for someone who uses the app. The release workflow refuses a tag with
+   no section, and that section becomes the release notes.
+2. Commit, then tag and push the tag:
+
+   ```bash
+   git tag -a v0.2.0 -m "Halyard 0.2.0"
+   git push origin v0.2.0
+   ```
+
+3. `release.yml` builds the Switch and Vita packages from the tag, **reads the
+   version back out of them** (`tools/check-release-version.py`: the NACP, the
+   `param.sfo`, the LiveArea text) and refuses to publish if any of them does
+   not say `X.Y.Z`. Then it publishes the `.nro`, the `.vpk` and the GPL
+   Corresponding Source under the tag.
+
+The asset names do not carry the version, on purpose: the "latest" links in
+the README and the install guide
+(`releases/latest/download/halyard.nro`) keep working from one release to the
+next.
 
 ---
 
@@ -246,6 +286,10 @@ checklist.
 
 `.github/workflows/` builds all four targets, runs the tests, lints, and scans
 for secrets. `release.yml` publishes the `.nro`, the `.vpk` and the GPL
-Corresponding Source on a `v*` tag — behind a job that refuses to publish
+Corresponding Source on a `vX.Y.Z` tag — behind a job that refuses to publish
 anything the project has no right to redistribute
-(`tools/check-redistributable.py`, which reads files, not names).
+(`tools/check-redistributable.py`, which reads files, not names), and a check
+that the packages carry the tag's version. The desktop builds are not attached:
+the Windows `.exe` links MSYS2's libraries statically and their Corresponding
+Source has not been audited, and the Linux binary depends on its build machine's
+libraries. `pages.yml` publishes the website in `site/`.

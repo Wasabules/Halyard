@@ -42,8 +42,10 @@ jobs:
       run:
         shell: bash
     steps:
+      # fetch-depth 0: the version is read from the vX.Y.Z tag (CMakeLists.txt),
+      # and a shallow clone has no tag to read - it would stamp 0.0.0-dev.
       - uses: actions/checkout@v4
-        with: { submodules: recursive }
+        with: { submodules: recursive, fetch-depth: 0 }
 
       # PINNED by hash: `pins.env` names the release and its SHA-256, the patch
       # lives in the repository. A video regression is the single most

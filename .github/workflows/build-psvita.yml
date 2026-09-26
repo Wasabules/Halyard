@@ -28,7 +28,10 @@ jobs:
   vpk:
     runs-on: ubuntu-24.04
     steps:
+      # fetch-depth 0: the version is read from the vX.Y.Z tag (CMakeLists.txt),
+      # and a shallow clone has no tag to read - it would stamp 0.0.0-dev.
       - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
 
       - name: vitasdk
         run: |

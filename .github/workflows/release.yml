@@ -1,11 +1,22 @@
 # Publishes a release on a `vX.Y.Z` tag: the Switch `.nro`, the PS Vita `.vpk`,
 # and the source the GPL requires to go with them.
 #
-# IT REFUSES BEFORE IT BUILDS. Two gates run first and every other job waits on
+# IT REFUSES BEFORE IT BUILDS. Gates run first and every other job waits on
 # them: nothing in the tree may be someone else's to redistribute
-# (tools/check-redistributable.py), and the tag must be the version the
-# binaries will announce. The moment this workflow uploads a package, whatever
-# it contains is being distributed by us, automatically and at scale.
+# (tools/check-redistributable.py), the tag must be a plain vX.Y.Z, and
+# CHANGELOG.md must say what it contains. The moment this workflow uploads a
+# package, whatever it contains is being distributed by us, automatically and
+# at scale.
+#
+# === THE TAG IS THE VERSION (2026-09-26) ================================
+#
+# CMakeLists.txt reads the version from the vX.Y.Z tag, so tagging is the whole
+# release gesture - there is no number to edit first. What can still go wrong is
+# a build that did not SEE the tag (a shallow clone stamps "0.0.0-dev"), so
+# before publishing, tools/check-release-version.py reads the version back out
+# of the .nro's NACP and the .vpk's param.sfo and LiveArea, and refuses on any
+# mismatch. Run by hand (workflow_dispatch, no tag), this workflow builds and
+# checks but publishes nothing.
 #
 # === THE .vpk, AND WHY IT WAS MISSING UNTIL 2026-09-26 ==================
 #
@@ -22,6 +33,11 @@
 # The build jobs are CALLED, not copied. build-psvita.yml once carried its own
 # copy of the wolfSSL recipe; the copy drifted, lost the seed macro, and would
 # have shipped a package that cannot open a TLS socket while reporting success.
+#
+# The desktop builds are NOT attached. The Windows .exe links MSYS2's libraries
+# statically, and a release would owe the Corresponding Source of every one of
+# them - an audit not done yet. The Linux binary links the system's libraries
+# and would not run on another distribution. Both stay CI artifacts.
 name: release
 
 on:
@@ -39,22 +55,23 @@ concurrency:
 jobs:
   # Nothing builds until this passes.
   redistributable:
+    # The private development repository carries the same workflows; a tag
+    # there must not publish anything.
+    if: github.repository == 'Wasabules/halyard'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - name: is everything here ours to ship?
         run: python3 tools/check-redistributable.py
-      # The version lives in CMakeLists.txt (VERSION_MAJOR/MINOR/ALTER) and is
-      # compiled into both packages and the About screen. A tag that says
-      # otherwise would publish a binary announcing the wrong version.
-      - name: the tag is the version the binaries will announce
+      - name: the tag is a release version, and the changelog describes it
         if: startsWith(github.ref, 'refs/tags/')
         run: |
           set -euo pipefail
-          v() { sed -n "s/^set(VERSION_$1 \"\([0-9]*\)\")/\1/p" CMakeLists.txt; }
-          want="v$(v MAJOR).$(v MINOR).$(v ALTER)"
-          echo "tag ${GITHUB_REF_NAME}, CMakeLists.txt says ${want}"
-          test "${GITHUB_REF_NAME}" = "${want}"
+          echo "tag ${GITHUB_REF_NAME}"
+          [[ "${GITHUB_REF_NAME}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] \
+            || { echo "::error::a release tag is vX.Y.Z"; exit 1; }
+          grep -q "^## \[${GITHUB_REF_NAME#v}\]" CHANGELOG.md \
+            || { echo "::error::CHANGELOG.md has no '## [${GITHUB_REF_NAME#v}]' section"; exit 1; }
 
   switch:
     needs: redistributable
@@ -88,6 +105,11 @@ jobs:
           curl -sSfL -o "switch-portlibs/ffmpeg-$FFMPEG_VERSION.tar.xz" \
                "https://ffmpeg.org/releases/ffmpeg-$FFMPEG_VERSION.tar.xz"
           echo "$FFMPEG_SHA256  switch-portlibs/ffmpeg-$FFMPEG_VERSION.tar.xz" | sha256sum -c -
+      # A tarball has no git, so it cannot read its version from a tag:
+      # CMakeLists.txt falls back to this file.
+      - name: record the version for a build from this tarball
+        if: startsWith(github.ref, 'refs/tags/')
+        run: echo "${GITHUB_REF_NAME#v}" > VERSION
       - name: bundle
         run: |
           set -euo pipefail
@@ -106,28 +128,38 @@ jobs:
         with: { path: dist }
       - name: what came back
         run: find dist -type f -printf '%10s  %p\n'
+      # Read back out of the packages, the way a console reads them. On a tag
+      # the packages must say exactly the tag; a dry run only prints what they
+      # say, since there is no release number to compare against.
+      - name: every package announces the tag
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            python3 tools/check-release-version.py "${GITHUB_REF_NAME#v}" \
+              --nro dist/halyard-switch/halyard.nro --vpk dist/halyard-psvita/halyard.vpk
+          else
+            python3 tools/check-release-version.py 0.0.0 \
+              --nro dist/halyard-switch/halyard.nro --vpk dist/halyard-psvita/halyard.vpk || true
+            echo "dry run: nothing is published"
+          fi
+      - name: release notes, from CHANGELOG.md
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          set -euo pipefail
+          v="${GITHUB_REF_NAME#v}"
+          awk -v v="$v" 'index($0, "## [" v "]") == 1 {on=1; next} on && /^## \[/ {exit} on' \
+              CHANGELOG.md > notes.md
+          test -s notes.md
+          cat .github/release-footer.md >> notes.md
+          cat notes.md
       - name: release
+        if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
+          name: Halyard ${{ github.ref_name }}
+          body_path: notes.md
           files: |
             dist/halyard-switch/halyard.nro
             dist/halyard-psvita/halyard.vpk
             dist/corresponding-source/corresponding-source.tar.gz
           fail_on_unmatched_files: true
-          body: |
-            Unofficial client for the Shadow cloud PC service, on Nintendo
-            Switch and PS Vita. You need your own Shadow subscription.
-
-            **Not affiliated with, endorsed by, or sponsored by Shadow,
-            Nintendo, or Sony Interactive Entertainment.**
-
-            - `halyard.nro` — Nintendo Switch (Atmosphère), copy to `/switch/`
-            - `halyard.vpk` — PS Vita (HENkaku/Ensō), install with VitaShell
-            - `corresponding-source.tar.gz` — the GPL-3.0-or-later Corresponding
-              Source of the packages above: this repository at the tag, every
-              library at the exact commit it was built from, the FFmpeg 7.1.5
-              release tarball and the nvtegra patch for the Switch decoder, our
-              other patches, and the build scripts.
-
-            These packages are built by CI. A green build means they link and
-            package — it does **not** mean a session was played on hardware.

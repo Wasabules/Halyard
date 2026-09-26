@@ -1,6 +1,34 @@
-# Halyard
+<p align="center">
+  <img src="clients/borealis/branding/png/logo-128x128.png" width="112" height="112" alt="Halyard">
+</p>
 
-**An unofficial client for the Shadow cloud PC service, on Nintendo Switch and PS Vita.**
+<h1 align="center">Halyard</h1>
+
+<p align="center">
+  <strong>An unofficial client for the Shadow cloud PC service, on Nintendo Switch and PS Vita.</strong>
+</p>
+
+<p align="center">
+  <a href="https://github.com/Wasabules/halyard/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/Wasabules/halyard?label=release&color=2B7BE0"></a>
+  <a href="https://github.com/Wasabules/halyard/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/Wasabules/halyard/total?color=2B7BE0"></a>
+  <a href="LICENSE"><img alt="Licence: GPL-3.0-or-later" src="https://img.shields.io/badge/licence-GPL--3.0--or--later-2B7BE0"></a>
+  <img alt="Platforms: Nintendo Switch, PS Vita" src="https://img.shields.io/badge/runs%20on-Switch%20%C2%B7%20PS%20Vita-1A1B21">
+</p>
+
+<p align="center">
+  <a href="https://github.com/Wasabules/halyard/actions/workflows/build-switch.yml"><img alt="Switch build" src="https://github.com/Wasabules/halyard/actions/workflows/build-switch.yml/badge.svg?branch=main"></a>
+  <a href="https://github.com/Wasabules/halyard/actions/workflows/build-psvita.yml"><img alt="PS Vita build" src="https://github.com/Wasabules/halyard/actions/workflows/build-psvita.yml/badge.svg?branch=main"></a>
+  <a href="https://github.com/Wasabules/halyard/actions/workflows/build-linux.yml"><img alt="Linux build" src="https://github.com/Wasabules/halyard/actions/workflows/build-linux.yml/badge.svg?branch=main"></a>
+  <a href="https://github.com/Wasabules/halyard/actions/workflows/build-windows.yml"><img alt="Windows build" src="https://github.com/Wasabules/halyard/actions/workflows/build-windows.yml/badge.svg?branch=main"></a>
+  <a href="https://github.com/Wasabules/halyard/actions/workflows/tests.yml"><img alt="Tests" src="https://github.com/Wasabules/halyard/actions/workflows/tests.yml/badge.svg?branch=main"></a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/Wasabules/halyard/releases/latest/download/halyard.nro"><strong>Download for Switch</strong></a> ·
+  <a href="https://github.com/Wasabules/halyard/releases/latest/download/halyard.vpk"><strong>Download for PS Vita</strong></a> ·
+  <a href="docs/INSTALL.md">Install guide</a> ·
+  <a href="https://wasabules.github.io/halyard/">Website</a>
+</p>
 
 Homebrew (Atmosphère on Switch, HENkaku on Vita) that reimplements the Shadow PC
 streaming protocol, so a Shadow cloud machine can be played on a handheld
@@ -21,6 +49,7 @@ console.
 > out in [`docs/LEGAL.md`](docs/LEGAL.md) — read it before you install.
 
 - **Install it** → [`docs/INSTALL.md`](docs/INSTALL.md)
+- **What changed** → [`CHANGELOG.md`](CHANGELOG.md)
 - **Build it** → [`docs/BUILD.md`](docs/BUILD.md)
 - **Something is wrong** → [Troubleshooting](#when-something-goes-wrong)
 - **Legal, and the account risk** → [`docs/LEGAL.md`](docs/LEGAL.md)
@@ -110,7 +139,7 @@ bottom of this file.
 ## Settings, and the file that overrides them
 
 Most behaviour is a setting in the app. Underneath, each one drives a
-`SHADOW_*` environment variable, and roughly 240 of them gate the streaming
+`SHADOW_*` environment variable, and about 260 of them gate the streaming
 path — every fix ships with a switch that reverts it, so a comparison needs no
 rebuild.
 
@@ -159,8 +188,32 @@ tools/build-libs.sh switch       # or: vita | linux
 The offline test suite needs no console, no VM and no network:
 
 ```bash
-./tests/run_tests.sh             # 51 suites, 139,329 checks
+./tests/run_tests.sh             # 53 suites, 139,400 checks (2026-09-26)
 ```
+
+## Questions people ask
+
+**Is there a PC, Mac or web version?** Not as a product. The client also builds
+for Linux and Windows, but those are the development and test targets: the
+interface is a full-screen gamepad UI made for consoles, and the binaries are
+not packaged for release. On a computer or in a browser, Shadow's own apps are
+the better choice.
+
+**Could it run in a browser, through WebAssembly?** Not as it is. Halyard talks
+to the machine over raw UDP and TCP sockets, with TLS that skips certificate
+checks the way Shadow's desktop client does — none of which a web page is
+allowed to do. It would need a relay server in between, which adds the latency
+this project spends its time removing. Shadow's own browser client uses WebRTC
+instead, a different protocol.
+
+**Is it safe for my account?** Read [`docs/LEGAL.md`](docs/LEGAL.md). In short:
+you sign in through Shadow's own login flow, and nothing is circumvented — no
+authentication, no payment, no DRM — but using an unofficial client may still
+breach the terms of service, and the risk is your account.
+
+**Which version do I have?** Settings › About, or the entry in the Switch
+homebrew menu. Every release is numbered from its git tag, and every package
+built from that tag carries the same number.
 
 ## Contributing
 
@@ -204,7 +257,7 @@ deliberately, because it is worth more than the code:
   hypothesised fact about the protocol, each tagged with a confidence level and
   its source. §9 is a reverse-chronological log that records **which hypotheses
   were later refuted** — read the top first.
-- **[`memory/`](memory/MEMORY.md)** — 166 notes, one finding each.
+- **[`memory/`](memory/MEMORY.md)** — 151 notes, one finding each.
 
 The raw material behind those findings (captures, dumps, the official binary,
 the instruments that produced them) is **not** in this repository and will not
@@ -218,4 +271,5 @@ until the official client was caught naming its own sockets in its telemetry.
 
 ## Contact
 
-Issues on GitHub.
+[Issues on GitHub](https://github.com/Wasabules/halyard/issues) — the bug report
+form asks for what is needed to act on it.

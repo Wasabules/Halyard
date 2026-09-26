@@ -1,0 +1,49 @@
+# Changelog
+
+What changes between releases, for someone who uses Halyard. The protocol
+findings behind these changes live in [`KB.md`](KB.md); the build and packaging
+detail in the commit history.
+
+A release is a `vX.Y.Z` tag, and the release workflow refuses a tag that has no
+section here. Versions follow [Semantic Versioning](https://semver.org/); before
+1.0.0, a minor version may change behaviour.
+
+## [0.1.0] - 2026-09-26
+
+The first public release.
+
+### What it does
+
+- **Streams your Shadow cloud PC to a Nintendo Switch or a PS Vita**: sign in
+  with your Shadow account, pick your machine, play. Picture, sound, and your
+  inputs going back the other way.
+- **Hardware video decoding on both consoles** — H.264 and HEVC on Switch,
+  H.264 on Vita.
+- **Audio in Opus or FLAC**, whichever the server grants, with a 5-band
+  equaliser and per-mode profiles.
+- **Gamepad, mouse and keyboard reach the VM**: the sticks or the touchscreen
+  drive a mouse, and there is an on-screen keyboard. Rumble and gyroscope aiming
+  on Switch.
+- **The VM's own mouse pointer** is drawn.
+- **It measures itself**: latency by stage, packet loss and the link's estimated
+  capacity, in the pause menu while you play.
+- In-app testers for the network, the pad and the mouse; an optional lock on
+  opening the app.
+
+### Known limitations
+
+- The VM's **clipboard** and **microphone** are not served.
+- On PS Vita: **H.264 only**, no rumble, no gyroscope — hardware limits, not
+  pending work. The Vita port has far fewer hours of play than the Switch one.
+- Above about **25 Mb/s** the picture breaks up in play over Wi-Fi: cap the
+  bitrate in the pause menu.
+- Wi-Fi stalls of a few hundred milliseconds show as short freezes; a wired link
+  helps more than any setting.
+
+### Coming from a build named `shadow-client`
+
+The data folder moved to `/switch/halyard/` (Switch) and `ux0:data/halyard/`
+(Vita). Move the old folder's contents there, or sign in again — see
+[`docs/INSTALL.md`](docs/INSTALL.md#coming-from-shadow-client).
+
+[0.1.0]: https://github.com/Wasabules/halyard/releases/tag/v0.1.0

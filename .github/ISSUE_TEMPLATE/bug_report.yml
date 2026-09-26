@@ -1,0 +1,50 @@
+name: Something does not work
+description: A crash, no picture, no sound, inputs that do not reach the VM...
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time. **Do not paste a raw log or a packet capture**:
+        logs carry session material. Read it first and quote only the lines around
+        the problem (see SECURITY.md).
+  - type: dropdown
+    id: console
+    attributes:
+      label: Console
+      options:
+        - Nintendo Switch
+        - PS Vita / PS TV
+        - Linux (development build)
+        - Windows (development build)
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Halyard version
+      description: Settings › About shows it, with the build hash.
+      placeholder: 0.1.0 (a1b2c3d)
+    validations:
+      required: true
+  - type: dropdown
+    id: link
+    attributes:
+      label: Network
+      options:
+        - Wi-Fi
+        - Wired (Ethernet)
+        - Not sure
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what you expected
+      description: The step where it went wrong, and whether it happens every time.
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Log excerpt (optional)
+      description: A few lines from halyard.log around the problem, after reading them. No tokens, no keys, no addresses.
+      render: text

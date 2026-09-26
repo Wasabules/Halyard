@@ -17,8 +17,10 @@ jobs:
   build:
     runs-on: ubuntu-24.04
     steps:
+      # fetch-depth 0: the version is read from the vX.Y.Z tag (CMakeLists.txt),
+      # and a shallow clone has no tag to read - it would stamp 0.0.0-dev.
       - uses: actions/checkout@v4
-        with: { submodules: recursive }
+        with: { submodules: recursive, fetch-depth: 0 }
 
       # The pkg_check_modules list of CMakeLists.txt, plus ALSA for the audio
       # ring, the X11/GL and Wayland sets GLFW needs to build from source, and

@@ -1,0 +1,54 @@
+# Publishes the website in site/ to GitHub Pages.
+#
+# The page's images are not copied into site/: the logo and the background are
+# taken from the app's own branding at deploy time, so the repository holds one
+# copy of each (tools/brand-assets.py derives them all from the masters).
+name: pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "site/**"
+      - "resources/img/background.jpg"
+      - "clients/borealis/branding/png/**"
+      - ".github/workflows/pages.yml"
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    # Pages belongs to the public repository; the private development one runs
+    # the same workflows.
+    if: github.repository == 'Wasabules/halyard'
+    runs-on: ubuntu-24.04
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: assemble
+        run: |
+          set -euo pipefail
+          mkdir -p _site/assets
+          cp -r site/. _site/
+          cp resources/img/background.jpg _site/assets/background.jpg
+          for n in 64 128 192 512; do
+            cp "clients/borealis/branding/png/logo-${n}x${n}.png" "_site/assets/logo-${n}.png"
+          done
+          find _site -type f -printf '%8s  %p\n'
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with: { path: _site }
+      - id: deployment
+        uses: actions/deploy-pages@v4
