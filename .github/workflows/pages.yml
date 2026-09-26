@@ -5,9 +5,19 @@
 # copy of each (tools/brand-assets.py derives them all from the masters).
 name: pages
 
-# Manual only, for now: where the site is served (the account's Pages domain)
-# is the owner's decision, and Pages is not enabled on the repository yet.
+# The site is linked as wasabules.github.io/halyard; GitHub redirects that to
+# wherever the account serves its Pages. Keep the github.io address in the
+# repository - the export's identity check refuses anything else.
 on:
+  push:
+    branches: [main]
+    paths:
+      - "site/**"
+      - "resources/img/background.jpg"
+      - "clients/borealis/branding/png/**"
+      - ".github/workflows/pages.yml"
+  release:
+    types: [published]
   workflow_dispatch:
 
 permissions:
