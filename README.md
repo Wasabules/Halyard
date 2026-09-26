@@ -56,6 +56,15 @@ console.
 - **Something is wrong** → [Troubleshooting](#when-something-goes-wrong)
 - **Legal, and the account risk** → [`docs/LEGAL.md`](docs/LEGAL.md)
 
+## See it running
+
+<p align="center">
+  <a href="https://www.youtube.com/watch?v=GUYn1lmaoG0"><img src="docs/screenshots/video-play.webp" width="720" alt="Halyard running on a Nintendo Switch — watch the demo on YouTube"></a>
+</p>
+
+<p align="center"><sub>A Shadow machine on a Nintendo Switch, from launch to play —
+<a href="https://www.youtube.com/watch?v=GUYn1lmaoG0">watch on YouTube</a>.</sub></p>
+
 ## Screenshots
 
 <table>

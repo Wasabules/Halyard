@@ -188,6 +188,37 @@ p.intro.after { margin: 1.5rem 0 0; }
 .features h3 { margin: 0 0 0.35rem; font-size: 1.0625rem; font-weight: 650; letter-spacing: -0.01em; }
 .features p { margin: 0; color: var(--muted); font-size: 0.975rem; }
 
+.video {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--panel);
+}
+.video a, .video iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; display: block; }
+.video img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.video .play {
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 5.5rem; height: 5.5rem;
+  margin: -2.75rem 0 0 -2.75rem;
+  border-radius: 50%;
+  background: rgba(18, 19, 24, 0.78);
+  border: 2px solid var(--text);
+  transition: background-color 0.15s ease, transform 0.15s ease;
+}
+.video .play::after {
+  content: "";
+  position: absolute;
+  top: 50%; left: 54%;
+  transform: translate(-50%, -50%);
+  border-style: solid;
+  border-width: 1rem 0 1rem 1.6rem;
+  border-color: transparent transparent transparent var(--text);
+}
+.video a:hover .play, .video a:focus-visible .play { background: var(--accent); transform: scale(1.06); }
+
 .shots {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr));
@@ -332,6 +363,18 @@ footer a { color: var(--muted); }
     </ul>
   </section>
 
+  <section aria-labelledby="demo">
+    <p class="eyebrow">See it running</p>
+    <h2 id="demo">A Shadow machine on a Switch, from launch to play</h2>
+    <div class="video" id="video">
+      <a href="https://www.youtube.com/watch?v=GUYn1lmaoG0" data-video="GUYn1lmaoG0">
+        <img src="assets/screens/video-thumb.webp" width="1280" height="720" alt="Halyard running on a Nintendo Switch — play the demo video">
+        <span class="play" aria-hidden="true"></span>
+      </a>
+    </div>
+    <p class="shots-note">The video plays from YouTube once you click it — nothing is loaded from YouTube before that.</p>
+  </section>
+
   <section aria-labelledby="pictures">
     <p class="eyebrow">In pictures</p>
     <h2 id="pictures">From the machine list to the stream</h2>
@@ -443,6 +486,24 @@ footer a { color: var(--muted); }
   </div>
 </footer>
 
+<script>
+/* The demo video: a local picture until someone asks for it, then YouTube's
+   privacy-enhanced player. Without script, the link opens the video on YouTube. */
+(function () {
+  var box = document.getElementById("video");
+  if (!box) return;
+  var link = box.querySelector("a[data-video]");
+  link.addEventListener("click", function (e) {
+    e.preventDefault();
+    var f = document.createElement("iframe");
+    f.src = "https://www.youtube-nocookie.com/embed/" + link.getAttribute("data-video") + "?autoplay=1&rel=0";
+    f.title = "Halyard demo";
+    f.allow = "autoplay; encrypted-media; picture-in-picture; fullscreen";
+    f.allowFullscreen = true;
+    box.replaceChild(f, link);
+  });
+})();
+</script>
 <script>
 /* Name the latest release beside the buttons. The page works without it: on
    any failure the generic "Latest release" link simply stays. */
