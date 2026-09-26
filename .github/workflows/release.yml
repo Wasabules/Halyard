@@ -110,14 +110,17 @@ jobs:
       - name: record the version for a build from this tarball
         if: startsWith(github.ref, 'refs/tags/')
         run: echo "${GITHUB_REF_NAME#v}" > VERSION
+      # Written OUTSIDE the tree it archives: tar exits 1 on "file changed as we
+      # read it" when the archive grows inside the directory being read - the
+      # first real release run (v0.1.0) failed exactly there.
       - name: bundle
         run: |
           set -euo pipefail
-          tar --exclude-vcs --exclude='build_*' --exclude='./corresponding-source.tar.gz' \
-              -czf corresponding-source.tar.gz .
-          ls -la corresponding-source.tar.gz
+          out="$RUNNER_TEMP/corresponding-source.tar.gz"
+          tar --exclude-vcs --exclude='build_*' -czf "$out" .
+          ls -la "$out"
       - uses: actions/upload-artifact@v4
-        with: { name: corresponding-source, path: corresponding-source.tar.gz }
+        with: { name: corresponding-source, path: "${{ runner.temp }}/corresponding-source.tar.gz" }
 
   publish:
     needs: [switch, psvita, corresponding-source]
