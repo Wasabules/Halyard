@@ -511,6 +511,11 @@ public:
      * reads as a stalled load, not as an answer. Empty = nothing is shown at
      * all, which remains the right choice while loading. */
     void setEmptyMessage(std::string m) { message_vide_ = std::move(m); }
+    /* EQ-BG 2026-09-26 - a screen that shares the window with another panel
+     * paints the background once, across the whole width, and turns this off:
+     * each painting its own crop of the photo left a seam, and the panel that
+     * painted none showed the white clear colour. */
+    void setPaintsBackground(bool on) { paints_bg_ = on; }
 
     /* Replaces all the content. The focus is RE-CLAMPED, never left out of
      * range: this is where the robustness is won, since this is the moment the
@@ -701,6 +706,7 @@ private:
     struct TileBox { int index; float x, y, w, h; };
     std::vector<TileBox> tile_boxes_;
     std::string message_vide_;
+    bool        paints_bg_ = true;
 
     /* --- Rail (S79) ------------------------------------------------------
      * One vector and TWO indices, like the list: the index of the open section,

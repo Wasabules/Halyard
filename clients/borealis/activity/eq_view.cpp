@@ -625,6 +625,12 @@ void EqView::paint(NVGcontext *vg, float x, float y, float w, float h, double t)
     const float CURVE_W = 380.0f;
     const bool with_curve = w > CURVE_W * 2.2f;
 
+    /* EQ-BG 2026-09-26 - the background spans the WHOLE page. The list used to
+     * paint it over its own width only, so the curve's column showed the white
+     * clear colour behind it - on every target, since the page exists. */
+    paint::shadowBg(vg, x, y, w, h);
+    paint::backgroundWaves(vg, x, y, w, h, t);
+    screen_.setPaintsBackground(false);
     screen_.draw(vg, x, y, with_curve ? w - CURVE_W : w, h, t);
 
     if (with_curve) {

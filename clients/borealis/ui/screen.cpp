@@ -845,9 +845,9 @@ void ListScreen::draw(NVGcontext *vg, float x, float y, float w, float h, double
     const double c0 = ui7c_on ? ui7c_ms() : 0.0;
     view_x_ = x; view_y_ = y; view_w_ = w; view_h_ = h;
 
-    paint::shadowBg(vg, x, y, w, h);
+    if (paints_bg_) paint::shadowBg(vg, x, y, w, h);
     const double c1 = ui7c_on ? ui7c_ms() : 0.0;
-    paint::backgroundWaves(vg, x, y, w, h, t);
+    if (paints_bg_) paint::backgroundWaves(vg, x, y, w, h, t);
     const double c2 = ui7c_on ? ui7c_ms() : 0.0;
 
     const float MARGIN = device::isDocked() ? MARGIN_DOCKED : MARGIN_HANDHELD;

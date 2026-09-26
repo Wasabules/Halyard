@@ -3,7 +3,8 @@
 #include "../device_caps.h"
 #include "../ui/haptics.hpp"
 #include "clients/borealis/devlink/devlink.hpp"   /* DEVL-4: the stream describes itself too */
-#include "clients/borealis/devlink/inject.hpp"    /* INJ-1: the stream reads libnx directly, so it reads this too */
+#include "clients/borealis/devlink/inject.hpp"
+#include "../demo.hpp"                    /* DEMO-1 */    /* INJ-1: the stream reads libnx directly, so it reads this too */
 #include "clients/borealis/activity/stream_view.hpp"
 #include "clients/borealis/include/pad_compat.h"  /* the six libnx calls, off Switch */
 
@@ -242,8 +243,8 @@ void StreamView::setStreamKeepAwake(bool active) {
     auto *plat = brls::Application::getPlatform();
     if (!plat) return;
     plat->disableScreenDimming(active, "stream", "Halyard");
-    svlog("[LAT-V1] mise en veille %s pendant le stream",
-          active ? "suspendue" : "retablie");
+    svlog("[LAT-V1] screen dimming %s for the stream",
+          active ? "held off" : "restored");
 }
 
 StreamView::~StreamView() {
@@ -2475,6 +2476,26 @@ void StreamView::draw(NVGcontext* vg, float x, float y, float width, float heigh
 #endif  /* SHADOW_HAS_STREAM_INPUT */
 
 #if SHADOW_HAVE_DESKTOP_GL   /* GLFW: desktop only - see gl_compat.h */
+    /* === DEMO-1 2026-09-26 - A PAUSE MENU A SCRIPT CAN REACH ===
+     *
+     * On desktop only the developer menu bar opens the pause menu (the F2 long
+     * press exists on console only, and the keyboard belongs to the VM while
+     * streaming - K20), and devlink injects nothing into this view off console.
+     * The demo mode hides that bar, so a scripted capture had no way in:
+     * SHADOW_DEMO_MENU_AT_S=N opens the menu once, N seconds into a demo
+     * stream. Demo mode only - a real session never opens a menu by itself. */
+    if (!demo_menu_done_ && demo::enabled()) {
+        const char *at = getenv("SHADOW_DEMO_MENU_AT_S");
+        const double now_s = glfwGetTime();
+        if (!at || atof(at) <= 0) {
+            demo_menu_done_ = true;
+        } else if (demo_menu_t0_ < 0) {
+            demo_menu_t0_ = now_s;
+        } else if (now_s - demo_menu_t0_ >= atof(at)) {
+            demo_menu_done_ = true;
+            if (!isMenuOpen()) openMenu();
+        }
+    }
     /* === K22 2026-09-10 - THE PAUSE MENU WAS UNUSABLE ON DESKTOP ===
      *
      * Reported in use: the arrow keys did not move in the menu, and neither did

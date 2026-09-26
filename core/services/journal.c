@@ -116,6 +116,16 @@ static void (*g_cmd)(const char *) = NULL;
  * this repo is right to distrust. NULL = closed. */
 static const journal_mirror_gate_t *g_gate = NULL;
 static int g_gate_warned = 0;
+/* === AUTH-2 2026-09-26 - A PEER REACHED BEFORE THE GATE IS KEPT, NOT LOST ===
+ *
+ * The sink connects as soon as the journal opens, and `main` installs the gate
+ * a few hundred lines later. A listener already running was therefore reached
+ * BEFORE any gate existed: the offer went nowhere, the question was never asked,
+ * and the mirror stayed silent for the whole run - exactly the Switch session
+ * of 2026-09-26 that sent nothing to a listener started before launch, and the
+ * desktop demo that answered no command. The peer is kept here and offered
+ * when the gate arrives. Guarded by `g_lock`. */
+static char g_peer_unoffered[160] = "";
 
 static int gate_allowed(void)
 {
@@ -124,15 +134,18 @@ static int gate_allowed(void)
 static void gate_offer(const char *peer)
 {
     if (g_gate && g_gate->offer) { g_gate->offer(peer); return; }
-    /* Once per process, and only when a peer was actually reached -- so the
-     * line appears exactly when someone is waiting for a mirror that will
-     * never come, and never on a build that has no mirror at all.
-     * Called from the drain thread, outside the lock: logging is safe here. */
+    /* AUTH-2 - no gate yet: keep the peer for journal_set_mirror_gate().
+     * Called from the drain thread, outside the lock: taking it and logging
+     * are both safe here. */
+    pthread_mutex_lock(&g_lock);
+    snprintf(g_peer_unoffered, sizeof g_peer_unoffered, "%s", peer ? peer : "");
+    pthread_mutex_unlock(&g_lock);
     if (!g_gate_warned) {
         g_gate_warned = 1;
-        JOURNAL_WARN_(JOURNAL_CAT_SYSTEM,
-                      "[AUTH-1] mirror reached %s but NO authorisation gate is "
-                      "installed - nothing will be sent", peer ? peer : "?");
+        JOURNAL_INFO_(JOURNAL_CAT_SYSTEM,
+                      "[AUTH-2] mirror reached %s before the authorisation gate "
+                      "exists - it is asked once the gate is installed",
+                      peer ? peer : "?");
     }
 }
 static void gate_forget(void)
@@ -725,6 +738,16 @@ void journal_set_command_handler(void (*handler)(const char *line))
 void journal_set_mirror_gate(const journal_mirror_gate_t *gate)
 {
     g_gate = gate;
+    /* AUTH-2 - offer a peer that was reached before this call, if the sink is
+     * still connected to it. Outside the lock: the offer logs. */
+    char peer[sizeof g_peer_unoffered];
+    peer[0] = 0;
+    pthread_mutex_lock(&g_lock);
+    if (gate && g_peer_unoffered[0] && g_sink_state == 1 && g_sink_fd >= 0)
+        memcpy(peer, g_peer_unoffered, sizeof peer);
+    g_peer_unoffered[0] = 0;
+    pthread_mutex_unlock(&g_lock);
+    if (peer[0]) gate_offer(peer);
 }
 
 void journal_reconnect_sink(void)

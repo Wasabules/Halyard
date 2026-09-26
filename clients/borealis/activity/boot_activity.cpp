@@ -3,6 +3,7 @@
 #include "../ui/i18n.hpp"
 #include "activity/shadow_app.hpp"
 #include "activity/vm_list_activity.hpp"
+#include "../demo.hpp"                /* DEMO-1 - fictional data for screenshots */
 #include "core/version.h"           /* S85 - build fingerprint shown on the error screen */
 #include "core/common/log.h"        /* [NAV] traces */
 /* S81 - this module's log category. See shadow/journal.h: it is DECLARED here,
@@ -99,6 +100,40 @@ void BootActivity::startBootFlow() {
     BootActivity *self = this;
 
     brls::Threading::async([alive_flag, v, self]() {
+        /* DEMO-1 - the same status lines, no request, no token read or saved. */
+        if (demo::enabled()) {
+            auto pause_ms = [&alive_flag](int ms) {
+                for (int t = 0; t < ms / 100 && alive_flag->load(); t++)
+                    svcSleepThread(100000000ULL);
+            };
+            for (const char *key : {"boot/net_init", "boot/net_check", "boot/datacenter", "boot/auth"}) {
+                ui_set(v, alive_flag, ui::tr(key));
+                pause_ms(400);
+            }
+            if (demo::holdPairing()) {
+                const std::string qr_path = "/tmp/halyard_demo_qr.bmp";
+                const bool qr_ok = qr_generate_bmp(demo::pairingUrl(), qr_path.c_str(), 10);
+                brls::Threading::sync([alive_flag, v, qr_ok, qr_path]() {
+                    if (!alive_flag->load() || !v) return;
+                    v->setPairing(demo::pairingUrl(), demo::pairingCode(),
+                                  qr_ok ? qr_path : std::string());
+                    v->setTimer(ui::tr("boot/grant_waiting", "09:41"));
+                });
+                return;   /* stays on the sign-in screen until the app is closed */
+            }
+            ShadowApp::instance().launcher_url = "demo";
+            ShadowApp::instance().dc_name      = demo::datacenter();
+            ShadowApp::instance().access_token = "demo";
+            ui_set(v, alive_flag, ui::tr("boot/connected_to", ShadowApp::instance().dc_name));
+            pause_ms(500);
+            if (!alive_flag->load()) return;
+            brls::Threading::sync([]() {
+                balog("[NAV] boot screen -> pushing the VM list (demo)");
+                brls::Application::pushActivity(new VmListActivity());
+            });
+            return;
+        }
+
         // 1. HTTP/curl init
         ui_set(v, alive_flag, ui::tr("boot/net_init"));
         if (!http_global_init()) {

@@ -11,6 +11,7 @@ extern "C" {
 #include "activity/shadow_app.hpp"
 #include "../device_mode.hpp"
 #include "../autotest.hpp"
+#include "../demo.hpp"                /* DEMO-1 */
 
 extern "C" {
 #include "../../../core/common/log.h"
@@ -331,6 +332,39 @@ void ConnectingActivity::runConnectionFlow() {
         auto showError = [alive_flag, err_view, self](const std::string &msg) {
             showErrorUI(alive_flag, err_view, msg, self);
         };
+
+        /* === DEMO-1 - the seven steps, timed like a real connection, then the
+         * demo stream. No request leaves; the addresses are documentation ones
+         * (RFC 5737). The exits mirror the real path below: popping the stream
+         * view, then the connecting screen on a deliberate exit (S40, S61). */
+        if (demo::enabled()) {
+            const char *details[7] = {"", "203.0.113.24:10011", "", "", "", "", ""};
+            const int   wait_ms[7] = {500, 900, 400, 600, 700, 500, 0};
+            for (int i = 0; i < 7 && !abandon(); i++) {
+                setStep(i, app::StepState::Running);
+                for (int t = 0; t < wait_ms[i] / 100 && !abandon(); t++)
+                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                if (i < 5) setStep(i, app::StepState::Done, details[i]);
+                if (i == 5) setStep(5, app::StepState::Done, ui::tr("connect/st_streamer_up"));
+            }
+            if (abandon()) return;
+            setStep(6, app::StepState::Running, ui::tr("connect/st_running"));
+            /* SHADOW_DEMO_HOLD_CONNECTING=1 stops here, for a capture of the steps. */
+            const char *hold = getenv("SHADOW_DEMO_HOLD_CONNECTING");
+            if (hold && atoi(hold) != 0) {
+                while (!abandon()) std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                return;
+            }
+            brls::Threading::sync([]() { ui::nav::push(new StreamActivity()); });
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+            demo::runStream(abandon);
+            brls::Threading::sync([]() { ui::nav::pop(); });
+            if (!alive_flag->load()) return;
+            brls::Threading::sync([popped = popped_flag]() {
+                if (!popped->exchange(true)) ui::nav::pop();
+            });
+            return;
+        }
 
         // Pre-step: GET capabilities + GET turn-servers (non-fatal). The official
         // clients call these before /vm/start - possibly a "modern client"

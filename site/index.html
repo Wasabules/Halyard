@@ -188,6 +188,26 @@ p.intro.after { margin: 1.5rem 0 0; }
 .features h3 { margin: 0 0 0.35rem; font-size: 1.0625rem; font-weight: 650; letter-spacing: -0.01em; }
 .features p { margin: 0; color: var(--muted); font-size: 0.975rem; }
 
+.shots {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr));
+  gap: 1.25rem;
+  margin: 0;
+}
+.shots figure { margin: 0; }
+.shots a {
+  display: block;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--panel);
+  transition: border-color 0.15s ease;
+}
+.shots a:hover { border-color: var(--accent); }
+.shots img { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; }
+.shots figcaption { margin-top: 0.6rem; font-size: 0.9rem; color: var(--muted); }
+.shots-note { margin: 1.25rem 0 0; font-size: 0.85rem; color: var(--faint); max-width: 44rem; }
+
 .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); }
 table { width: 100%; border-collapse: collapse; font-size: 0.95rem; min-width: 30rem; }
 th, td { padding: 0.8rem 1rem; text-align: left; border-bottom: 1px solid var(--line); vertical-align: top; }
@@ -310,6 +330,38 @@ footer a { color: var(--muted); }
         <p>Testers for the network, the pad and the mouse, and an optional lock on opening the app.</p>
       </li>
     </ul>
+  </section>
+
+  <section aria-labelledby="pictures">
+    <p class="eyebrow">In pictures</p>
+    <h2 id="pictures">From the machine list to the stream</h2>
+    <div class="shots">
+      <figure>
+        <a href="assets/screens/machines.webp"><img src="assets/screens/machines.webp" width="1280" height="720" loading="lazy" alt="The list of machines on the account"></a>
+        <figcaption>Pick a machine</figcaption>
+      </figure>
+      <figure>
+        <a href="assets/screens/connecting.webp"><img src="assets/screens/connecting.webp" width="1280" height="720" loading="lazy" alt="The connection, step by step"></a>
+        <figcaption>The connection, step by step</figcaption>
+      </figure>
+      <figure>
+        <a href="assets/screens/stream.webp"><img src="assets/screens/stream.webp" width="1280" height="720" loading="lazy" alt="A stream with the performance panel open"></a>
+        <figcaption>Stream, with the performance panel</figcaption>
+      </figure>
+      <figure>
+        <a href="assets/screens/pause-menu.webp"><img src="assets/screens/pause-menu.webp" width="1280" height="720" loading="lazy" alt="The pause menu over the stream"></a>
+        <figcaption>The pause menu, during the stream</figcaption>
+      </figure>
+      <figure>
+        <a href="assets/screens/settings-video.webp"><img src="assets/screens/settings-video.webp" width="1280" height="720" loading="lazy" alt="The video settings"></a>
+        <figcaption>Settings</figcaption>
+      </figure>
+      <figure>
+        <a href="assets/screens/equaliser.webp"><img src="assets/screens/equaliser.webp" width="1280" height="720" loading="lazy" alt="The equaliser, with docked and handheld profiles"></a>
+        <figcaption>Equaliser, per console mode</figcaption>
+      </figure>
+    </div>
+    <p class="shots-note">Captured from the desktop build in its demo mode: the account, the machines and the numbers are fictional.</p>
   </section>
 
   <section aria-labelledby="consoles">

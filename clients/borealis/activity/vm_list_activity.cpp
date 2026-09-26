@@ -15,6 +15,7 @@ extern "C" {
 #include "../ui/screen_base.hpp"
 #include "../ui/i18n.hpp"
 #include "activity/shadow_app.hpp"
+#include "../demo.hpp"                /* DEMO-1 */
 #include "activity/connecting_activity.hpp"
 #include "activity/settings_activity.hpp"   /* B1 2026-05-18 */
 
@@ -207,6 +208,11 @@ void VmListActivity::updateHeader()
 
 void VmListActivity::fetchAccountInfo() {
     auto alive_flag = alive;
+    if (demo::enabled()) {   /* DEMO-1 - a fictional plan, no request */
+        demo::account(offer_, drive_);
+        updateHeader();
+        return;
+    }
     brls::Threading::async([this, alive_flag]() {
         ShadowApp &app = ShadowApp::instance();
         Subscription sub = {0};
@@ -324,6 +330,16 @@ void VmListActivity::refreshVms() {
         if (view) view->setStatus(ui::tr("vm/refreshing"), true);
         ui::sfx::play(ui::sfx::Sound::Confirm);
     });
+
+    if (demo::enabled()) {   /* DEMO-1 - fictional machines, no request */
+        demo::fillVms();
+        ui_run(alive_flag, [this, view]() {
+            renderVmCards();
+            if (view) view->setStatus(ui::tr("vm/count", ShadowApp::instance().vms.size(),
+                                             ShadowApp::instance().vms.size()), false);
+        });
+        return;
+    }
 
     brls::Threading::async([this, alive_flag, view]() {
         ShadowApp &app = ShadowApp::instance();

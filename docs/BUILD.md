@@ -265,6 +265,34 @@ this project was taken on Linux or on hardware — keep it that way.
 
 ---
 
+## Screenshots, and the demo mode
+
+The pictures in the README and on the website come from the desktop build run
+with `SHADOW_DEMO=1`: the account, the machines, the connection and the stream's
+numbers are fictional, and no request leaves — so nothing personal can end up
+in a picture. One script drives the app through devlink and writes them:
+
+```bash
+tools/showcase-screenshots.sh          # -> docs/screenshots/*.webp, about two minutes
+```
+
+It needs `build_linux/halyard` and a visible desktop (the window must stay
+composited — see `tools/client/DEVLINK.md`). The stream shots show
+`clients/borealis/branding/demo_stream.jpg` when it exists, the app's own
+background otherwise. It saves and restores the desktop data directory's
+`settings.txt`, `logsink.txt` and `devlink_autorises.txt`.
+
+The demo's own switches, all off by default:
+
+| Variable | What it does |
+|---|---|
+| `SHADOW_DEMO=1` | fictional data everywhere, no network; hides the developer menu bar |
+| `SHADOW_DEMO_PAIRING=1` | stops on the sign-in code screen |
+| `SHADOW_DEMO_HOLD_CONNECTING=1` | stops on the last connection step |
+| `SHADOW_DEMO_MENU_AT_S=N` | opens the pause menu N seconds into the stream |
+| `SHADOW_DEMO_PICTURE=path` | the stream's picture (JPEG or PNG, any size) |
+| `SHADOW_DEV_MENU=0/1` | hides or shows the developer menu bar, demo or not |
+
 ## Tests
 
 The protocol logic is covered offline: no console, no VM, no network.

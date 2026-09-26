@@ -247,6 +247,19 @@ the window is not drawing, there is nothing to fix — bring it back to the fron
 On console the question does not arise: the homebrew is alone on screen and always
 draws.
 
+## Two things fixed on 2026-09-26
+
+- **`nav` and `stick` sent French words** (`bas`, `gauche`…) after the app's
+  parser moved to `up/down/left/right` in the 2026-09-12 migration: the tool
+  refused `nav down`, and what it did send the app rejected. `--autotest` stayed
+  green because it only checked the tool against itself; it now also refuses
+  the old word.
+- **A listener that was already running got nothing** (AUTH-2). The app reaches
+  the listener as soon as its journal opens, before `main` installs the
+  authorisation gate, and that first contact was dropped: no question asked, no
+  mirror, no command, for the whole run. The peer is now kept and offered as
+  soon as the gate exists.
+
 ## Known limits
 
 - **Launching the app remains manual.** Nothing allows starting a homebrew

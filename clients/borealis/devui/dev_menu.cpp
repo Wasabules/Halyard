@@ -165,6 +165,13 @@ void buildMenus()
 
 void install(const Host &host, const void *owner)
 {
+    /* DEMO-1 2026-09-26 - SHADOW_DEV_MENU=0 hides the bar. The demo mode hides
+     * it unless asked: its screenshots show the app as a user sees it, and a
+     * user has no developer menu. Not installed = height 0 and nothing drawn. */
+    const char *want = std::getenv("SHADOW_DEV_MENU");
+    const char *demo = std::getenv("SHADOW_DEMO");
+    const bool shown = want ? std::atoi(want) != 0 : !(demo && std::atoi(demo) != 0);
+    if (!shown) return;
     g_host      = host;
     g_owner     = owner;
     g_installed = true;

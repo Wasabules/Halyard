@@ -1,8 +1,9 @@
 # Publishes the website in site/ to GitHub Pages.
 #
 # The page's images are not copied into site/: the logo and the background are
-# taken from the app's own branding at deploy time, so the repository holds one
-# copy of each (tools/brand-assets.py derives them all from the masters).
+# taken from the app's own branding at deploy time, and the screenshots from
+# docs/screenshots/ (tools/showcase-screenshots.sh), so the repository holds one
+# copy of each.
 name: pages
 
 # The site is linked as wasabules.github.io/Halyard - the path follows the
@@ -16,6 +17,7 @@ on:
       - "site/**"
       - "resources/img/background.jpg"
       - "clients/borealis/branding/png/**"
+      - "docs/screenshots/**"
       - ".github/workflows/pages.yml"
   release:
     types: [published]
@@ -47,6 +49,8 @@ jobs:
           mkdir -p _site/assets
           cp -r site/. _site/
           cp resources/img/background.jpg _site/assets/background.jpg
+          mkdir -p _site/assets/screens
+          cp docs/screenshots/*.webp _site/assets/screens/
           for n in 64 128 192 512; do
             cp "clients/borealis/branding/png/logo-${n}x${n}.png" "_site/assets/logo-${n}.png"
           done

@@ -97,7 +97,13 @@ MARKER = "[devlink]"
 RE_TIMESTAMP = re.compile(r"^\[\d+\.\d{3}\]\s*(?:[A-Z]/\S+\s+)?")
 
 BUTTONS = ("a", "b", "x", "y", "l", "r", "zl", "zr", "plus", "minus")
-DIRECTIONS = ("haut", "bas", "gauche", "droite")
+# The words the APP parses (devcmd.h). They were French until the 2026-09-12
+# migration renamed them on the app's side only: from then on the tool refused
+# `nav down` and sent `nav bas`, which the app rejects - nav and stick were dead
+# for two weeks while --autotest, which checks this file against itself, stayed
+# green. tests/test_devcmd.c is the app's side of the same list.
+DIRECTIONS = ("up", "down", "left", "right")
+STICK_SIDES = ("left", "right")
 
 # Bounds. These lines come from the network: no value is trusted.
 MAX_LINE = 8192              # a shot-data line is at most 512 characters
@@ -932,7 +938,7 @@ def valide_commande(words):
         return "btn %s" % words[1], None
     if verbe == "nav":
         if len(words) != 2 or words[1] not in DIRECTIONS:
-            return None, "nav attend un sens parmi : %s" % " ".join(DIRECTIONS)
+            return None, "nav expects one of: %s" % " ".join(DIRECTIONS)
         return "nav %s" % words[1], None
     if verbe == "hold":
         if len(words) != 3:
@@ -944,15 +950,15 @@ def valide_commande(words):
         except ValueError:
             return None, "hold expects a duration in MILLISECONDS (an integer)"
         if not (0 < ms <= MAX_MS):
-            return None, "hold hors bornes (1..%d ms)" % MAX_MS
+            return None, "hold out of bounds (1..%d ms)" % MAX_MS
         return "hold %s %d" % (words[1], ms), None
     if verbe == "release":
         return "release", None
     if verbe == "stick":
         if len(words) not in (4, 5):
-            return None, "stick attend : stick <gauche|droite> <x> <y> [ms]"
-        if words[1] not in ("gauche", "droite"):
-            return None, "stick attend gauche ou droite"
+            return None, "stick expects: stick <left|right> <x> <y> [ms]"
+        if words[1] not in STICK_SIDES:
+            return None, "stick expects left or right"
         try:
             x, y = int(words[2]), int(words[3])
             ms = int(words[4]) if len(words) == 5 else 0
@@ -1431,13 +1437,14 @@ def autotest_parsing():
     check(col.succeeded() and len(col.state) < MAX_LINE, "an outsized line is bounded")
 
     print("-- validating commands, BEFORE anything is sent --", flush=True)
-    for words, attendu in ((["btn", "a"], "btn a"), (["nav", "bas"], "nav bas"),
+    for words, attendu in ((["btn", "a"], "btn a"), (["nav", "down"], "nav down"),
                           (["tap", "640", "360"], "tap 640 360"), (["shot"], "shot")):
         rendered, problem = valide_commande(words)
         check(rendered == attendu and problem is None, "command %s accepted" % attendu)
     for words, what in ((["btn", "start"], "a button that does not exist"),
                        (["btn"], "a button with no name"),
-                       (["nav", "haut-droite"], "a direction that does not exist"),
+                       (["nav", "up-right"], "a direction that does not exist"),
+                       (["nav", "bas"], "the French word the app stopped parsing on 2026-09-12"),
                        (["tap", "640"], "tap with no y"),
                        (["tap", "x", "y"], "a non-numeric tap"),
                        (["tap", "-1", "10"], "a negative tap"),
@@ -1497,8 +1504,8 @@ def autotest_parsing():
     # Injection: the same counter-case list as tests/test_devcmd.c.
     for words, attendu in ((["hold", "b", "3000"], "hold b 3000"),
                           (["release"], "release"),
-                          (["stick", "gauche", "0", "-100"], "stick gauche 0 -100"),
-                          (["stick", "droite", "50", "50", "200"], "stick droite 50 50 200"),
+                          (["stick", "left", "0", "-100"], "stick left 0 -100"),
+                          (["stick", "right", "50", "50", "200"], "stick right 50 50 200"),
                           (["swipe", "1", "2", "3", "4"], "swipe 1 2 3 4"),
                           (["swipe", "1", "2", "3", "4", "250"], "swipe 1 2 3 4 250")):
         rendered, problem = valide_commande(words)
@@ -1507,9 +1514,9 @@ def autotest_parsing():
                        (["hold", "start", "100"], "hold on a button that does not exist"),
                        (["hold", "b", "0"], "a zero duration"),
                        (["hold", "b", "999999"], "an absurd duration"),
-                       (["stick", "haut", "0", "0"], "a side that does not exist"),
-                       (["stick", "gauche", "101", "0"], "a stick out of bounds"),
-                       (["stick", "gauche", "0"], "a stick with only one axis"),
+                       (["stick", "up", "0", "0"], "a side that does not exist"),
+                       (["stick", "left", "101", "0"], "a stick out of bounds"),
+                       (["stick", "left", "0"], "a stick with only one axis"),
                        (["swipe", "1", "2", "3"], "an incomplete swipe"),
                        (["swipe", "-1", "2", "3", "4"], "a negative coordinate"),
                        (["swipe", "99999", "2", "3", "4"], "off screen")):
@@ -1806,7 +1813,7 @@ def build_parser():
     s.add_parser("release", help="let go of everything at once")
 
     st = s.add_parser("stick", help="push a stick (-100..100)")
-    st.add_argument("cote", choices=("gauche", "droite"))
+    st.add_argument("cote", choices=STICK_SIDES)
     st.add_argument("x", type=int)
     st.add_argument("y", type=int)
     st.add_argument("ms", nargs="?", type=int, default=0)

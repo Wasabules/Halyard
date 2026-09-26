@@ -325,6 +325,9 @@ public:
     bool  pad_mouse_was_active_ = false;
     /* S97 - held direction and next repeat, for the pause menu. */
     int     nav_dir_x_ = 0, nav_dir_y_ = 0;
+    /* DEMO-1 - the pause menu opened once, N s into a demo stream. */
+    double  demo_menu_t0_ = -1.0;
+    bool    demo_menu_done_ = false;
     int64_t nav_next_ms_ = 0;
 
 
