@@ -5,9 +5,10 @@
 # copy of each (tools/brand-assets.py derives them all from the masters).
 name: pages
 
-# The site is linked as wasabules.github.io/halyard; GitHub redirects that to
-# wherever the account serves its Pages. Keep the github.io address in the
-# repository - the export's identity check refuses anything else.
+# The site is linked as wasabules.github.io/Halyard - the path follows the
+# repository's name, case included; GitHub redirects it to wherever the account
+# serves its Pages. Keep the github.io address in the repository: the export's
+# identity check refuses anything else.
 on:
   push:
     branches: [main]

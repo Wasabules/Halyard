@@ -27,7 +27,7 @@
   <a href="https://github.com/Wasabules/halyard/releases/latest/download/halyard.nro"><strong>Download for Switch</strong></a> ·
   <a href="https://github.com/Wasabules/halyard/releases/latest/download/halyard.vpk"><strong>Download for PS Vita</strong></a> ·
   <a href="docs/INSTALL.md">Install guide</a> ·
-  <a href="https://wasabules.github.io/halyard/">Website</a>
+  <a href="https://wasabules.github.io/Halyard/">Website</a>
 </p>
 
 Homebrew (Atmosphère on Switch, HENkaku on Vita) that reimplements the Shadow PC
