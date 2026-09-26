@@ -265,6 +265,24 @@ this project was taken on Linux or on hardware — keep it that way.
 
 ---
 
+## The website and the user guide
+
+The site on GitHub Pages is the landing page in `site/` plus the **user guide**,
+written in Markdown in `docs/INSTALL.md` and `docs/guide/*.md` — readable on
+GitHub as they are. `tools/build-site.py` renders both into `_site/`, with the
+logo, the background and the screenshots taken from where they already live;
+`pages.yml` runs it on every change and on every release. To preview:
+
+```bash
+pip install "markdown==3.11"
+python3 tools/build-site.py            # -> _site/
+python3 -m http.server -d _site 8000   # http://localhost:8000/docs/
+```
+
+Write links between guide pages as links between the `.md` files, so they work
+on GitHub too; the script turns them into links between pages, and a link to any
+other file of the repository into a link to that file on GitHub.
+
 ## Screenshots, and the demo mode
 
 The pictures in the README and on the website come from the desktop build run

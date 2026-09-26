@@ -148,3 +148,6 @@ third_party/vitacompanion/
 
 # A compiled test helper; build it from virtual_gamepad.c.
 tools/test/virtual_gamepad
+
+# the website, built by tools/build-site.py
+/_site/

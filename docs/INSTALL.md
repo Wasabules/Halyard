@@ -57,16 +57,21 @@ settings.
 
 ## Signing in
 
-The first launch shows a short **code** and a URL. Open that URL on a phone or a
-computer, sign in to Shadow, and type the code. The console picks up the session
-by itself within a few seconds — there is nothing to type on the console.
+The first launch shows a short **code**, an address and a QR code. Open the
+address on a phone or a computer (or scan the code), sign in to Shadow, and type
+the code. The console picks up the session by itself within a few seconds —
+there is nothing to type on the console. The code expires after a few minutes,
+counted down on screen; if it does, press **A** to get a new one.
 
-The refresh token is then kept in the data directory so you do not repeat this.
-It is stored **obfuscated, not encrypted**: anyone with the SD card can recover
-it. The optional app lock (Settings › Security) protects *opening the app*, not
-the data beside it.
+![The sign-in screen](screenshots/signin.webp)
 
-To sign out, delete `refresh_token` from the data directory.
+The session is then kept in the data directory so you do not repeat this. It is
+stored **obfuscated, not encrypted**: anyone with the SD card can recover it —
+unless you set an app lock (Settings › Security), which seals it. The lock
+protects *opening the app*; the other files beside it stay readable.
+
+To sign out, use Settings › Account › **Sign out**, or delete `refresh_token`
+from the data directory.
 
 ## First session
 
@@ -81,8 +86,8 @@ through to the VM, which is usually the game's own menu.
   probe. This is the single setting most worth changing.
 - Check the **link quality** page if the picture is poor. It reports loss, the
   round trip and what the path looks like it can carry.
-- The **latency** page breaks the delay into eleven stages, so you can see
-  whether a problem is the network or the console.
+- The **performance panel** (pause menu › Display) breaks the delay down stage
+  by stage, so you can see whether a problem is the network or the console.
 
 ## Settings, and the file that beats them
 
@@ -139,6 +144,13 @@ are separate entries.
 
 Delete the `.nro` (Switch) or uninstall from LiveArea (Vita), then remove the
 data directory to take the token and logs with it.
+
+## Learning the rest
+
+The [user guide](https://wasabules.github.io/Halyard/docs/) covers everything
+else: the screens, the controls on each console, every setting, and reading the
+performance panel. Its pages are also in this repository, under
+[`docs/guide/`](guide/).
 
 ## Getting help
 

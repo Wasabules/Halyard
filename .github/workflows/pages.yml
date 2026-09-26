@@ -1,9 +1,9 @@
 # Publishes the website in site/ to GitHub Pages.
 #
-# The page's images are not copied into site/: the logo and the background are
-# taken from the app's own branding at deploy time, and the screenshots from
-# docs/screenshots/ (tools/showcase-screenshots.sh), so the repository holds one
-# copy of each.
+# tools/build-site.py assembles it: the landing page from site/, the user guide
+# rendered from docs/INSTALL.md and docs/guide/*.md, the logo and background
+# from the app's own branding, the screenshots from docs/screenshots/ - so the
+# repository holds one copy of each.
 name: pages
 
 # The site is linked as wasabules.github.io/Halyard - the path follows the
@@ -18,6 +18,9 @@ on:
       - "resources/img/background.jpg"
       - "clients/borealis/branding/png/**"
       - "docs/screenshots/**"
+      - "docs/guide/**"
+      - "docs/INSTALL.md"
+      - "tools/build-site.py"
       - ".github/workflows/pages.yml"
   release:
     types: [published]
@@ -43,18 +46,13 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
-      - name: assemble
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - name: build the site and the guide
         run: |
           set -euo pipefail
-          mkdir -p _site/assets
-          cp -r site/. _site/
-          cp resources/img/background.jpg _site/assets/background.jpg
-          mkdir -p _site/assets/screens
-          cp docs/screenshots/*.webp _site/assets/screens/
-          for n in 64 128 192 512; do
-            cp "clients/borealis/branding/png/logo-${n}x${n}.png" "_site/assets/logo-${n}.png"
-          done
-          find _site -type f -printf '%8s  %p\n'
+          pip install --quiet "markdown==3.11"
+          python3 tools/build-site.py _site
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with: { path: _site }

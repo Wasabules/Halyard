@@ -26,7 +26,7 @@
 <p align="center">
   <a href="https://github.com/Wasabules/Halyard/releases/latest/download/halyard.nro"><strong>Download for Switch</strong></a> ·
   <a href="https://github.com/Wasabules/Halyard/releases/latest/download/halyard.vpk"><strong>Download for PS Vita</strong></a> ·
-  <a href="docs/INSTALL.md">Install guide</a> ·
+  <a href="https://wasabules.github.io/Halyard/docs/">Documentation</a> ·
   <a href="https://wasabules.github.io/Halyard/">Website</a>
 </p>
 
@@ -49,6 +49,8 @@ console.
 > out in [`docs/LEGAL.md`](docs/LEGAL.md) — read it before you install.
 
 - **Install it** → [`docs/INSTALL.md`](docs/INSTALL.md)
+- **Use it** → the [user guide](https://wasabules.github.io/Halyard/docs/): the
+  screens, the controls, every setting, the FAQ (also in [`docs/guide/`](docs/guide/))
 - **What changed** → [`CHANGELOG.md`](CHANGELOG.md)
 - **Build it** → [`docs/BUILD.md`](docs/BUILD.md)
 - **Something is wrong** → [Troubleshooting](#when-something-goes-wrong)
