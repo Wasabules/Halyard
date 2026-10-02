@@ -478,9 +478,24 @@ static int      g_crete_sec   = -1;
  * would have looked SILENT while it was talking - precisely the family of
  * defects this repo has paid for four times (black screen from the 3rd session
  * on, sound audible only once, silent hardware detectors). Reset per session. */
-/* D4: bridge to device_mode.cpp (C++). The headless binary does not carry that
- * layer: it provides a stub in main_test_stubs.c. */
-int shadow_link_info(int *docked, int *strength);
+/* === LIB1 2026-10-02 - THE LAST SYMBOL core/ ASKED OF ITS CLIENT ===========
+ *
+ * "Docked or handheld, and how strong is the link" is a question only a client
+ * that owns the device layer can answer (`clients/borealis/device_mode.cpp`).
+ * It was declared here and left undefined, so `core/` did not link on its own:
+ * the headless binary had to carry a stub, and so would every new client, for a
+ * diagnostic line that is a nicety.
+ *
+ * WEAK, like `halyard_ui_keys_blocked` in `core/input/kbd_hook_win.h`. A client
+ * that knows the answer defines it and nothing changes; a client that does not
+ * links anyway and the line below says "mode?" instead of "docked". That is the
+ * whole cost, and it is what lets `halyard-core` be a library rather than a
+ * pile of sources with a hole in it.
+ *
+ * The attribute, not a default implementation: defining a fallback HERE would
+ * silently win over the client's on a linker that resolves a strong symbol
+ * against an archive member it has already taken. */
+int shadow_link_info(int *docked, int *strength) __attribute__((weak));
 
 /* K15 - is video requested over TCP? One single read point: the toggle drives
  * both the REQUEST (field f3 of the announcement, ctrl_msgs.c) and the RECEIVE
@@ -4877,7 +4892,10 @@ bool ctrl_session_run(const ctrl_session_params *p, ctrl_session_stats *out) {
                 ctx.aud_d4_missing0 = ctx.aud_loss.lost + audio_loss_pending(&ctx.aud_loss);
                 ctx.aud_gap_max_ms  = 0;
                 int docked = -1, strength = -1;
-                const int link = shadow_link_info(&docked, &strength);
+                /* LIB1: weak, so a client that does not provide it is not a
+                 * link error. -1/-1 reads as "mode?" below, which is honest. */
+                const int link = shadow_link_info
+                               ? shadow_link_info(&docked, &strength) : -1;
                 clog("[D4] *** VIDEO SILENT *** for %lld ms (t=%ds) - "
                      "ctrl_ferme=%d ctrl_trames=%u | %s %s force=%d | "
                      "derniere image #%u",

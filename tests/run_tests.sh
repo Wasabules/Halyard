@@ -240,6 +240,12 @@ if ! python3 verify_i18n.py; then rc=1; fi
 # it here is what makes it a guard rather than a script nobody invokes.
 if ! python3 ../tools/check-z-formats.py; then rc=1; fi
 
+# LIB1 2026-10-02 - `core/` is built as the `halyard-core` library and is meant
+# to be reusable by a Qt or Tauri client. That it depends on no client was true
+# and UNVERIFIED: nothing would have failed if a core file had included
+# `clients/`. Now something does.
+if ! python3 ../tools/check-core-independence.py; then rc=1; fi
+
 run_cpp test_rate_meter test_rate_meter.cpp
 # AUDC-1 / OUT-2 - the UI sounds hand the console's single audio output to the
 # stream. The REAL ui/sfx.cpp, built with -D__SWITCH__ against a mock of libnx's

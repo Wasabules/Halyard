@@ -784,6 +784,14 @@ void ConnectingActivity::runConnectionFlow() {
              * because registration happens when the sockets are opened. */
             ctrl_session_glue_set_udp_register_input(cfg.udp_register_input ? 1 : 0);
 
+            /* LIB1 2026-10-02 - where decoded pictures go. This used to be a
+             * LINK-TIME symbol: `core/` declared `extern stream_view_push_yuv`
+             * and called it, so the core did not link without this client and a
+             * Qt client would have had to define a function named after a
+             * Borealis class to get an image. One registration here replaces
+             * that, and `core/` now links on its own. */
+            ctrl_session_glue_set_frame_sink(stream_view_push_yuv);
+
             /* === Resolution follows the console mode ===
              * The built-in screen is 1280x720. Asking for 1080p in handheld mode
              * encodes, transmits and decodes twice as many pixels as anyone will

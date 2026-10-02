@@ -231,11 +231,41 @@ list(APPEND APP_PLATFORM_INCLUDE
      ${CMAKE_CURRENT_SOURCE_DIR}/clients/borealis/include
      ${CMAKE_CURRENT_SOURCE_DIR}
 )
-file(GLOB_RECURSE MAIN_SRC core/*.cpp core/*.c clients/*.cpp clients/*.c
-                           cli/*.cpp cli/*.c)
-# Exclude the halyard-cli CLI binary's sources from the halyard GUI target
-list(REMOVE_ITEM MAIN_SRC ${CMAKE_CURRENT_SOURCE_DIR}/cli/main_test.c)
-list(REMOVE_ITEM MAIN_SRC ${CMAKE_CURRENT_SOURCE_DIR}/cli/test_cli_stubs.c)
+# === LIB1 2026-10-02 - `core/` IS A LIBRARY, AND THE BUILD NOW SAYS SO =======
+#
+# `core/` was globbed into the application target, so "the core does not depend
+# on the client" was true but UNVERIFIED - nothing stopped a `#include` from
+# reaching up into `clients/`, and nobody would have noticed until a second
+# client tried to use it.
+#
+# Measured before splitting, so the split is a guarantee of something that was
+# already the case rather than a repair: zero includes of `clients/` anywhere in
+# `core/`, and linked by hand into a 736 KB archive whose only non-library
+# undefined symbol was `shadow_link_info` (now weak, see core/common/).
+#
+# Two targets instead of one list:
+#   halyard-core   every .c and .cpp under core/, and nothing else;
+#   the app        clients/ plus a link against halyard-core.
+#
+# It also collapses a DUPLICATE enumeration: `halyard-cli` globbed core's C
+# sources into its own `SHADOW_C_SRC`, so core was listed in two places that
+# could drift. Both targets now link the one library.
+#
+# The per-platform `add_definitions()` and `include_directories()` above are
+# DIRECTORY-scoped, so halyard-core inherits them exactly as the app does -
+# which is why this is placed here and not earlier.
+file(GLOB_RECURSE CORE_SRC core/*.cpp core/*.c)
+file(GLOB_RECURSE CLIENT_SRC clients/*.cpp clients/*.c)
+
+# The TARGET is created further down, just before `program_target`: the
+# per-platform blocks between here and there are what fill
+# `APP_PLATFORM_INCLUDE`, `APP_PLATFORM_OPTION` and `APP_PLATFORM_LIB`, and a
+# library created up here would get them EMPTY. Found the honest way - the
+# first version of this split was placed here and `core/media/audio.c` stopped
+# finding <opus.h>, because that include arrives through the imported target.
+#
+# MAIN_SRC stays the name the rest of this file and `program_target` use.
+set(MAIN_SRC ${CLIENT_SRC})
 # === 2026-09-26 - THE WEBRTC PATH IS GONE, ALL OF IT ===
 #
 # S112 (2026-08-29) deleted the in-house stack (`webrtc.c`, `ice.c`, `sctp.c`,
@@ -483,12 +513,36 @@ endif ()
 
 
 # building target
+add_library(halyard-core STATIC ${CORE_SRC})
+target_include_directories(halyard-core PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/core
+)
+# PUBLIC so a client that links the library gets them too, and so the app keeps
+# compiling unchanged.
+target_include_directories(halyard-core PUBLIC ${APP_PLATFORM_INCLUDE})
+target_compile_options(halyard-core PRIVATE
+    -ffunction-sections -fdata-sections ${APP_PLATFORM_OPTION})
+# Same warning policy as the app, and for the same reason: C is where the
+# protocol lives. Not -Werror - that belongs to the test runner, which compiles
+# the pure modules with it.
+target_compile_options(halyard-core PRIVATE $<$<COMPILE_LANGUAGE:C>:-Wall -Wextra>)
+
+# LIB1: PUBLIC, and this is the architectural point of the split - `core/` is
+# what includes <opus.h>, <wolfssl/*>, <libavcodec/*>, <curl/*> and <jansson.h>,
+# not the client. Declaring them on the library gives every consumer - the app,
+# halyard-cli, a future Qt or Tauri client - the right include paths and the
+# right link line from one place, instead of each one rediscovering them.
+target_link_libraries(halyard-core PUBLIC ${APP_PLATFORM_LIB})
+
 program_target(${PROJECT_NAME} "${MAIN_SRC}")
 set_target_properties(${PROJECT_NAME} PROPERTIES CXX_STANDARD 17)
 if (PLATFORM_DESKTOP)
     # The dev menu bar is DESKTOP tooling: it is mouse-driven and speaks GLFW
     # directly. `NOT PLATFORM_SWITCH` used to stand in for "desktop", which held
     # while there were two targets; the PS Vita has neither a mouse nor GLFW.
+    # Stays on the APP: the development menu bar is `clients/borealis/devui/`,
+    # and nothing in core/ reads this (LIB1).
     target_compile_definitions(${PROJECT_NAME} PRIVATE SHADOW_DEV_UI)
 endif ()
 
@@ -655,7 +709,11 @@ endif ()
 
 target_include_directories(${PROJECT_NAME} PRIVATE . ${APP_PLATFORM_INCLUDE})
 target_compile_options(${PROJECT_NAME} PRIVATE -ffunction-sections -fdata-sections ${APP_PLATFORM_OPTION})
-target_link_libraries(${PROJECT_NAME} PRIVATE borealis ${APP_PLATFORM_LIB})
+target_link_libraries(${PROJECT_NAME} PRIVATE halyard-core borealis ${APP_PLATFORM_LIB})
+# LIB1: the library is listed FIRST. A static archive only contributes the
+# objects that something already references, and the app is what references
+# the core - borealis and the platform libraries then satisfy what the core
+# needs. The reverse order drops symbols on a linker that does one pass.
 
 # Compiler warnings: they were DISABLED, so every new defect went by in silence
 # (the first pass found a real one: a NACK rate limit whose variable was never
@@ -691,19 +749,36 @@ endif()
 # libdatachannel symbols MinGW did not have. Those are gone since 2026-09-26;
 # whether it now builds there has not been tried.
 if (PLATFORM_DESKTOP AND SHADOW_BUILD_TEST_CLI)
-    file(GLOB SHADOW_C_SRC
-        core/services/*.c
-        core/common/*.c
-        core/media/*.c
-        core/input/*.c
-        core/protocol/*.c
-    )
-    list(REMOVE_ITEM SHADOW_C_SRC ${CMAKE_CURRENT_SOURCE_DIR}/cli/main_test.c)
-    list(REMOVE_ITEM SHADOW_C_SRC ${CMAKE_CURRENT_SOURCE_DIR}/cli/test_cli_stubs.c)
-    add_executable(halyard-cli cli/main_test.c cli/test_cli_stubs.c ${SHADOW_C_SRC})
-    target_include_directories(halyard-cli PRIVATE . clients/borealis/include ${APP_PLATFORM_INCLUDE})
+    # LIB1: links the library instead of re-globbing core. The old
+    # `SHADOW_C_SRC` listed five directories by hand and had already drifted -
+    # it enumerated `core/*/` while the app used GLOB_RECURSE, so a new
+    # subdirectory would have reached the app and not the CLI.
+    #
+    # This is also the smallest possible PROOF that the library is usable from
+    # outside the Borealis app: halyard-cli links it, provides the one weak
+    # symbol it wants, and draws nothing from `clients/`.
+    add_executable(halyard-cli cli/main_test.c cli/test_cli_stubs.c)
+    target_link_libraries(halyard-cli PRIVATE halyard-core ${APP_PLATFORM_LIB})
     target_compile_options(halyard-cli PRIVATE -ffunction-sections -fdata-sections)
-    target_link_libraries(halyard-cli PRIVATE ${APP_PLATFORM_LIB})
+endif ()
+
+# === LIB1 2026-10-02 - PROOF THAT THE LIBRARY IS USABLE FROM OUTSIDE ========
+#
+# `examples/minimal_client.c` links `halyard-core` and nothing else, provides no
+# client symbol but a frame sink, and runs. It is the linker's answer to the
+# same question `tools/check-core-independence.py` asks of the source: has
+# `core/` grown a dependency on a client?
+#
+# Desktop only and opt-in. It is a build check and a worked example for whoever
+# starts the Qt or Tauri client, not something a console image should carry.
+option(SHADOW_BUILD_EXAMPLES "Build the examples/ consumers of halyard-core" OFF)
+if (SHADOW_BUILD_EXAMPLES AND PLATFORM_DESKTOP)
+    add_executable(halyard-minimal examples/minimal_client.c)
+    # halyard-core ONLY: no borealis, no APP_PLATFORM_LIB of its own. Anything
+    # it needs beyond the library comes through the library's PUBLIC link, which
+    # is the property being checked.
+    target_link_libraries(halyard-minimal PRIVATE halyard-core)
+    message(STATUS "examples: ON (halyard-minimal)")
 endif ()
 
 # === FT1 2026-10-02 - the file-transfer channel, OFF by default ==============
@@ -724,8 +799,12 @@ option(SHADOW_FILETRANSFER "Build the SFTP file-transfer client (needs libssh)" 
 if (SHADOW_FILETRANSFER)
     find_package(PkgConfig REQUIRED)
     pkg_check_modules(LIBSSH REQUIRED IMPORTED_TARGET libssh)
-    target_compile_definitions(${PROJECT_NAME} PRIVATE SHADOW_HAVE_FILETRANSFER=1)
-    target_link_libraries(${PROJECT_NAME} PRIVATE PkgConfig::LIBSSH)
+    # LIB1: on the LIBRARY, because `filetransfer.c` lives there. PUBLIC on the
+    # link so every consumer of halyard-core gets libssh, and PUBLIC on the
+    # define so a client can test `SHADOW_HAVE_FILETRANSFER` and grey out its
+    # own file-transfer UI instead of calling into a stub.
+    target_compile_definitions(halyard-core PUBLIC SHADOW_HAVE_FILETRANSFER=1)
+    target_link_libraries(halyard-core PUBLIC PkgConfig::LIBSSH)
     message(STATUS "file transfer: ON (libssh ${LIBSSH_VERSION})")
 endif ()
 

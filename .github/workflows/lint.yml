@@ -27,6 +27,12 @@ jobs:
       - name: no half-migrated comment blocks
         run: python3 tools/check_french.py
 
+      # `core/` is the library a second client (Qt, Tauri) is meant to reuse.
+      # One `#include "../../clients/..."` would end that quietly - the build
+      # would still pass, and the next client would find out. LIB1.
+      - name: core/ depends on no client
+        run: python3 tools/check-core-independence.py
+
       # A tool once shipped with its docstring closed one line early.
       # Nothing noticed until someone ran it.
       - name: python compiles

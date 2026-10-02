@@ -23,13 +23,17 @@
 #include <pthread.h>   /* BUG3 2026-05-18 — drain thread input mode natif */
 #include <time.h>      /* nanosleep */
 
-/* Forward declaration - implemented by stream_view.cpp (Borealis) or by
- * main_test_stubs.c (no-op CLI). */
-extern void stream_view_push_yuv(int width, int height,
-        const uint8_t *data_y, int linesize_y,
-        const uint8_t *data_u, int linesize_u,
-        const uint8_t *data_v, int linesize_v,
-        int format, int64_t pts, void *user);
+/* LIB1 2026-10-02 - where decoded pictures go, REGISTERED rather than linked.
+ * See ctrl_session_glue.h for why this stopped being
+ * `extern stream_view_push_yuv`. Written once before the session starts and
+ * read by the decode thread, so no lock: a sink changed mid-session is not a
+ * thing any client needs and would be the only reason to add one. */
+static ctrl_session_frame_sink g_frame_sink;
+
+void ctrl_session_glue_set_frame_sink(ctrl_session_frame_sink sink)
+{
+    g_frame_sink = sink;
+}
 
 /* G25 2026-08-22 - queue feeding the decode thread. Bounded depth: in steady
  * state decoding keeps up, so the queue sits at 0-1; the slack is there for
@@ -486,9 +490,23 @@ static void on_frame(int width, int height,
         }
     }
 
-    stream_view_push_yuv(width, eff_height, data_y, linesize_y,
-                          data_u, linesize_u, data_v, linesize_v,
-                          format, pts, user);
+    if (g_frame_sink) {
+        g_frame_sink(width, eff_height, data_y, linesize_y,
+                     data_u, linesize_u, data_v, linesize_v,
+                     format, pts, user);
+    } else {
+        /* SAID, once. A client that forgot to register a sink gets a session
+         * that decodes correctly and displays nothing - the single most
+         * confusing outcome available, and indistinguishable from a decoder
+         * problem without this line. */
+        static int said = 0;
+        if (!said) {
+            said = 1;
+            gllog("[LIB1] no frame sink registered: %dx%d decoded and DROPPED. "
+                  "Call ctrl_session_glue_set_frame_sink() before "
+                  "ctrl_session_glue_run()", width, eff_height);
+        }
+    }
 }
 
 /* === AUD-INS-3 2026-09-11 - SHADOW_AUDIO_STATS_TICK ===
