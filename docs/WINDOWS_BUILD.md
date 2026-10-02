@@ -3,6 +3,11 @@
 Goal: get `halyard` (the Borealis GUI) compiling on Windows. The binary produced runs the
 native Shadow protocol - the same path as on the Switch, and since 2026-09-26 the only one.
 
+State (2026-10-02): **the client compiles and links**, gcc 16.1.0 / UCRT64,
+`halyard.exe` 37.3 MB, every DLL resolved, with the SRV1-SRV9 server-side
+changes in it. Not run past `--version` in that session (a headless one), so
+the window and the stream were NOT re-verified then.
+
 State (2026-09-10): **the client compiles, links and starts.** A GLFW window,
 OpenGL 4.6, the boot screen displayed, `TINAG OK http=200` — so it is already
 talking to the Shadow infrastructure. Binary: 37 MB.
@@ -97,6 +102,105 @@ check, which must return `1`:
 nm -g third_party/wolfssl/build_windows/install/lib/libwolfssl.a | grep -c set_dtls_fd_connected
 ```
 
+### 3c. TMP must be a WINDOWS path, or nothing compiles (2026-10-02)
+
+If cmake says the compiler "is not able to compile a simple test program",
+read further down its output for the real cause:
+
+```
+Cannot create temporary file in C:\WINDOWS\: Permission denied
+Exit code 0xc0000409
+```
+
+`cc.exe` is a native Windows binary. MSYS2 exports `TMP` and `TEMP` as POSIX
+paths (`/c/Users/...`), which it cannot use, so it falls back to `C:\WINDOWS\`
+and is refused. Nothing in the message names the environment, and the symptom
+reads as a broken toolchain.
+
+Fix: give the native tools a Windows-style temp directory before configuring.
+
+```bash
+export TMP='C:\Users\<you>\AppData\Local\Temp'
+export TEMP="$TMP"
+export TMPDIR=/c/Users/<you>/AppData/Local/Temp   # for the MSYS2 side
+```
+
+Two things worth knowing with it:
+
+- A **wrapper that pipes the build output** (`tools/build-libs.sh windows
+  wolfssl | tail`) hides the failure: the script itself has `set -euo pipefail`
+  and stops correctly, but the pipeline's status is `tail`'s, so the caller sees
+  0. Read the output; do not trust the exit code of a piped invocation.
+- **RESOLVED 2026-10-02.** `tools/build-libs.sh windows wolfssl` used to fail
+  that same try-compile even with the environment fixed, while the identical
+  cmake line typed by hand succeeded. The cause is the shell, not the script:
+  with `/c/msys64/usr/bin` on `PATH`, `bash` is MSYS2's, and **an MSYS2 bash
+  arrives with `TMP`, `TEMP` and `TMPDIR` all EMPTY**. Measured side by side:
+
+  ```
+  git-bash  : TMP=[C:\Users\<you>\AppData\Local\Temp]
+  msys2 bash: TMP=[] TEMP=[] TMPDIR=[]
+  ```
+
+  So exporting them before calling the script changed nothing - they were wiped
+  on the way in. The script no longer trusts its caller: `win_fix_tmp()`
+  derives a Windows-style path itself with `cygpath -w /tmp`, leaves an
+  already-usable `TMP` alone, and fails loudly if `cygpath` is missing.
+  Verified by re-running it from the exact shell that broke it, with the three
+  variables explicitly unset: 45/45 objects, library linked and installed,
+  DTLS symbol check = 1.
+
+### 3c-bis. Passing a SHADOW_* toggle to the client on Windows (2026-10-02)
+
+`VAR=value ./halyard.exe` works. `VAR=value timeout 60 ./halyard.exe` does
+**not**: MSYS2's `timeout` drops environment variables the parent shell did
+not already have when it starts the native child. Measured with a small
+native probe - direct launch reads `7000`, through `timeout` it reads
+`(null)`, with or without `export`. A whole measurement run was wasted on it,
+because the client starts and streams perfectly; the toggle is simply not
+there, and nothing says so.
+
+Two reliable routes instead:
+
+- `halyard-data/env.txt`, one `SHADOW_KEY=value` per line. The client logs
+  `[env] bascules actives : …` on startup, which is positive proof the toggle
+  was read. This is the same mechanism as on console and it takes precedence
+  over the settings screen. Remember to delete the file afterwards - it
+  outlives the run.
+- launch the client directly (no `timeout`) and stop it with
+  `taskkill //IM halyard.exe //F`.
+
+The same caution applies to the SRV-FAULT scaffolding
+(`SHADOW_FAULT_VIDEO_MS`, `SHADOW_FAULT_AUDIO_G`): check the `[env]` line
+before trusting a run that shows nothing.
+
+### 3c-ter. `%z` in a journal macro is NOT a hazard
+
+Worth writing down because it has now been "discovered" twice as a bug it is
+not. `clog`, `slog` and the other ~40 journal macros may carry `%zu`:
+`journal.c` rewrites the format with `strip_z_modifier()` before its single
+`vsnprintf`, and it does so exactly where it matters -
+`#if defined(__NEWLIB__) && !defined(_WANT_IO_C99_FORMATS)`, i.e. the Vita.
+There is one `vsnprintf` in that file and the strip precedes it, so every
+journal macro is covered.
+
+`tools/check-z-formats.py` therefore exempts those macros **by design** and
+flags only direct `printf`/`snprintf` calls, which have no protection. Its own
+docstring says so. A `%zu` inside `clog` is not a finding; a `%zu` inside
+`snprintf` is.
+### 3d. Only borealis and wolfSSL are needed from `third_party/`
+
+`tools/bootstrap-libs.sh` with no argument also clones libopus, jansson and
+curl. Those are **Vita/Switch only**: on desktop, cmake takes opus, jansson,
+curl, qrencode and ffmpeg from pkg-config, i.e. from the MSYS2 packages of
+step 2. wolfSSL's history alone is 1.2 GB, so the full run is long; for a
+Windows build only these two matter, and they can be fetched one at a time:
+
+```bash
+tools/bootstrap-libs.sh borealis
+tools/bootstrap-libs.sh wolfssl
+tools/bootstrap-libs.sh --check     # must say `ok` for both
+```
 ### 4. Build
 
 From MSYS2 **UCRT64**:
