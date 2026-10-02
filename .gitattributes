@@ -6,11 +6,20 @@
 # today -- and keeping the filters would force `git lfs` on anyone cloning a
 # 974-file source repo for nothing.
 #
-# The material those rules used to carry is still in the HISTORY (the initial
-# commit `1c2d0b1` holds tls_plain.log, 75 MB, and with it a live ED25519 SSH
-# private key in the clear). Removing it from the index does not remove it from
-# there: that needs an LFS-aware history rewrite, to be done ONCE, immediately
-# before the repository is ever made public.
+# That material used to be in the HISTORY as well: the old initial commit
+# `1c2d0b1` held tls_plain.log, 75 MB, and with it a live ED25519 SSH private
+# key in the clear. This paragraph used to end "to be done ONCE, immediately
+# before the repository is ever made public".
+#
+# DONE, and verified 2026-10-02. The repository IS public now, so a stale
+# warning about a live key sitting in public history is itself a problem - it
+# would send the next reader hunting for something that is gone. Replaced by
+# the check:
+#   - `1c2d0b1` is no longer a valid object name, so the rewrite happened;
+#   - across ALL 1069 objects in the history, zero file name matches
+#     tls_plain / *.pcap / *.log / sslkeys / *.har / refresh_token, and zero
+#     blob holds a PEM private key with a body.
+# Re-run those two checks before believing this paragraph.
 
 # Encoding: one line ending, whatever the platform of the day.
 *.md   text eol=lf

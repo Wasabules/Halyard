@@ -24,13 +24,16 @@
 PCAPdroid_*.pcap
 
 # --- build artifacts (regenerable) ---
-build_linux/
-build_switch/
-build_windows/
-build_psv/
-*/build_linux/
-*/build_switch/
-*/build_windows/
+# WIN2 2026-10-02 - WILDCARDED, and for the second time in this file for the
+# same reason. The list named the four blessed directories (linux, switch,
+# windows, psv); `build_ft/` - the Windows build WITH file transfer - went
+# straight through it, and brought 67 untracked files with it, among them
+# `halyard-data/curl_trace.log` and `last_clients_main.json`. Those two hold a
+# Bearer token and the streaming token: the AUTHENTICATION section below exists
+# precisely to stop that, and an enumerated build-directory list had quietly
+# cancelled it. Same lesson as the captures rule above, same fix.
+build_*/
+*/build_*/
 **/build/
 builddir
 libromfs-generator
@@ -82,10 +85,36 @@ third_party/ngtcp2/
 **/*.lock
 **/projectState.xml
 
+# --- THE RUNTIME DATA DIRECTORY. ---
+# `SHADOW_DATA_DIR` holds what the running application writes: the logs, the
+# device identity, the saved REST responses - and `last_clients_main.json`
+# carries the STREAMING TOKEN while `curl_trace.log` carries whole
+# authenticated HTTP exchanges, Bearer headers included.
+#
+# It was covered only by accident, because it happens to sit inside a build
+# directory. Named here so it is covered WHEREVER it lands: on a desktop
+# checkout the data directory can be configured anywhere, and the one that was
+# not inside a build directory was not ignored at all.
+halyard-data/
+**/halyard-data/
+
 # --- AUTHENTICATION. Never committed, under any name. ---
 *shadow_jwt*
 *streaming_token*
 *refresh_token*
+# FT3 2026-10-02 - the SFTP credential, written only when SHADOW_FT_REVEAL=1.
+# It is an SSH password granting READ AND WRITE on the VM's whole filesystem
+# (the server confines no SFTP path). The application removes it when the
+# session ends normally; a crash leaves it behind, which is exactly the case
+# this line is for.
+sftp.txt
+# The saved REST responses and HTTP traces, by name as well as by directory.
+# One pattern has already cancelled this whole policy once (see the captures
+# rule at the top), so the files that carry a token are named twice on purpose.
+last_clients_*.json
+last_vm_ip_response.txt
+curl_trace.log
+proximus_trace.log
 .shadow/
 # The desktop client's session token: a backup copy, because /tmp gets cleaned.
 .jeton/
