@@ -155,6 +155,10 @@ run test_gamepad_wire test_gamepad_wire.c "${PURE_MODULES[@]}"
 run test_ctrl_inv     test_ctrl_inv.c      # header-only: which Request field a ctrl message carries (SRV7)
 run test_ft_path      test_ft_path.c       # header-only: remote paths we refuse to send, since the VM confines none (FT1)
 run test_jwt          test_jwt.c           # header-only: the JWT `instance` field, and the buffer S49 once overflowed (LIB2)
+# QT1 - the Qt client's stride-aware plane copy. Pure arithmetic on purpose, so
+# it needs no Qt, no GPU and no window; the shear it prevents looks like a
+# decoder fault.
+run_cpp test_qt_planes test_qt_planes.cpp
 run test_ft_uri       test_ft_uri.c        # header-only: the SFTP URI a file manager opens - base64 escaping, IPv6 brackets (FT4)
 run test_clip_dir     test_clip_dir.c      # header-only: which way the clipboard may travel, and the clamp (CLIP6)
 run test_hid_lock     test_hid_lock.c ../core/protocol/proto.c  # the Caps/Num/Scroll Lock message on :base+11 (HID1)

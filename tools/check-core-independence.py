@@ -157,6 +157,46 @@ if unknown:
                     % ", ".join(sorted(unknown)))
 failures.extend(layer_bad)
 
+# === QT1 2026-10-03 - AND THE TWO CLIENTS DO NOT BLEED INTO EACH OTHER ======
+#
+# There are two now: `clients/borealis/` (the console homebrew, and the
+# reference for behaviour) and `clients/qt/` (the desktop client). They share
+# `halyard-core` and NOTHING else. One `#include "../borealis/..."` from the Qt
+# side would start a dependency that is invisible in CMake - both targets
+# compile, both link, and the Qt client quietly stops being buildable on a
+# machine where Borealis is not.
+#
+# The temptation is real and specific: `clients/borealis/` holds `device_caps.h`
+# and a settings layer the Qt client will want. When that happens the answer is
+# to MOVE the shared piece down into `core/`, not to reach sideways.
+CLIENTS = os.path.join(ROOT, "clients")
+cross = []
+if os.path.isdir(CLIENTS):
+    siblings = sorted(d for d in os.listdir(CLIENTS)
+                      if os.path.isdir(os.path.join(CLIENTS, d)))
+    for mine in siblings:
+        others = [o for o in siblings if o != mine]
+        if not others:
+            continue
+        for dp, _d, fs in os.walk(os.path.join(CLIENTS, mine)):
+            for f in sorted(fs):
+                if not f.endswith((".c", ".h", ".cpp", ".hpp")):
+                    continue
+                path = os.path.join(dp, f)
+                rel = os.path.relpath(path, ROOT).replace("\\", "/")
+                with open(path, encoding="utf-8", errors="replace") as fh:
+                    t = fh.read()
+                t = re.sub(r"/\*.*?\*/", "", t, flags=re.S)
+                t = re.sub(r"//[^\n]*", "", t)
+                for m in INCLUDE.finditer(t):
+                    inc = m.group(1)
+                    for o in others:
+                        if ("clients/" + o) in inc or ("/" + o + "/") in inc:
+                            line = t.count("\n", 0, m.start()) + 1
+                            cross.append("%s:%d  clients/%s -> clients/%s  (`%s`)"
+                                         % (rel, line, mine, o, inc))
+failures.extend(cross)
+
 if failures:
     print("  FAIL: %d violation(s):" % len(failures))
     for f in failures[:20]:
@@ -171,4 +211,5 @@ if failures:
     sys.exit(1)
 
 print("  no include of clients/, borealis, nanovg or glfw; no UI namespace")
+print("  the clients under clients/ share core and nothing else")
 sys.exit(0)

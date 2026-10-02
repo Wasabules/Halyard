@@ -762,6 +762,49 @@ if (PLATFORM_DESKTOP AND SHADOW_BUILD_TEST_CLI)
     target_compile_options(halyard-cli PRIVATE -ffunction-sections -fdata-sections)
 endif ()
 
+# === QT1 2026-10-03 - THE DESKTOP CLIENT, ON `halyard-core` =================
+#
+# A second client for Linux, Windows and macOS. `clients/qt/README.md` holds the
+# reasoning; the short version is that the video path carries 187 MB/s (1080p
+# NV12 at 60 fps), which rules out anything crossing a webview IPC bridge, and
+# that `halyard-core` is C so Qt needs no FFI layer.
+#
+# Qt 6.8 LTS as the FLOOR, not as a pin. 6.8 is the current LTS with standard
+# support to 2029-10-08; the next is 6.12 (one every four minor versions). The
+# build then uses whatever the platform ships - MSYS2 UCRT64 currently has
+# 6.11.0, which is a regular release. Pinning to a non-LTS version would put an
+# expiry date on the build for nothing.
+#
+# Multimedia is needed as well as Widgets: `QVideoFrame`/`QVideoSink` are what
+# take NV12 and YUV420P and convert on the GPU.
+#
+# Desktop only and opt-in: the consoles have no business carrying Qt, and a
+# developer who has not installed it should not have their build fail.
+option(SHADOW_BUILD_QT "Build the Qt desktop client (needs Qt 6.8+)" OFF)
+if (SHADOW_BUILD_QT AND PLATFORM_DESKTOP)
+    find_package(Qt6 6.8 REQUIRED COMPONENTS Widgets Multimedia MultimediaWidgets)
+    qt_standard_project_setup()
+
+    qt_add_executable(halyard-qt
+        clients/qt/main.cpp
+        clients/qt/session_worker.cpp
+        clients/qt/session_worker.hpp
+        clients/qt/video_widget.cpp
+        clients/qt/video_widget.hpp
+    )
+    # halyard-core, and NOT borealis: this client shares the library and nothing
+    # else. `tools/check-core-independence.py` keeps core from reaching into
+    # either client; this link line is what keeps the two clients apart.
+    target_link_libraries(halyard-qt PRIVATE
+        halyard-core Qt6::Widgets Qt6::Multimedia Qt6::MultimediaWidgets)
+    target_include_directories(halyard-qt PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    set_target_properties(halyard-qt PROPERTIES WIN32_EXECUTABLE OFF)
+    # WIN32_EXECUTABLE OFF on purpose while this is a skeleton: a console
+    # subsystem binary shows qDebug/qCritical, and the first thing being
+    # debugged here is a thread contract.
+    message(STATUS "Qt client: ON (Qt ${Qt6_VERSION}, floor 6.8 LTS)")
+endif ()
+
 # === LIB1 2026-10-02 - PROOF THAT THE LIBRARY IS USABLE FROM OUTSIDE ========
 #
 # `examples/minimal_client.c` links `halyard-core` and nothing else, provides no

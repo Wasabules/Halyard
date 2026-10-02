@@ -299,3 +299,30 @@ It should print the Borealis version. If it segfaults at start-up, check:
 For the rest (Shadow auth then streaming), it is the same as Linux: the OAuth
 device flow → VM selection → connection. Cf. the root `README.md`.
 
+## 6. The Qt desktop client (QT1 2026-10-03)
+
+```bash
+pacman -S --needed mingw-w64-ucrt-x86_64-qt6-base                    mingw-w64-ucrt-x86_64-qt6-multimedia                    mingw-w64-ucrt-x86_64-qt6-tools
+
+export PKG_CONFIG_PATH=$PWD/third_party/wolfssl/build_windows/install/lib/pkgconfig
+cmake -S . -B build_qt -DPLATFORM_DESKTOP=ON -DSHADOW_BUILD_QT=ON
+cmake --build build_qt --target halyard-qt
+```
+
+**`PKG_CONFIG_PATH` is not optional, and a fresh build directory forgets it.**
+Without it CMake finds MSYS2's wolfSSL, which is built WITHOUT DTLS, and
+`ctrl_audio_dtls.c` fails on `EmbedReceiveFrom`, `EmbedSendTo` and
+`wolfSSL_set_dtls_fd_connected` — §3b explains why we build our own. This is
+the same trap as §3c, in a new directory.
+
+To run it outside an MSYS2 shell, two steps and not one:
+
+```bash
+tools/bundle-windows-dlls.sh build_qt halyard-qt.exe
+windeployqt6 --no-translations --no-compiler-runtime build_qt/halyard-qt.exe
+```
+
+The bundler walks the import table; Qt's PLATFORM and MULTIMEDIA plugins
+(`platforms/qwindows.dll`, `multimedia/ffmpegmediaplugin.dll`) are loaded by
+name at run time and appear in no import table, which is what `windeployqt6`
+is for. Verified: with `PATH` reduced to `system32`, the window opens.

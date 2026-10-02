@@ -15,17 +15,24 @@
 # Copying the closure next to the exe is the fix, and it is also what a release
 # would have to do anyway.
 #
-# Usage:  tools/bundle-windows-dlls.sh [build_dir] [ucrt64_bin]
+# Usage:  tools/bundle-windows-dlls.sh [build_dir] [exe_name] [ucrt64_bin]
+#
+# QT1 2026-10-03 - the executable is an ARGUMENT now. It was `halyard.exe`,
+# hardcoded, which stopped being the only one the day `halyard-qt` appeared. A
+# Qt binary needs one more step on top of this: `windeployqt6`, for the platform
+# and multimedia PLUGINS, which are loaded by name at run time and so appear in
+# no import table this script can walk.
 #
 # Re-runnable: it overwrites only what has changed and says what it did.
 set -euo pipefail
 
 BUILD=${1:-build_windows}
-UCRT=${2:-/c/msys64/ucrt64/bin}
+NAME=${2:-halyard.exe}
+UCRT=${3:-/c/msys64/ucrt64/bin}
 
-EXE="$BUILD/halyard.exe"
+EXE="$BUILD/$NAME"
 [ -f "$EXE" ] || { echo "no $EXE - build it first" >&2; exit 1; }
-[ -d "$UCRT" ] || { echo "no $UCRT - pass the ucrt64 bin directory as \$2" >&2; exit 1; }
+[ -d "$UCRT" ] || { echo "no $UCRT - pass the ucrt64 bin directory as $3" >&2; exit 1; }
 
 OBJDUMP=$(command -v objdump || true)
 [ -n "$OBJDUMP" ] || { echo "objdump not found (pacman -S mingw-w64-ucrt-x86_64-binutils)" >&2; exit 1; }
@@ -61,3 +68,6 @@ done
 
 echo "bundle: $copied copied, $unchanged already current, into $BUILD/"
 echo "        $EXE can now be started from anywhere, PATH or not."
+case "$NAME" in
+  *qt*) echo "        Qt binary: also run windeployqt6 --no-translations $EXE" ;;
+esac

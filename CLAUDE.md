@@ -111,6 +111,25 @@ includes in four files, each one a file in the wrong directory.
 
 The port map is in `KB.md` §3.37. Earlier notes got three rows wrong, so check there before relying on any port number.
 
+**`clients/qt/`** (C++, Qt 6 — the desktop client, Linux/Windows/macOS)
+
+A skeleton that compiles and runs: a `QThread` running one session, and the
+decoded pictures on screen. No OAuth, no machine list, no settings yet — those
+are forms; this settles the part the framework choice hangs on. `clients/qt/README.md`
+holds the reasoning (187 MB/s of video rules out webview IPC; core is C so Qt
+needs no FFI; Halyard is GPLv3 and Qt's open-source edition is LGPLv3/GPLv3).
+
+Floor **Qt 6.8 LTS** (supported to 2029-10-08), built against whatever the
+platform ships. `cmake -DSHADOW_BUILD_QT=ON`, desktop only. The stride-aware
+plane copy is pure and tested (`clients/qt/plane_copy.hpp`,
+`tests/test_qt_planes.cpp`) because a single `memcpy` of a plane shears the
+picture and looks like a decoder fault.
+
+The two clients share `halyard-core` and **nothing else** —
+`tools/check-core-independence.py` refuses an include crossing between them.
+When something in `clients/borealis/` turns out to be wanted by both (`device_caps.h`
+is the obvious candidate), move it down into `core/` rather than reaching sideways.
+
 **`clients/borealis/`** (C++ UI)
 - Each screen is an `*_activity.cpp` + `*_view.cpp` pair in `activity/`, with headers in `include/activity/`.
 - Screens are drawn by the in-house framework in `ui/`, not by Borealis XML. `ui::Screen` makes `draw` final, and subclasses implement `paint(vg, …, t)` with one clock read per frame. The pause menu is a nanovg overlay inside `StreamView`.
