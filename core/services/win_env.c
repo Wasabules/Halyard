@@ -28,6 +28,24 @@ int setenv(const char *name, const char *value, int overwrite)
      * caller's buffer, and `main.cpp` parses `env.txt` into a STACK buffer -
      * with `putenv` the environment would point at a dead frame as soon as the
      * loop moved on. */
+    /* === WIN5 2026-10-02 - AND SO `setenv(k, "")` DELETES, TOO ===========
+     *
+     * `unsetenv` below relies on `_putenv_s(k, "")` removing the entry. The
+     * consequence for THIS function follows and is worth stating where someone
+     * will read it: an empty `value` is not stored, it deletes. On Windows
+     * `setenv(k, "")` and `unsetenv(k)` are one operation, and `getenv(k)`
+     * afterwards gives NULL rather than "".
+     *
+     * What that costs: a line `SHADOW_VSYNC=` in `env.txt` marks the setting as
+     * taken over by the file on Linux and on console, and does NOT on Windows -
+     * `env_override` cannot see a variable the CRT refused to keep. Pinned by
+     * `tests/test_env_override.c`, per platform.
+     *
+     * Not fixable here. Storing an empty value would mean keeping our own
+     * side-table of "variables that exist but are empty", and every `getenv`
+     * in the codebase - including the ones inside libraries - would have to
+     * consult it. The divergence is cheaper than that, and it is now written
+     * down instead of being discovered twice. */
     return _putenv_s(name, value ? value : "") == 0 ? 0 : -1;
 }
 

@@ -23,8 +23,13 @@ import re, sys, pathlib
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 # The journal macros are safe: journal.c strips the modifier before vsnprintf
 # on the libc that needs it.
-JOURNAL = re.compile(r'\b(clog|alog|vlog|wlog|gllog|tlog|rhlog|mnlog|pflog|pmlog|svlog|glog'
-                     r'|JOURNAL_[A-Z_]+_?)\s*\(')
+# 2026-10-02: this used to be a hand-written list of twelve macro names. The
+# repo defines FORTY of them (grep -rh "define [a-z]*log" core clients cli), so
+# the list was 28 names out of date and quietly treated e.g. `slog` as a direct
+# printf. Match the SHAPE instead: every one of them is <prefix>log, with a
+# prefix of one to six lowercase letters, expanding to a JOURNAL_ macro.
+# `log(` itself (math) is not matched: the prefix is required.
+JOURNAL = re.compile(r'\b([a-z]{1,6}log|JOURNAL_[A-Z_]+_?)\s*\(')
 DIRECT  = re.compile(r'\b(snprintf|sprintf|vsnprintf|fprintf|printf|vfprintf)\s*\(')
 ZFMT    = re.compile(r'%[-+ #0-9.*]*z[diouxX]')
 

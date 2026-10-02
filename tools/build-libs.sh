@@ -52,6 +52,35 @@ COMMON=(
   -DWOLFSSL_CRL=no -DWOLFSSL_ED25519=no
 )
 
+# === SRV-ENV 2026-10-02 - MSYS2's bash WIPES TMP, AND cc.exe THEN DIES =======
+#
+# Running this script for the `windows` target failed its very first
+# try-compile, while the identical cmake line typed by hand succeeded. The
+# difference is the shell: with /c/msys64/usr/bin on PATH, `bash` is MSYS2's,
+# and an MSYS2 bash arrives with TMP, TEMP *and* TMPDIR EMPTY - measured:
+#   git-bash  : TMP=[C:\Users\...\Temp]
+#   msys2 bash: TMP=[] TEMP=[] TMPDIR=[]
+# `cc.exe` is a native Windows binary; with no temp directory it falls back to
+# C:\WINDOWS\, is refused, and dies with 0xc0000409. CMake reports that as
+# "the compiler is not able to compile a simple test program", which names
+# neither the environment nor the real cause - it cost a full diagnosis.
+#
+# So the script no longer trusts the caller's environment: it derives a
+# Windows-style temp directory itself. `cygpath` ships with MSYS2 and /tmp is
+# writable there by construction. An already-usable TMP is left alone.
+win_fix_tmp() {
+  case "${TMP:-}" in
+    [A-Za-z]:[/\\]*) return 0 ;;   # already a Windows path: leave it
+  esac
+  if command -v cygpath >/dev/null 2>&1; then
+    TMP="$(cygpath -w /tmp 2>/dev/null)" || TMP=""
+  fi
+  [ -n "$TMP" ] || { echo "windows: cannot derive a usable TMP (cygpath missing?)" >&2; exit 4; }
+  TEMP="$TMP"
+  export TMP TEMP
+  echo "   TMP set to $TMP (MSYS2's bash clears it; cc.exe needs a Windows path)"
+}
+
 build_wolfssl() {
   local out flags="" extra=()
   case "$TARGET" in
@@ -99,6 +128,7 @@ build_wolfssl() {
       # every other target uses - they used to be applied to a separate clone
       # of v5.9.1, without our patch. Installed, because CMake finds it
       # through the .pc file (PKG_CONFIG_PATH).
+      win_fix_tmp
       out="$LIB/wolfssl/build_windows"
       flags=""
       extra=(-DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$out/install"

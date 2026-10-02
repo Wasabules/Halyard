@@ -24,6 +24,12 @@
  * step rather than pretending the checks are independent.
  */
 #include "../core/services/env_override.h"
+/* WIN4 2026-10-02 - `setenv`/`unsetenv` are POSIX and the Windows CRT has
+ * neither, so this suite did not compile on MinGW at all. The repo already
+ * carries them (`win_compat.h`, used by settings.cpp since WIN1); the test had
+ * simply never been built from Windows. Harmless elsewhere: the header is a
+ * no-op outside _WIN32. */
+#include "../core/services/win_compat.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -96,19 +102,44 @@ static void the_snapshot(void)
     CHECK(env_override_active("SHADOW_FPS") == 1,
           "[instantane] a second key is reported too");
 
-    /* An EMPTY value is still an outside decision. `SHADOW_VSYNC=` gives an
-     * `atoi` of 0, which readers take for "off" — a choice the user did not make
-     * on screen, so the row must still be marked. Treating empty as absent
-     * would leave exactly that case unmarked. */
+    /* === WIN5 2026-10-02 - AN EMPTY VALUE CANNOT EXIST ON WINDOWS ========
+     *
+     * On POSIX an EMPTY value is still an outside decision. `SHADOW_VSYNC=`
+     * gives an `atoi` of 0, which readers take for "off" - a choice the user
+     * did not make on screen, so the row must still be marked. Treating empty
+     * as absent would leave exactly that case unmarked.
+     *
+     * The Windows CRT cannot hold such a variable. `_putenv_s(k, "")` DELETES
+     * the entry - measured on this UCRT, and `win_env.c`'s `unsetenv` is built
+     * on that very fact - so `setenv(k, "")` and `unsetenv(k)` are the SAME
+     * operation there, and `getenv(k)` afterwards returns NULL rather than "".
+     *
+     * So this is not a defect to fix but a platform limit to pin: a line
+     * `SHADOW_VSYNC=` in `env.txt` marks the row as forced on Linux and on
+     * console, and does not on Windows. Asserting the POSIX behaviour
+     * everywhere would leave this suite permanently red on Windows, which is
+     * how it came to not compile there at all and stay unnoticed; asserting
+     * nothing would let a real regression through on the platforms where the
+     * behaviour IS reachable. So each platform asserts its own. */
+#if defined(_WIN32)
+    CHECK(env_override_active("SHADOW_VSYNC") == 0,
+          "[vide/win] an empty value is indistinguishable from absent (WIN5)");
+    CHECK(getenv("SHADOW_VSYNC") == NULL,
+          "[vide/win] and the CRT really did delete it, not store \"\"");
+    const int expected_count = 2;
+#else
     CHECK(env_override_active("SHADOW_VSYNC") == 1,
           "[vide] a key set to an empty value is still forced");
+    const int expected_count = 3;
+#endif
 
     CHECK(env_override_active("SHADOW_HWACCEL") == 0,
           "[instantane] an absent key is not forced");
     CHECK(env_override_active("SHADOW_CODEC") == 0,
           "[instantane] a second absent key is not forced either");
 
-    CHECK(env_override_count() == 3, "[compte] exactly the three keys that were set");
+    CHECK(env_override_count() == expected_count,
+          "[compte] exactly the keys the platform can hold (WIN5)");
 
     /* The summary line feeds a diagnostic row: it must name them, and name only
      * them. */
@@ -155,8 +186,15 @@ static void a_second_snapshot(void)
           "[2e instantane] nor the second");
     CHECK(env_override_active("SHADOW_RUMBLE_PCT") == 0,
           "[2e instantane] nor the third");
+    /* WIN5: the same per-platform count as the first snapshot - the point of
+     * this check is that the number does not GROW, not what the number is. */
+#if defined(_WIN32)
+    CHECK(env_override_count() == 2,
+          "[2e instantane] the count does not grow with our own writes");
+#else
     CHECK(env_override_count() == 3,
           "[2e instantane] the count does not grow with our own writes");
+#endif
     CHECK(strstr(env_override_summary(), "SHADOW_HWACCEL") == NULL,
           "[2e instantane] the summary does not grow either");
 

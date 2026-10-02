@@ -14,6 +14,7 @@ PURE_MODULES=(
     ../core/protocol/proto.c       # protobuf: our messages + the server replies
     ../core/protocol/msgframe.c    # framing by size prefix (the input channel)
     ../core/protocol/gamepad_wire.c # the gamepad channel's rumble (G57)
+    ../core/protocol/clip_wire.c   # the clipboard channel's framing (CLIP)
 )
 # sufp.c needs a journal_uncategorised; only its own test provides the stub, so it stays
 # out of the shared list.
@@ -21,13 +22,82 @@ PURE_MODULES=(
 # A watchdog per binary: a test that does not return signals an infinite loop -
 # exactly the defect test_proto.c watches for.
 CFLAGS=(-Wall -Wextra -Werror -O1)
+
+# === WIN3 2026-10-02 - THIS SCRIPT COULD NOT RUN ON WINDOWS AT ALL ==========
+#
+# `mktemp -d` below, and then every `cc.exe` it invokes, need a temporary
+# directory. MSYS2's bash CLEARS TMP, TEMP and TMPDIR on entry - it does not
+# merely translate them - so the native toolchain falls back on the Windows
+# default and gets `C:\WINDOWS\`, which is not writable:
+#
+#     Cannot create temporary file in C:\WINDOWS\: Permission denied
+#
+# and the script died on its first line, before a single test ran. Exporting
+# TMP from the calling shell does not help, for the same reason.
+# `tools/build-libs.sh` already pays this (`win_fix_tmp`, documented in
+# docs/WINDOWS_BUILD.md §3c); the test runner had never been run from Windows,
+# so it had never paid it.
+#
+# A WINDOWS path, not a POSIX one: `cc.exe` is a native binary and does not
+# understand `/tmp`. Conditional on cygpath existing, so Linux and CI are
+# untouched - and a Windows checkout with no cygpath is told why rather than
+# failing on line 25 with a message about a directory nobody asked for.
+case "${OSTYPE:-}${MSYSTEM:-}" in
+  *msys*|*MINGW*|*UCRT*|*cygwin*)
+    case "${TMP:-}" in
+      [A-Za-z]:[/\\]*) ;;                       # already usable: leave it
+      *)
+        if command -v cygpath >/dev/null 2>&1; then
+          TMP="$(cygpath -w /tmp 2>/dev/null)" || TMP=""
+          if [ -n "$TMP" ]; then
+            TEMP="$TMP"; TMPDIR="$TMP"
+            export TMP TEMP TMPDIR
+          else
+            echo "windows: cannot derive a usable TMP (cygpath failed)" >&2
+            exit 4
+          fi
+        else
+          echo "windows: cygpath missing, so TMP cannot be made usable;" >&2
+          echo "          set TMP to a Windows-style writable path by hand" >&2
+          exit 4
+        fi
+        ;;
+    esac
+    ;;
+esac
+
 out=$(mktemp -d); trap 'rm -rf "$out"' EXIT
 rc=0
+
+# === WIN4 2026-10-02 - A SUITE THAT WILL NOT COMPILE MUST NOT STOP THE REST ==
+#
+# `gcc` ran bare under `set -e`, so the FIRST suite that failed to compile took
+# the whole script down and every suite after it was never run. On Windows that
+# is `test_sufp`, which uses `%zu` in a journal call: correct for the targets
+# that matter (journal.c rewrites the format at run time - see
+# docs/WINDOWS_BUILD.md §3c-ter), and refused at compile time by MinGW's
+# -Wformat, which does not know `%z`. CLAUDE.md already says several suites do
+# not compile on MinGW; what it could not say is that one of them hid the other
+# fifty.
+#
+# A compile failure is now a FAILURE OF THAT SUITE - named, with its compiler
+# output kept - and the run continues. `rc` still ends non-zero, so CI is as
+# strict as before; the difference is that a Windows checkout now gets 53
+# verdicts instead of one abort.
+compile_fail() {                 # compile_fail <name> <logfile>
+    echo "  (DID NOT COMPILE: $1)"
+    sed 's/^/    /' "$2" | head -12
+    rc=1
+}
 
 run() {                          # run <name> <source> [sources/flags...]
     local name=$1; shift
     local bin="$out/$name"
-    gcc "${CFLAGS[@]}" -o "$bin" "$@"
+    local log="$out/$name.cc"
+    if ! gcc "${CFLAGS[@]}" -o "$bin" "$@" >"$log" 2>&1; then
+        compile_fail "$name" "$log"
+        return 0
+    fi
     if ! timeout 30 "$bin"; then echo "  (failure or hang: $name)"; rc=1; fi
 }
 
@@ -36,14 +106,37 @@ run() {                          # run <name> <source> [sources/flags...]
 run_cpp() {                      # run_cpp <name> <source> [sources/flags...]
     local name=$1; shift
     local bin="$out/$name"
-    g++ "${CFLAGS[@]}" -o "$bin" "$@"
+    local log="$out/$name.cc"
+    if ! g++ "${CFLAGS[@]}" -o "$bin" "$@" >"$log" 2>&1; then
+        compile_fail "$name" "$log"      # WIN4: see run() above
+        return 0
+    fi
     if ! timeout 30 "$bin"; then echo "  (failure or hang: $name)"; rc=1; fi
 }
 
 # -- Suites with no dependency at all: always run ----------------------------
 run test_vid_wire test_vid_wire.c "${PURE_MODULES[@]}"
 run test_proto    test_proto.c    "${PURE_MODULES[@]}"
-run test_sufp     test_sufp.c     ../core/protocol/sufp.c
+# === WIN9 2026-10-02 - `%z` IS RIGHT HERE AND MinGW REFUSES IT ANYWAY ========
+#
+# `sufp.c` logs `(>%zu)` through the journal, where `strip_z_modifier` rewrites
+# the format before the single `vsnprintf` - documented in
+# docs/WINDOWS_BUILD.md §3c-ter, and `tools/check-z-formats.py` guards the case
+# that IS a hazard, a `%z` in a direct printf. MinGW's -Wformat knows none of
+# that and rejects the literal, so this suite did not compile on Windows.
+#
+# The format is not changed: it is correct for the three targets that ship, and
+# editing production code to satisfy a warning on a platform that only builds
+# for testing is the wrong direction. The flag is relaxed HERE, for THIS suite,
+# on Windows only - Linux and CI keep -Wformat at full strength, which is where
+# a real format defect would be caught.
+# Named once: `vid_reasm.c` logs `%zu` through the journal for the same reason
+# and is refused by the same warning.
+ZFMT_FLAGS=()
+case "${OSTYPE:-}${MSYSTEM:-}" in
+  *msys*|*MINGW*|*UCRT*|*cygwin*) ZFMT_FLAGS=(-Wno-format -Wno-format-extra-args) ;;
+esac
+run test_sufp     test_sufp.c     ../core/protocol/sufp.c "${ZFMT_FLAGS[@]}"
 run test_msgframe test_msgframe.c "${PURE_MODULES[@]}"
 run test_idr_policy test_idr_policy.c   # header-only: no source to link
 run test_freeze_stat test_freeze_stat.c # header-only: the G44 detector (HO-2)
@@ -54,7 +147,17 @@ run test_aud_reasm    test_aud_reasm.c    # header-only: split audio frames are 
 run test_audio_loss   test_audio_loss.c   # header-only: audio frames lost in both copies, and the panel's grade (AUD-DEDUP-3, AUD-INS-1)
 run test_audio_gap    test_audio_gap.c -lm # header-only, -lm for the test's generator: output underruns, two-sided and confirmed (OUT-1)
 run test_cursor_wire test_cursor_wire.c ../core/protocol/cursor_wire.c
+# CLIP - the clipboard channel :base+14. clip_wire.c is in PURE_MODULES above;
+# clip_chan.c holds the reassembly state and reads the two SHADOW_CLIP_*
+# toggles, so it is named here rather than added to the shared list.
+run test_clip_wire   test_clip_wire.c "${PURE_MODULES[@]}" ../core/protocol/clip_chan.c
 run test_gamepad_wire test_gamepad_wire.c "${PURE_MODULES[@]}"
+run test_ctrl_inv     test_ctrl_inv.c      # header-only: which Request field a ctrl message carries (SRV7)
+run test_ft_path      test_ft_path.c       # header-only: remote paths we refuse to send, since the VM confines none (FT1)
+run test_ft_uri       test_ft_uri.c        # header-only: the SFTP URI a file manager opens - base64 escaping, IPv6 brackets (FT4)
+run test_clip_dir     test_clip_dir.c      # header-only: which way the clipboard may travel, and the clamp (CLIP6)
+run test_hid_lock     test_hid_lock.c ../core/protocol/proto.c  # the Caps/Num/Scroll Lock message on :base+11 (HID1)
+run test_vid_uplink   test_vid_uplink.c ../core/protocol/gamepad_wire.c  # the gE timestamp, the IFR counter, the axis int16, the channel map (SRV1/3/5/6)
 run test_audio_gain   test_audio_gain.c    # header-only
 run test_kbd_scancode test_kbd_scancode.c  # likewise
 run test_ui_nav       test_ui_nav.c        # likewise
@@ -71,7 +174,10 @@ run test_devcmd       test_devcmd.c        # likewise
 run test_inject       test_inject.c   -lm  # INJ-1: the timing of synthetic input
 run test_authz        test_authz.c         # AUTH-1: who may drive this console
 run test_errors       test_errors.c ../core/services/errors.c
-run test_env_override test_env_override.c ../core/services/env_override.c
+# WIN4 2026-10-02 - `win_env.c` supplies setenv/unsetenv, which the Windows CRT
+# does not have. It is empty outside _WIN32, so naming it costs Linux nothing
+# and is what lets this suite build on Windows at all.
+run test_env_override test_env_override.c ../core/services/env_override.c ../core/services/win_env.c
 run test_applock      test_applock.c      ../core/services/applock.c
 run test_atomic_file  test_atomic_file.c  ../core/services/atomic_file.c  # AF4
 run test_lock_grid    test_lock_grid.c           # header-only
@@ -116,7 +222,7 @@ run test_rear_touch    test_rear_touch.c     # header-only: the Vita's rear pad 
 # are all silent (an optimistic percentile, a reading that loses samples, a
 # server clock offset taken for latency). The test includes the .c to reach the
 # bucketing, which IS the logic.
-run test_latency      test_latency.c        # the log stub is provided by the test
+run test_latency      test_latency.c ../core/services/win_env.c  # the log stub is provided by the test; win_env for setenv on Windows (WIN7)
 # screen.hpp pulls in nanovg.h for NVGcolor; its geometric part stays pure C.
 # The language files do not compile: a missing key returns the key itself, which
 # runs fine and only shows on screen, in the language one does not use oneself.
@@ -156,23 +262,48 @@ run test_ui_screen    test_ui_screen.c  -lm \
 # wolfssl's out-of-CMake build; without it we skip cleanly, rather than making
 # the whole suite untestable on a freshly cloned repo.
 WOLF=../third_party/wolfssl
-if [ -f "$WOLF/build_linux/wolfssl/options.h" ]; then
+
+# === WIN8 2026-10-02 - THE GATE NAMED ONE BUILD DIRECTORY, SO THREE SUITES
+# ===               NEVER RAN ANYWHERE BUT LINUX
+#
+# The three suites below need wolfSSL's generated `options.h`, and one of them
+# the compiled library. The gate tested `build_linux/` by name - correct on the
+# reference platform and nowhere else - so on a Windows checkout, where
+# `tools/build-libs.sh windows` has produced `build_windows/` with the SAME
+# layout, they printed SKIPPED. Three of the most valuable suites in the file:
+# the byte-exact control messages, the real ChaCha20-Poly1305 against RFC 8439,
+# and video reassembly.
+#
+# SKIPPED is not a pass - CLAUDE.md says so in as many words - and these were
+# skipped on every Windows run since the Windows build existed.
+#
+# `build_linux` is still PREFERRED, because it is the reference and because a
+# measurement is quoted against it. The directory actually used is printed, so
+# a result is never ambiguous about what it was linked against.
+WOLFB=""
+for cand in build_linux build_windows; do
+    if [ -f "$WOLF/$cand/wolfssl/options.h" ]; then WOLFB="$cand"; break; fi
+done
+if [ -n "$WOLFB" ]; then
+    echo "-- wolfSSL suites built against $WOLF/$WOLFB"
+fi
+if [ -n "$WOLFB" ]; then
     run test_ctrl_msgs test_ctrl_msgs.c \
         ../core/protocol/ctrl_msgs.c ../core/protocol/proto.c \
-        -I "$WOLF" -I "$WOLF/build_linux"
+        -I "$WOLF" -I "$WOLF/$WOLFB"
     # The encryption, on the other hand, needs the compiled LIBRARY: it is the
     # real chacha20-poly1305 we check against the RFC 8439 vector, not a stub.
-    if [ -f "$WOLF/build_linux/libwolfssl.a" ]; then
+    if [ -f "$WOLF/$WOLFB/libwolfssl.a" ]; then
         run test_encryption test_encryption.c \
             ../core/protocol/encryption.c \
-            -I "$WOLF" -I "$WOLF/build_linux" \
-            "$WOLF/build_linux/libwolfssl.a" -lm -lpthread
+            -I "$WOLF" -I "$WOLF/$WOLFB" \
+            "$WOLF/$WOLFB/libwolfssl.a" -lm -lpthread
     else
-        echo "== chacha20-poly1305: SKIPPED ==  ($WOLF/build_linux/libwolfssl.a is missing)"
+        echo "== chacha20-poly1305: SKIPPED ==  ($WOLF/$WOLFB/libwolfssl.a is missing)"
     fi
 else
     echo "== server reply parsers: SKIPPED =="
-    echo "  ($WOLF/build_linux/wolfssl/options.h is missing - build wolfssl for Linux)"
+    echo "  (no $WOLF/build_linux or build_windows with wolfssl/options.h - run tools/build-libs.sh)"
 fi
 
 # -- The real video reassembly (REASM-1) --------------------------------------
@@ -185,12 +316,17 @@ fi
 # Run TWICE. The second run sets the toggle to 0, which must restore the
 # previous behaviour of both opening paths exactly - so that run asserts the
 # defect itself (out-of-order emission, a loss in no counter): the counter-case.
-if [ -f "$WOLF/build_linux/wolfssl/options.h" ]; then
+if [ -n "$WOLFB" ]; then
     run test_vid_reasm test_vid_reasm.c \
         ../core/protocol/vid_reasm.c ../core/protocol/vid_wire.c \
-        -I "$WOLF" -I "$WOLF/build_linux" -pthread
-    if ! SHADOW_FLUSH_PREV_INCOMPLETE=0 timeout 30 "$out/test_vid_reasm"; then
-        echo "  (failure or hang: test_vid_reasm, SHADOW_FLUSH_PREV_INCOMPLETE=0)"; rc=1
+        -I "$WOLF" -I "$WOLF/$WOLFB" -pthread "${ZFMT_FLAGS[@]}"
+    # WIN9: the counter-case only means something if the binary exists. It did
+    # not on Windows, and the run then reported a SECOND failure for the same
+    # compile error - two lines pointing at one cause.
+    if [ -x "$out/test_vid_reasm" ]; then
+        if ! SHADOW_FLUSH_PREV_INCOMPLETE=0 timeout 30 "$out/test_vid_reasm"; then
+            echo "  (failure or hang: test_vid_reasm, SHADOW_FLUSH_PREV_INCOMPLETE=0)"; rc=1
+        fi
     fi
 else
     echo "== video reassembly (REASM-1): SKIPPED ==  (same missing header)"

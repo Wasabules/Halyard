@@ -358,7 +358,27 @@ class Link:
 
     def open(self):
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # === WIN6 2026-10-02 - SO_REUSEADDR MEANS THE OPPOSITE ON WINDOWS ===
+        #
+        # On POSIX it means "reuse a port stuck in TIME_WAIT", and a second LIVE
+        # listener is still refused with EADDRINUSE - which is what the
+        # PortBusy counter-case below checks for.
+        #
+        # On Windows it means "let another socket bind this port outright". So
+        # the second bind SUCCEEDS, PortBusy is never raised, and two devlink
+        # listeners sit on the same port with the kernel handing each incoming
+        # connection to one of them at random. The autotest caught it as
+        # "COUNTER-CASE: a second taker of the port -> PortBusy" failing; the
+        # defect it was pointing at is two tools silently stealing each other's
+        # screenshots.
+        #
+        # So the option is set only where it means what we want. Not
+        # SO_EXCLUSIVEADDRUSE instead: that also forbids rebinding our own port
+        # while a previous connection lingers, which would make a quick restart
+        # of the tool fail for a reason the user cannot act on. Windows already
+        # refuses a second bind when the first socket did not ask to share.
+        if os.name != "nt":
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
             s.bind(("0.0.0.0", self.port))
         except OSError as e:

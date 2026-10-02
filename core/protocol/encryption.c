@@ -6,6 +6,7 @@
 #include <wolfssl/options.h>
 #include <wolfssl/wolfcrypt/chacha20_poly1305.h>
 #include <wolfssl/wolfcrypt/random.h>
+#include <wolfssl/wolfcrypt/wc_port.h>   /* SEC3: wolfCrypt_Init */
 
 #include "../common/log.h"
 
@@ -59,8 +60,48 @@ void shadow_cipher_destroy(shadow_cipher *c) {
     free(c);
 }
 
+/* === SEC3 2026-10-02 - THIS MODULE USED SOMEBODY ELSE'S INITIALISATION =====
+ *
+ * `wc_InitRng()` below locks a wolfCrypt-global mutex, and that mutex is
+ * created by `wolfCrypt_Init()`. This module never called it. It worked anyway,
+ * for a reason that is pure luck: the shipped client brings up its TLS control
+ * channel before it ever encrypts, `wolfSSL_Init()` calls `wolfCrypt_Init()`,
+ * and the mutex happens to exist by the time the cipher is used.
+ *
+ * Measured the moment that stopped being true. `tests/test_encryption.c` links
+ * this file alone and SEGFAULTS on Windows, inside
+ * `wc_LockMutex -> RtlEnterCriticalSection`: a CRITICAL_SECTION that was never
+ * initialised faults, where a zero-initialised pthread mutex on Linux is
+ * usable by accident. The suite had been printing SKIPPED on Windows for want
+ * of a wolfSSL build directory, so nothing had ever run this path without TLS
+ * in front of it.
+ *
+ * WHO ELSE WOULD HAVE HIT IT: anything that uses the cipher WITHOUT opening a
+ * TLS channel first. A client that only wants the clipboard, or only file
+ * transfer, or a tool that decrypts a capture offline - exactly the kind of
+ * caller `session_caps.h` was written to make possible.
+ *
+ * So the module initialises what it uses. `pthread_once` because two threads
+ * can reach the first encrypt together, and `wolfCrypt_Init()` is cheap,
+ * refcounted and safe to call after `wolfSSL_Init()` has already called it -
+ * which is why this does not disturb the shipped path. */
+static pthread_once_t g_wc_once = PTHREAD_ONCE_INIT;
+static int            g_wc_rc;
+
+static void wc_init_once(void)
+{
+    g_wc_rc = wolfCrypt_Init();
+    if (g_wc_rc != 0)
+        elog("[SEC3] wolfCrypt_Init FAILED (%d): no random nonce can be drawn",
+             g_wc_rc);
+}
+
 int shadow_cipher_encrypt(shadow_cipher *c, uint8_t *buf, int len) {
     if (!c || !buf || len < 0) return -1;
+
+    /* SEC3: before anything that can reach wc_InitRng. */
+    pthread_once(&g_wc_once, wc_init_once);
+    if (g_wc_rc != 0) return -1;
 
     pthread_mutex_lock(&c->mtx);
     /* Seed the nonce randomly on the first encrypt (= the BN_rand behaviour

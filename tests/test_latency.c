@@ -26,8 +26,38 @@
 #include <string.h>
 #include <stdarg.h>
 #include <stdlib.h>
+/* === WIN7 2026-10-02 - THE COUNTER-CASE NEEDED A FRESH PROCESS, NOT A FORK ==
+ *
+ * `SHADOW_LATENCE` is cached in a static on its first read, so the toggle-off
+ * path can only be exercised by a process that has not read it yet. The test
+ * used `fork()`, which Windows does not have - so this whole suite did not
+ * compile there, and the compile failure then took the entire runner down with
+ * it (see WIN4 in run_tests.sh).
+ *
+ * Disabling the counter-case on Windows would have compiled. It would also have
+ * silently narrowed the net, which is the failure mode this repo keeps writing
+ * down - the test even has a `(fork unavailable: toggle not exercised)` branch
+ * ready to make that invisible.
+ *
+ * So the child is obtained by RE-EXECUTING THIS BINARY with a marker in the
+ * environment, which works on both families. POSIX keeps `fork`: it is cheaper,
+ * it is what the suite has always done, and a re-exec there would need argv[0]
+ * to still resolve. */
 #include <unistd.h>
-#include <sys/wait.h>
+#if defined(_WIN32)
+#  include <process.h>   /* _spawnl */
+#else
+#  include <sys/wait.h>
+#endif
+
+/* Set in the child. Its name is checked before anything else in main. */
+#define TEST_CHILD_ENV "SHADOW_TEST_LATENCY_CHILD"
+
+/* WIN4: `setenv`/`unsetenv` are POSIX and the Windows CRT has neither. The repo
+ * carries them in `win_env.c` (empty outside _WIN32), which run_tests.sh links
+ * for this suite - the same fix test_env_override needed. Using them here
+ * rather than `_putenv_s` keeps ONE way of setting a variable in the tests. */
+#include "../core/services/win_compat.h"
 
 /* --- Journal stub: we CAPTURE the lines so they can be checked. The report is
  * not only a computation, it is a TEXT: a missing line is a stage you will not
@@ -480,21 +510,65 @@ static int test_toggle_off(void)
     return 0;
 }
 
-int main(void)
+int main(int argc, char **argv)
 {
-    printf("== latency: the path's measuring instrument (stages, percentiles) ==\n");
-    fflush(stdout);   /* otherwise the header is duplicated by the forked child */
-
-    /* The toggle is cached on the first call: we exercise it in a child, before
-     * the parent has read it. */
-    pid_t pid = fork();
-    if (pid == 0) { int r = test_toggle_off(); fflush(stdout); _exit(r); }
-    if (pid > 0) {
-        int st = 0; waitpid(pid, &st, 0);
-        if (!WIFEXITED(st) || WEXITSTATUS(st) != 0) g_ko = 1;
-    } else {
-        printf("  (fork unavailable: toggle not exercised)\n");
+    (void)argc;   /* argv[0] is used on Windows, argc never */
+    /* WIN7: the re-executed child does ONE thing and leaves. Checked first, so
+     * nothing else has had a chance to read the toggle. */
+    if (getenv(TEST_CHILD_ENV)) {
+        const int r = test_toggle_off();
+        fflush(stdout);
+        return r;
     }
+
+    printf("== latency: the path's measuring instrument (stages, percentiles) ==\n");
+    fflush(stdout);   /* otherwise the header is duplicated by the child */
+
+    /* The toggle is cached on the first call: we exercise it in a FRESH
+     * process, before this one has read it. */
+#if defined(_WIN32)
+    {
+        /* The child inherits the environment, so the marker travels. */
+        if (setenv(TEST_CHILD_ENV, "1", 1) != 0) {
+            printf("  FAIL cannot mark the child: toggle NOT exercised\n");
+            g_ko = 1;
+        } else {
+            const intptr_t rc = _spawnl(_P_WAIT, argv[0], argv[0], (char *)NULL);
+            /* The marker is removed whatever happened, so the parent's own
+             * later reads are not the child's. */
+            unsetenv(TEST_CHILD_ENV);
+            if (rc < 0) {
+                printf("  FAIL cannot re-execute %s: toggle NOT exercised\n", argv[0]);
+                g_ko = 1;
+            } else if (rc != 0) {
+                g_ko = 1;
+            } else {
+                /* SAID, not assumed. The whole reason this suite was rewritten
+                 * is that "toggle not exercised" used to be an informational
+                 * line on a passing run. A counter-case that may or may not
+                 * have run is not a counter-case. */
+                printf("  (toggle-off counter-case exercised in a child process)\n");
+            }
+        }
+    }
+#else
+    (void)argv;
+    {
+        pid_t pid = fork();
+        if (pid == 0) { int r = test_toggle_off(); fflush(stdout); _exit(r); }
+        if (pid > 0) {
+            int st = 0; waitpid(pid, &st, 0);
+            if (!WIFEXITED(st) || WEXITSTATUS(st) != 0) g_ko = 1;
+            else printf("  (toggle-off counter-case exercised in a forked child)\n");
+        } else {
+            /* A failure to fork is a failure of the counter-case, not an excuse
+             * for it: the line used to be informational and the suite still
+             * passed with the toggle never exercised. */
+            printf("  FAIL fork() failed: toggle NOT exercised\n");
+            g_ko = 1;
+        }
+    }
+#endif
 
     unsetenv("SHADOW_LATENCE");
     test_bins();
