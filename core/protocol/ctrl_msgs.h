@@ -30,6 +30,8 @@
 
 #pragma once
 
+#include "hid_lock.h"   /* HID1: hid_locks */
+
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -93,6 +95,20 @@ int ctrl_build_authentication(uint8_t *out, size_t out_cap,
                                 const char *connection_unique_id);
 
 /* RegisterSession - announces the display config + resolution.
+ *
+ * === SRV-DOC 2026-10-02 - THIS IS THE SERVER'S DisplayConfig =================
+ * Request field 6 of the envelope below is field 10 of the Request, and
+ * `DispatchControlMessage_` @0x140b2ca30 routes field 10 to
+ * `ProcessDisplayConfigRequestMessage_` - which is why its body carries an
+ * EDID, a resolution and a scale. Two consequences for any future caller:
+ *   - it validates (`Invalid resolution : w=%u, h=%u`, and it overrides a
+ *     non-zero position for the primary display to (0,0));
+ *   - it is the ONE request subject to `VerifyDisplayConfigCooldown_`
+ *     @0x140b3b2d0, which does not reject a second one inside the cooldown but
+ *     SLEEPS for the remainder - blocking the control reader for that long.
+ * So a resolution change must be rate-limited on our side. Sent once per
+ * session today, which is why this has never bitten.
+ *
  * Wire format byte-exact against the desktop app (LD_PRELOAD capture 2026-05-08):
  *   Message {
  *       field 1 = 3                               <- version
@@ -117,6 +133,12 @@ int ctrl_build_authentication(uint8_t *out, size_t out_cap,
  */
 int ctrl_build_register_session(uint8_t *out, size_t out_cap,
                                   uint32_t width, uint32_t height);
+
+/* SRV5 2026-10-02 - the eight announcement body indices and the map from the
+ * server's channel numbers. In their own pure header so the map is tested
+ * (tests/test_vid_uplink.c): confusing the two orders re-announces the wrong
+ * channel. */
+#include "ctrl_msgs_chan.h"
 
 /* Channel announcement message (8 of them, f1=5..12).
  * Byte-exact wire against the desktop app: Message{f1=seq, f2=Request{f8=ChannelInfo}, f4=caps, f5=OCapture}.
@@ -246,6 +268,15 @@ typedef struct {
     uint8_t hash[20];
 } shadow_auth_reply;
 
+/* SRV8 2026-10-02 - the ShadowStreamer version, out of the Capabilities reply.
+ * The server's handler for that request answers with exactly three integers,
+ * which on our VM are 6, 3, 1. Returns false and leaves the outputs at 0 when
+ * the reply does not have that shape - "not found", never a guessed version.
+ * See the comment on the implementation. */
+bool ctrl_parse_capabilities_reply(const uint8_t *buf, size_t len,
+                                   unsigned *out_major, unsigned *out_minor,
+                                   unsigned *out_patch);
+
 bool ctrl_parse_authentication_reply_v2(const uint8_t *buf, size_t len,
                                           shadow_auth_reply *out);
 
@@ -317,10 +348,25 @@ int ctrl_build_unregister_session(uint8_t *out, size_t out_cap, uint32_t seq);
 /* S48: unregisters ONE stream, the way the official client does - it sends
  * eight of them at shutdown. `stream_id < 0` produces its first frame, the one
  * that carries no identifier. */
+/* SRV5 2026-10-02 - `stream_id` widened from int to int64_t. The identifier the
+ * server grants is a u32 ("sessionId %u" in its logs, a millisecond clock), and
+ * roughly half of that range does not fit a non-negative int: truncating it
+ * produced a NEGATIVE value, which this builder reads as its "no identifier"
+ * sentinel and silently emitted the wrong message. Negative still means the
+ * sentinel - deliberately, that is the official client's first frame - but the
+ * full u32 can now be passed without colliding with it. */
 int ctrl_build_unregister_stream(uint8_t *out, size_t out_cap, uint32_t seq,
-                                 int stream_id, uint32_t horodatage);
+                                 int64_t stream_id, uint32_t horodatage);
 
 /* "DisplayReady" byte-exact against the desktop. Follows ready_msg.
+ *
+ * === SRV-DOC 2026-10-02 - THE NAME IS OURS, NOT THE PROTOCOL'S ===============
+ * Request field 6 is the server's **Hid** request:
+ * `DispatchControlMessage_` @0x140b2ca30 routes it to
+ * `ProcessHidRequestMessage_`. "DisplayReady" was our label for a message we
+ * had only ever seen in a capture, and §3.22's "kHid fixed" was already half
+ * this discovery. The bytes are byte-exact and work - only the name misleads,
+ * so it is kept and annotated rather than churned.
  *
  * Wire:
  *   Message {
@@ -351,6 +397,12 @@ int ctrl_build_display_ready_msg(uint8_t *out, size_t out_cap, uint32_t seq);
  * Total payload = 89 bytes. */
 int ctrl_build_heartbeat(uint8_t *out, size_t out_cap, uint32_t seq);
 
+/* HID1 2026-10-02 - Caps/Num/Scroll Lock, Request field 6. See hid_lock.h for
+ * what the VM does with it and for which parts of the layout are measured and
+ * which are inferred. */
+int ctrl_build_hid_locks(uint8_t *out, size_t out_cap, uint32_t seq,
+                         const hid_locks *locks);
+
 /* N33 2026-05-14: NotifyResolution.UpdateDisplayConfig - the client->server
  * message that announces a new resolution after bootstrap. Per the Ghidra RE of
  * the desktop client it can force the server to reconfigure its encoder into
@@ -375,7 +427,20 @@ int ctrl_build_heartbeat(uint8_t *out, size_t out_cap, uint32_t seq);
 int ctrl_build_notify_resolution(uint8_t *out, size_t out_cap, uint32_t seq,
                                    uint32_t width, uint32_t height);
 
-/* N38 2026-05-14: NotifyVideoCommand with the kFlush enum.
+/* === SRV9 2026-10-02 - DEAD: 6.3.1 HAS NO HANDLER FOR REQUEST FIELD 15 =======
+ * `DispatchControlMessage_` @0x140b2ca30 switches on `field - 2`. Its cases run
+ * 0..11, 14..20, 23 and 24, so the request fields it serves are 2..13, 16..22,
+ * 25 and 26 - and fields **14, 15, 23 and 24 have no case at all**. They fall
+ * into the `default`, which logs `invalid control message (type %d not set)`
+ * and answers `SendErrorReply_`.
+ * Nothing is behind this message. It has had no call site since it was written
+ * and must not acquire one; it is kept only so the next person searching for
+ * "NotifyVideoCommand" finds this note instead of re-deriving the message.
+ * The same applies to ctrl_build_notify_resolution (field 14) above, which is
+ * why SHADOW_SEND_NRES defaults to 0 - that default is now a hard fact, not the
+ * stylistic argument K15 had.
+ *
+ * N38 2026-05-14: NotifyVideoCommand with the kFlush enum.
  * Wire (RE'd hypothesis, still to be confirmed):
  *   Message {
  *     f1 = seq

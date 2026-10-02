@@ -155,12 +155,32 @@ static void *hb_thread_fn(void *arg) {
     {
         const char *e = getenv("SHADOW_COMCHAN_HEARTBEAT");
         if (!e || atoi(e) == 0) {
-            cclog("comchan: heartbeat DISABLED - this channel is the clipboard "
-                  "of the VM, republishing it would overwrite it (KB §3.37)");
+            cclog("comchan: heartbeat DISABLED - and this channel now transfers "
+                  "nothing at all, see CLIP below");
             return NULL;
         }
-        cclog("comchan: heartbeat FORCED - the VM's clipboard is about to be "
-              "overwritten every 7 s");
+        /* === CLIP 2026-10-02 - THIS LINE PROMISED A DATA LOSS IT CANNOT CAUSE
+         *
+         * It used to announce that the VM's clipboard was "about to be
+         * overwritten every 7 s". That was true when it was written; it has not
+         * been since S52 (2026-08-26) removed opcode 4 from this module.
+         * Decompiling the server settles it three times over:
+         *   - only REPLY (opcode 4) writes the VM clipboard, and this module no
+         *     longer contains it;
+         *   - what the heartbeat does send is FLUSH (1) and UPDATE (2), and the
+         *     server SILENTLY IGNORES both - its dispatch has cases for 3 and 4
+         *     only;
+         *   - the bodies are zero-length anyway.
+         * So the heartbeat is harmless and useless: it keeps a socket warm and
+         * transfers nothing. A warning that cries data loss on a code path that
+         * cannot cause it is worse than no warning - it is what makes the next
+         * real one unreadable. (See KB §3.37 and §9, 2026-10-02 CLIP.)
+         *
+         * The real clipboard lives in `clip_wire.c` / `clip_chan.c`. Adding a
+         * REPLY(4) send HERE instead of there would re-create the original
+         * defect exactly. */
+        cclog("comchan: heartbeat FORCED - harmless: since S52 this module has "
+              "no opcode 4, and the server ignores the FLUSH/UPDATE it does send");
     }
     cclog("comchan: hb_thread started");
     while (!c->abort_flag) {

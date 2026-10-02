@@ -371,6 +371,32 @@ int ctrl_gamepad_button(int button_id, bool pressed)
     return send_payload(b, pressed ? "bouton enfonce" : "bouton relache");
 }
 
+/* === SRV6 2026-10-02 — @12..13 IS ONE SIGNED 16-BIT VALUE ====================
+ *
+ * The old comment said byte 13 "carries the same value in the other
+ * representation (constant offset of 128)" and called it measured but
+ * unexplained. It is neither a second representation nor a checksum: bytes 12
+ * and 13 are a single **little-endian int16**, and `(value, value+128)` happens
+ * to encode `257*value + 32768 (mod 2^16)`.
+ *
+ * Read off ShadowStreamer 6.3.1,
+ * `Controller::Clients::SufpClientV4::DealWithInput` @0x140c53f70, kind 1:
+ *   - trigger axes (mapped type 4 or 5):
+ *         (double)i16@12 * 0.00390625 + 128.0      -> 0..255
+ *   - stick axes: the raw u16@12 is forwarded, and the consumer reads it as the
+ *     signed thumb value XUSB expects.
+ * Check the arithmetic on our encoding: value 0 -> i16 -32768 -> 0;
+ * value 128 -> i16 128 -> 128; value 255 -> i16 32767 -> 255. It round-trips
+ * exactly, which is why the 8-bit path has always worked - it just uses 256 of
+ * the 65,536 values the wire carries.
+ *
+ * So `ctrl_gamepad_axis` below is CORRECT and stays the default. What is new is
+ * `ctrl_gamepad_axis16`, for a caller that has more than 8 bits to give (the
+ * Switch samples its sticks at 16). NOTE: nothing calls it yet - the pad
+ * pipeline (`core/input/pad_forward.cpp`, `padmap`) is uint8_t end to end, and
+ * widening it is a separate change on two consoles that cannot be tested from a
+ * Windows checkout. The entry point exists so that change is a rewiring and not
+ * a re-derivation. */
 int ctrl_gamepad_axis(int axis_idx, uint8_t value)
 {
     g_n_axis++;
@@ -380,10 +406,26 @@ int ctrl_gamepad_axis(int axis_idx, uint8_t value)
     b[0] = 0x04; b[2] = 0x01;
     b[11] = (uint8_t)axis_idx;
     b[12] = value;
-    /* @13 carries the same value in the other representation (constant offset
-     * of 128, measured across all 6 axes) - it is not a checksum. */
+    /* = the low half of the int16 `257*value + 32768`; see SRV6 above. */
     b[13] = (uint8_t)((value + 128) & 0xFF);
     return send_payload(b, "axe");
+}
+
+int ctrl_gamepad_axis16(int axis_idx, int16_t value)
+{
+    g_n_axis++;
+    if (axis_idx < 0 || axis_idx > 5) return -1;
+    /* The mirror stays 8-bit: it feeds the developer menu's display and the
+     * replug state, both of which only ever showed 0..255. The coarse value is
+     * the same transform the server applies to the triggers. */
+    g_mirror_axes[axis_idx] = (uint8_t)(((int)value + 32768) >> 8);
+    uint8_t b[14] = {0};
+    b[0] = 0x04; b[2] = 0x01;
+    b[11] = (uint8_t)axis_idx;
+    const uint16_t u = (uint16_t)value;
+    b[12] = (uint8_t)(u & 0xFF);
+    b[13] = (uint8_t)(u >> 8);
+    return send_payload(b, "axe16");
 }
 
 int ctrl_gamepad_dpad(uint8_t value)

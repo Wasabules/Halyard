@@ -1,12 +1,28 @@
-/* ctrl_input_tcp - native Shadow input channel on :base+14 (TCP+TLS+FlatBuffer).
+/* ctrl_input_tcp - the native Shadow input channel.
  *
- * I1 2026-05-18: found in the V16 plaintext capture, SSL_WRITE on ssl=0x3781b750
- * (= the first write on the fd connected to :15014 in the user's session).
+ * === THE FILE NAME AND THE PORT IN IT ARE BOTH OUT OF DATE ===================
+ * The input channel is **DTLS/UDP on `:base+12`** (§3.21, and the open/send
+ * path in ctrl_input_tcp.c:836+). `:base+14` is the CLIPBOARD (§3.37); the
+ * "TCP" in this module's name dates from I1, when we believed otherwise, and a
+ * rename is a mechanical commit of its own. Read the port off the code, never
+ * off this name.
  *
- * Channel :base+14 is the desktop `InputSslTcpFlatBuffersChannel` (= RTTI string
- * in the ShadowPCDisplay binary). Wire format:
+ * I1 2026-05-18: the message templates were found in the V16 plaintext capture,
+ * SSL_WRITE on ssl=0x3781b750. Wire format, after DTLS:
  *   [u32_LE size] [FlatBuffer payload (size B)]
  * Connect msg = 96 B, mouse/keyboard events = 144 B each with an incrementing seq.
+ *
+ * TWO SERVER RULES THIS MODULE MUST KEEP (ShadowStreamer 6.3.1,
+ * `Input::Clients::FlatBufferClient::DealWithInput` @0x140c912a0):
+ *   - a message that fails to deserialise does not cost one event, it costs the
+ *     CHANNEL: the server logs `Deserialize error result %d --> invalid the
+ *     client` and invalidates the stream client, after which nothing we send on
+ *     `:base+12` is even looked at (see session_reannounce_channel in
+ *     ctrl_session.c). So anything that GENERATES a message rather than patching
+ *     a captured template must validate it before sending.
+ *   - messages sent before the Connect blob is accepted are dropped
+ *     (`Received valid messages but client is not connected`). The ordering this
+ *     module already enforces is a hard server rule, not a courtesy.
  *
  * Reuses the wolfSSL stack (already linked for ctrl_tcp + ctrl_video_tcp).
  * No SNI, no ALPN, same as desktop.

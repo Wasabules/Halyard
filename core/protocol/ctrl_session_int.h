@@ -11,6 +11,7 @@
 #include "ctrl_input_tcp.h"
 #include "ctrl_audio_dtls.h"
 #include "ctrl_comchan.h"
+#include "clip_tcp.h"
 #include "encryption.h"
 #include "sufp.h"
 #include "audio_dedup.h"
@@ -79,6 +80,10 @@ typedef struct {
      * `:base+20` - same client, two instances, two ports. */
     ctrl_video_tcp_t          *vtcp;        /* VideoSslTcpChannel :base+20 (V13) */
     ctrl_input_tcp_t          *itc;        /* InputSslTcpFlatBuffersChannel :base+14 (I1 2026-05-18) */
+    /* CLIP3 2026-10-02 - the clipboard channel on :base+14, TCP+TLS+STFP.
+     * Distinct from `comchan`, which opens the same port and (since S52)
+     * transfers nothing: see KB §3.37. */
+    clip_tcp_t                *clip;
     ctrl_comchan_t            *comchan;    /* ComChan :base+14 lifecycle (V15 2026-05-16, TIER 8 U4) */
     ctrl_audio_dtls_t         *aud;        /* AudioUdpChannel :base+12 DTLS+Opus (I2 2026-05-18) */
     /* K16d: the cross-column alarm "frames are arriving, no sequence parameter
@@ -92,4 +97,19 @@ typedef struct {
     /* F18: pending NACK queue */
     nack_request_t            nack_queue[NACK_QUEUE_CAP];
     int                       nack_head, nack_tail;  /* ring buffer indices */
+
+    /* === SRV5 2026-10-02 - THE GRANTED STREAM HANDLES, KEPT ===================
+     *
+     * The server answers each of the eight announcements with a SessionInfo that
+     * carries the handle it granted for that stream (`ann_reply.h`, f2). We were
+     * parsing it, logging it and dropping it. It is the stream identifier the
+     * unregister request (oneof field 9) needs, and therefore the only way to
+     * re-announce ONE channel mid-session - the single recovery the server's own
+     * code allows for a stream client it has invalidated
+     * (halyard-lab/notes/findings/server-vs-halyard.md §2).
+     *
+     * Indexed by SHADOW_CHAN_IDX_* (ctrl_msgs.h), per session through
+     * `ctx = {0}` - never a function static. */
+    uint64_t                  chan_handle[8];
+    int                       chan_handle_ok[8];
 } session_ctx_t;

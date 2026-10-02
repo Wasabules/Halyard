@@ -9,6 +9,7 @@
 
 #include <wolfssl/options.h>
 #include <wolfssl/ssl.h>
+#include "ctrl_inv.h"      /* SRV7: Request oneof field extraction (pure, tested) */
 /* AFTER <pthread.h>: tls_chan.h pulls in wolfssl/options.h, which does
  * `#undef _POSIX_THREADS` - see the note above. */
 #include "tls_chan.h"
@@ -423,28 +424,20 @@ bool ctrl_tcp_send_cleartext(ctrl_tcp_session *s,
             g_inv = e ? atoi(e) : 0;
         }
         if (g_inv && body && body_len > 6) {
-            /* body = [f1 varint seq][f2 tag][len][Request...] */
-            size_t i = 0;
-            unsigned k = 0, sh = 0;
-            while (i < body_len && (body[i] & 0x80)) { k |= (unsigned)(body[i] & 0x7f) << sh; sh += 7; i++; }
-            if (i < body_len) { k |= (unsigned)body[i] << sh; i++; }
-            /* skip the value of field 1 */
-            while (i < body_len && (body[i] & 0x80)) i++;
-            if (i < body_len) i++;
-            if (i + 2 < body_len && (body[i] >> 3) == 2) {
-                i++;                                   /* tag f2 */
-                while (i < body_len && (body[i] & 0x80)) i++;
-                if (i < body_len) i++;                 /* longueur */
-                if (i < body_len) {
-                    unsigned fld = body[i] >> 3;
-                    if (fld < 32) counts[fld]++;
-                    static unsigned n = 0;
-                    if ((++n % 25) == 0 || n < 3) {
-                        char line[256]; int o = 0;
-                        for (unsigned f = 0; f < 32 && o < 200; f++)
-                            if (counts[f]) o += snprintf(line + o, sizeof(line) - o, "f%u=%u ", f, counts[f]);
-                        tlog("[K15] inventaire ctrl : %s", line);
-                    }
+            /* SRV7 2026-10-02: the extraction moved to ctrl_inv.h, which is
+             * pure and tested (tests/test_ctrl_inv.c, with the pre-fix parser
+             * as a counter-case). It used to skip field 1 unconditionally, so
+             * the Capabilities message - the only one with no sequence number -
+             * was counted as nothing, every session. */
+            const int fld = ctrl_inv_request_field(body, body_len);
+            if (fld >= 0 && fld < 32) {
+                counts[fld]++;
+                static unsigned n = 0;
+                if ((++n % 25) == 0 || n < 3) {
+                    char line[256]; int o = 0;
+                    for (unsigned f = 0; f < 32 && o < 200; f++)
+                        if (counts[f]) o += snprintf(line + o, sizeof(line) - o, "f%u=%u ", f, counts[f]);
+                    tlog("[K15] inventaire ctrl : %s", line);
                 }
             }
         }

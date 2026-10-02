@@ -84,6 +84,20 @@ typedef struct {
 bool gamepad_wire_parse_vibration(const uint8_t *corps, size_t n,
                                   gamepad_wire_vibration_t *out);
 
+/* SRV6 2026-10-02 - UPSTREAM axis bodies. Bytes 12..13 of an axis message are
+ * one little-endian int16, not a value plus a second representation; the 8-bit
+ * form this client has always sent encodes `257*v + 32768`. Pure, so the
+ * arithmetic is covered by tests/test_vid_uplink.c - ctrl_gamepad.c owns the
+ * socket and cannot be linked offline. `corps` is zeroed, then filled. */
+void gamepad_wire_build_axis16(uint8_t corps[GAMEPAD_WIRE_BODY_LEN],
+                               uint8_t axis_idx, int16_t value);
+void gamepad_wire_build_axis8(uint8_t corps[GAMEPAD_WIRE_BODY_LEN],
+                              uint8_t axis_idx, uint8_t value);
+/* The server's transform applied to such a body, so a test can check our
+ * encoding against the server's reading instead of against a paraphrase. */
+uint8_t gamepad_wire_server_axis_value(const uint8_t corps[GAMEPAD_WIRE_BODY_LEN],
+                                       bool trigger);
+
 #ifdef __cplusplus
 }
 #endif

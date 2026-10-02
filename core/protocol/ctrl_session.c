@@ -23,6 +23,10 @@
 #include "ctrl_gamepad.h"   /* the gamepad on :base+13 (KB §3.25) */
 #include "native_input.h"    /* I1 phase 3 2026-05-18 */
 #include "ctrl_msgs.h"
+#include "session_caps.h"   /* INT1: the public grant snapshot */
+#include "vid_uplink.h"   /* SRV1/SRV3: the uplink rules, pure and tested */
+#include "../services/filetransfer.h"   /* FT2: the SFTP self-test */
+#include "proto.h"                       /* FT2: reply-shape diagnostic */
 #include "encryption.h"
 #include "sufp.h"
 #include "smoke_test.h"   /* jwt_instance */
@@ -43,6 +47,10 @@
 #include "ovfl_accum.h"   /* ING-1: kernel drop accounting, per socket */
 #include "session_host.h"   /* DNS1: one lookup of the VM name per session */
 #include "../services/log_mask.h"   /* SEC2: secrets in the log, start and end only */
+#include "../services/local_clipboard.h"   /* CLIP3: the clipboard of this machine */
+#include "../services/config.h"   /* FT3: SHADOW_DATA_DIR */
+#include "ft_uri.h"   /* FT4: the SFTP session as a clickable URI */
+#include "clip_dir.h"   /* CLIP6: which way the clipboard may travel */
 #include "idr_policy.h"
 #include "cursor_wire.h"
 #include "audio_route.h"   /* DEC-1: which :base+30 plaintexts are audio */
@@ -137,6 +145,23 @@ static volatile uint32_t g_user_word = 0;
  * `p->max_bitrate_mbps` alone, so an env.txt cap was obeyed by the
  * announcement, then climbed over by G19 from the fourth second on. */
 static uint32_t g_announced_cap_mbps = 0;
+
+/* INT1 2026-10-02 - the public grant snapshot (session_caps.h) and the
+ * file-transfer credential kept beside it, never inside it. Declared here,
+ * with the other module state, because the Capabilities reply writes the
+ * server version into it during the handshake - earlier in this file than
+ * the functions that fill the rest. */
+static shadow_session_caps g_caps;
+static char                g_ft_secret[1024];
+static size_t              g_ft_secret_len;
+/* FT4: the VM address this session is talking to. The snapshot carries the
+ * port but not the host, because every channel in core already had it on hand
+ * from `ctrl_session_params`; a caller OUTSIDE core does not, and a URI needs
+ * it. Kept beside the secret rather than in the snapshot for the same reason
+ * the secret is: INT1's rule is that the public struct holds nothing a crash
+ * dump should not. (A host name is not a credential - but it is the half that
+ * makes one usable, and the two now have one lifetime.) */
+static char                g_ft_host[256];
 
 void ctrl_session_set_video_config(uint32_t mbps)
 {
@@ -1485,6 +1510,26 @@ static bool session_handshake(const ctrl_session_params *p,
         stats->exit_reason = 1; return false;
     }
     clog("[L2] aller-retour Capabilities     = %lld ms", hs_now_ms() - t_M9);
+    /* SRV8: the reply carries the ShadowStreamer version. Every byte-exact
+     * decision in this repo is dated against ONE server build, so the build is
+     * worth one line per session - it is the first thing anyone will ask for
+     * the day a VM stops behaving. */
+    {
+        unsigned smaj = 0, smin = 0, spat = 0;
+        if (ctrl_parse_capabilities_reply(buf, reply_len, &smaj, &smin, &spat)) {
+            clog("[SRV8] ShadowStreamer side serveur : %u.%u.%u", smaj, smin, spat);
+            /* INT1: into the snapshot too, so a client can gate on the build
+             * instead of asking. This runs BEFORE caps_begin_session(), which
+             * is why that function carries these three fields across its
+             * memset instead of zeroing them. */
+            g_caps.srv_major = smaj; g_caps.srv_minor = smin; g_caps.srv_patch = spat;
+        }
+        else
+            /* No %z: the Vita's newlib does not consume the argument for it
+             * (tools/check-z-formats.py). */
+            clog("[SRV8] version serveur illisible dans la reponse Capabilities "
+                 "(%u octets) - format change, or not 6.3.1", (unsigned)reply_len);
+    }
 
     /* Step 4: Authentication + reply (extracts the 20 B hash) */
     emit_progress(p, "M10.auth", "send Authentication");
@@ -1613,9 +1658,327 @@ static bool session_handshake(const ctrl_session_params *p,
  *
  * Extracted from ctrl_session_run on 2026-08-25. It produces NOTHING: everything
  * it builds dies with it, which makes it a risk-free cut. */
+/* === INT1 2026-10-02 - the public snapshot of what the server granted =======
+ *
+ * See `session_caps.h` for the contract and for why the file-transfer secret is
+ * NOT a field of it. Module state, not session state in the CLAUDE.md sense:
+ * it describes the session that is running and is republished wholesale at each
+ * bootstrap, with `generation` so a caller can tell a stale copy. The secret
+ * lives beside it rather than inside it, and is wiped when a new session
+ * publishes.
+ *
+ * Written only during the bootstrap, before anything can observe the session as
+ * active, and read-only afterwards - which is what makes the lockless read in
+ * `ctrl_session_caps()` sound. */
+
+static void caps_begin_session(int port_base)
+{
+    const uint32_t gen = g_caps.generation + 1u;
+    /* The Capabilities reply arrives BEFORE this point in the bootstrap, so the
+     * server version is already in the snapshot and a plain memset would erase
+     * it. Carried across, like `generation`. (The first version of this left a
+     * comment saying the wipe would happen and did nothing about it.) */
+    const unsigned maj = g_caps.srv_major, min_ = g_caps.srv_minor,
+                   pat = g_caps.srv_patch;
+    /* Wipe the previous session's secret before anything else: a snapshot that
+     * outlived its session must not carry a live credential. */
+    for (size_t z = 0; z < sizeof g_ft_secret; z++)
+        ((volatile char *)g_ft_secret)[z] = 0;
+    g_ft_secret_len = 0;
+    g_ft_host[0] = '\0';   /* FT4: the host dies with the secret it completes */
+    memset(&g_caps, 0, sizeof g_caps);
+    g_caps.generation = gen;
+    g_caps.port_base  = port_base;
+    g_caps.srv_major  = maj;
+    g_caps.srv_minor  = min_;
+    g_caps.srv_patch  = pat;
+}
+
+static void caps_note_grant(const ann_reply_t *ar, int port_base)
+{
+    const int bi = shadow_chan_idx_from_ann(ar->channel);
+    if (bi < 0) return;
+    shadow_chan_caps *c = &g_caps.chan[bi];
+    if (!c->granted) g_caps.n_granted++;
+    c->granted = true;
+    c->tcp     = ar->tcp ? true : false;
+    /* The absolute port, resolved ONCE here. The reply's own field reads
+     * 7000+offset, which is not the live base - the trap that sent the
+     * file-transfer self-test to port 7015 while the channel listened on
+     * 14015. */
+    c->port    = (uint16_t)(port_base + ann_reply_port_offset(ar));
+    c->handle  = ar->have_session ? ar->handle : 0;
+
+    if (ar->channel == ANN_CHAN_VIDEO && ar->have_mode) {
+        g_caps.video_width       = ar->width;
+        g_caps.video_height      = ar->height;
+        g_caps.video_fps         = ar->fps;
+        g_caps.video_bitrate_bps = ar->bitrate_bps;
+        g_caps.video_codec       = ar->codec;
+    }
+    if (ar->have_audio && ar->channel == ANN_CHAN_AUDIO) {
+        g_caps.audio_sample_rate = ar->sample_rate;
+        g_caps.audio_bits        = ar->bits;
+        g_caps.audio_codec       = ar->audio_codec;
+    }
+}
+
+bool ctrl_session_caps(shadow_session_caps *out)
+{
+    if (!out) return false;
+    *out = g_caps;
+    return g_caps.generation != 0 && g_caps.n_granted > 0;
+}
+
+bool ctrl_session_file_transfer_secret(char *out, size_t cap, size_t *n)
+{
+    if (n) *n = 0;
+    if (!out || cap == 0) return false;
+    out[0] = '\0';
+    if (g_ft_secret_len == 0) return false;
+    if (!g_caps.chan[SHADOW_CHAN_IDX_FILETRANSFER].granted) return false;
+    /* Refuse rather than truncate: half a credential is a confusing failure,
+     * and a caller that sized its buffer wrongly needs to know. */
+    if (g_ft_secret_len + 1 > cap) return false;
+    memcpy(out, g_ft_secret, g_ft_secret_len);
+    out[g_ft_secret_len] = '\0';
+    if (n) *n = g_ft_secret_len;
+    return true;
+}
+
+bool ctrl_session_file_transfer_uri(char *out, size_t cap, size_t *n)
+{
+    if (n) *n = 0;
+    if (!out || cap == 0) return false;
+    out[0] = '\0';
+    if (g_ft_secret_len == 0 || !g_ft_host[0]) return false;
+    const shadow_chan_caps *cc = &g_caps.chan[SHADOW_CHAN_IDX_FILETRANSFER];
+    if (!cc->granted) return false;
+
+    /* `ft_uri_build` refuses rather than truncates, so a short buffer gives an
+     * empty string and false - exactly what this function promises. */
+    const size_t w = ft_uri_build(out, cap, g_ft_host, (int)cc->port,
+                                  "shadow", g_ft_secret, g_ft_secret_len);
+    if (w == 0) { out[0] = '\0'; return false; }
+    if (n) *n = w;
+    return true;
+}
+
+/* === FT2 2026-10-02 - the file-transfer self-test ===========================
+ *
+ * The announcement reply is the ONE place the SSH password for `:base+15` is in
+ * hand, so it is the only place the self-test can run without storing the
+ * credential anywhere. Off unless SHADOW_FT_SELFTEST=1, and compiled to nothing
+ * unless the build asked for -DSHADOW_FILETRANSFER=ON.
+ *
+ * The secret lives in a stack buffer for the duration of the call and is zeroed
+ * on the way out: never written to disk, never logged, never handed to a
+ * separate harness that would have to be given it. */
+/* INT1: keep the file-transfer secret for `ctrl_session_file_transfer_secret()`.
+ * This is the one place the reply is in hand. Stored beside the snapshot and
+ * never inside it - a struct callers copy and serialise is where a credential
+ * would leak. Wiped by `caps_begin_session` on the next bootstrap. */
+static void caps_note_ft_host(const char *host)
+{
+    if (!host || !host[0]) { g_ft_host[0] = '\0'; return; }
+    size_t i = 0;
+    while (host[i] && i + 1 < sizeof g_ft_host) { g_ft_host[i] = host[i]; i++; }
+    g_ft_host[i] = '\0';
+}
+
+static void caps_note_ft_secret(const uint8_t *reply, size_t reply_len)
+{
+    char tmp[sizeof g_ft_secret]; size_t tn = 0;
+    if (shadow_ft_secret_from_reply(reply, reply_len, tmp, sizeof tmp, &tn)
+        && tn > 0 && tn < sizeof g_ft_secret) {
+        memcpy(g_ft_secret, tmp, tn);
+        g_ft_secret_len = tn;
+        clog("[INT1] file-transfer credential held for this session (%u bytes, "
+             "never logged); ctrl_session_file_transfer_secret() hands it over",
+             (unsigned)tn);
+    }
+    for (size_t z = 0; z < sizeof tmp; z++) ((volatile char *)tmp)[z] = 0;
+}
+
+static void session_ft_selftest(const ctrl_session_params *p,
+                                const uint8_t *reply, size_t reply_len,
+                                const ann_reply_t *ar)
+{
+    static int g_ft_selftest = -1;
+    if (g_ft_selftest < 0) {
+        const char *e = getenv("SHADOW_FT_SELFTEST");
+        g_ft_selftest = e ? atoi(e) : 0;
+    }
+    if (!g_ft_selftest) return;
+
+    char secret[1024]; size_t sn = 0;
+    if (shadow_ft_secret_from_reply(reply, reply_len, secret, sizeof secret, &sn)) {
+        /* === FT2 2026-10-02 - THE BASE IS NOT 7000 =========================
+         * First version hardcoded `7000 + offset` from the §3.37 note that the
+         * reply's port field reads `7000 + offset`. But that is the number the
+         * SERVER puts in the field, not the port to dial: the live base on this
+         * VM is 9000 (vm.port 2000 + 7000), so the self-test knocked on 7015
+         * and got "TCP or SSH transport failed" on a channel that was granted
+         * and listening. `p->port_base` is the base every other channel in this
+         * client already uses. */
+        const int ftport = p->port_base + ann_reply_port_offset(ar);
+        clog("[FT2] running the SFTP self-test on :%d (secret %u bytes, never logged)",
+             ftport, (unsigned)sn);
+        shadow_ft_selftest(p->vm_host, (uint16_t)ftport, secret, sn);
+    } else {
+        clog("[FT2] the file-transfer reply carries no secret field "
+             "(%u bytes) - nothing to test against", (unsigned)reply_len);
+    }
+    for (size_t z = 0; z < sizeof secret; z++) ((volatile char *)secret)[z] = 0;
+}
+
+/* === FT3 2026-10-02 - HANDING THE SFTP CREDENTIAL TO A THIRD-PARTY CLIENT ===
+ *
+ * The VM's file transfer is plain SFTP on `:base+15`, password auth, and the
+ * password is the 395-byte field of the file-transfer announcement reply. Which
+ * means WinSCP, FileZilla or `sftp` can drive it directly - there is nothing
+ * proprietary left once you have host, port and password.
+ *
+ * What stopped that being usable is that we deliberately never wrote the
+ * password ANYWHERE: `ctrl_session_file_transfer_secret()` hands it to a caller
+ * in memory, and nothing in `clients/` calls it. So the capability existed and
+ * was out of reach - the same family as the six settings corrected on
+ * 2026-08-27.
+ *
+ * WHY A FILE AND NOT THE LOG. The log is the thing that gets pasted into an
+ * issue, shipped to a PC by `devlink`, and read by `journal`'s redaction rules.
+ * A credential that grants READ AND WRITE to the VM's entire filesystem (the
+ * server does not confine SFTP paths, KB §3.50) has no business in it. A
+ * separate file the user goes and opens deliberately is a different act from
+ * reading a log, and that difference is the whole safeguard.
+ *
+ * SHADOW_FT_REVEAL=1 arms it; it is OFF by default and the log says only that
+ * the file was written, never what is in it. The file is REMOVED at the end of
+ * the session, because the secret dies with the session anyway and a stale one
+ * invites a confusing failure rather than a breach. A crash leaves it behind -
+ * stated here rather than pretended otherwise. */
+
+#define FT_REVEAL_PATH SHADOW_DATA_DIR "sftp.txt"
+/* FT5 2026-10-02 - the credential ON ITS OWN, byte for byte.
+ *
+ * The first version wrote `password = <395 bytes>` into the file above. That
+ * file is `key = value` lines, and the credential CONTAINS NEWLINES - so
+ * reading "the password line" yielded `-----BEGIN OPENSSH PRIVATE KEY-----`
+ * and nothing more. Pasted into WinSCP that is 35 bytes of a 395-byte secret,
+ * which is exactly the "Erreur d'authentification" that was reported. A format
+ * that cannot represent its own content is the defect, not the client.
+ *
+ * So the bytes get a file of their own, with nothing else in it: no header, no
+ * label, no trailing anything. `wc -c` on it must say 395. */
+#define FT_SECRET_PATH SHADOW_DATA_DIR "sftp_password.bin"
+
+static void session_ft_reveal(const ctrl_session_params *p,
+                              const uint8_t *reply, size_t reply_len,
+                              const ann_reply_t *ar)
+{
+    static int g_reveal = -1;
+    if (g_reveal < 0) {
+        const char *e = getenv("SHADOW_FT_REVEAL");
+        g_reveal = e ? atoi(e) : 0;
+    }
+    if (!g_reveal) return;
+
+    char secret[1024]; size_t sn = 0;
+    if (!shadow_ft_secret_from_reply(reply, reply_len, secret, sizeof secret, &sn)
+        || sn == 0) {
+        clog("[FT3] SHADOW_FT_REVEAL=1 but the file-transfer reply carries no "
+             "secret - nothing written");
+        return;
+    }
+
+    const int port = p->port_base + ann_reply_port_offset(ar);
+
+    /* The credential first, alone, byte for byte - see FT_SECRET_PATH. Binary
+     * mode so no CRLF translation happens on Windows: the server refuses the
+     * CRLF form (measured), so a text-mode write would produce a file that
+     * cannot authenticate. */
+    int wrote_secret = 0;
+    {
+        FILE *k = fopen(FT_SECRET_PATH, "wb");
+        if (k) {
+            wrote_secret = fwrite(secret, 1, sn, k) == sn;
+            fclose(k);
+        }
+    }
+
+    FILE *f = fopen(FT_REVEAL_PATH, "wb");
+    if (f) {
+        /* Describes the access and POINTS AT the credential; it no longer tries
+         * to contain it. What this file is for is being read by a person. */
+        fprintf(f,
+            "# Halyard - SFTP access to this Shadow VM, for THIS session only.\n"
+            "#\n"
+            "# WARNING: the credential grants READ AND WRITE on the WHOLE\n"
+            "# filesystem of the VM - the server confines no SFTP path. It is\n"
+            "# regenerated every session and is useless once this one ends.\n"
+            "# Never paste it into an issue, a log or a chat.\n"
+            "#\n"
+            "# Written because SHADOW_FT_REVEAL=1. Both files are removed when\n"
+            "# the session ends normally; delete them by hand after a crash.\n"
+            "\n"
+            "host     = %s\n"
+            "port     = %d\n"
+            "user     = shadow\n"
+            "password = see %s  (%u bytes, NOT reproduced here)\n"
+            "\n"
+            "# === WHAT THIS CREDENTIAL IS, AND WHAT CANNOT USE IT ============\n"
+            "#\n"
+            "# It is an OpenSSH PRIVATE KEY in PEM form, used as a PASSWORD.\n"
+            "# The server is libssh_0.11.0 and offers `password` only - there is\n"
+            "# no publickey method to offer the key to. Any user name works; the\n"
+            "# server looks only at the password.\n"
+            "#\n"
+            "# It must be passed BYTE-EXACT: %u bytes, two embedded newlines,\n"
+            "# and a TRAILING newline. Measured against the live server on\n"
+            "# 2026-10-02 - dropping the trailing newline is refused, and so is\n"
+            "# every single-line rewriting of it (newlines as spaces, newlines\n"
+            "# removed, newlines as a literal backslash-n, the base64 body\n"
+            "# alone, the body plus a newline).\n"
+            "#\n"
+            "# CONSEQUENCE: a GUI password box is one line, so WinSCP and\n"
+            "# FileZilla CANNOT take this. Nor can a URI - curl calls such a URI\n"
+            "# malformed - and curl/libssh2 refuses the credential even passed\n"
+            "# as an argument, with the same bytes libssh accepts.\n"
+            "#\n"
+            "# What works is a library call: `ssh_userauth_password(s, NULL,\n"
+            "# <the %u bytes>)` with libssh, which is what Halyard's own\n"
+            "# core/services/filetransfer.c does. Script against that, or\n"
+            "# against any client that can read a password from a FILE.\n"
+            "#\n"
+            "# There is no host key to trust - it is generated per session too.\n",
+            p->vm_host ? p->vm_host : "?", port,
+            wrote_secret ? FT_SECRET_PATH : "(COULD NOT BE WRITTEN)",
+            (unsigned)sn, (unsigned)sn, (unsigned)sn);
+        fclose(f);
+        clog("[FT3] SFTP access for :%d described in %s, credential (%u bytes, "
+             "byte-exact) in %s - both grant full read/write on the VM and are "
+             "removed when the session ends",
+             port, FT_REVEAL_PATH, (unsigned)sn, FT_SECRET_PATH);
+    } else {
+        clog("[FT3] could not write %s", FT_REVEAL_PATH);
+    }
+    for (size_t z = 0; z < sizeof secret; z++) ((volatile char *)secret)[z] = 0;
+}
+
+static void session_ft_reveal_clear(void)
+{
+    /* FT5: the credential file goes first - it is the one that matters. */
+    (void)remove(FT_SECRET_PATH);
+    /* Unconditional: the toggle may have been turned off since, and a file left
+     * from an earlier armed session is exactly what should not survive. remove()
+     * failing because there is nothing there is the normal case, hence no log. */
+    (void)remove(FT_REVEAL_PATH);
+}
+
 static bool session_announce_channels(const ctrl_session_params *p,
                                       ctrl_tcp_session *tcp,
                                       ctrl_session_stats *stats,
+                                      session_ctx_t *ctx,
                                       int width, int height,
                                       uint8_t *buf, size_t buf_cap)
 {
@@ -1626,6 +1989,7 @@ static bool session_announce_channels(const ctrl_session_params *p,
      * caught it; no test covers this path. Use `buf_cap`, never `sizeof(buf)`. */
     size_t reply_len = 0;
     int n = 0;
+    caps_begin_session(p->port_base);   /* INT1: publish a fresh snapshot */
     /* Step 7: 8 channel announcements (f1=5..12).
      * Q1 2026-05-18: for chan_idx=0 (= video, seq=5), max_bitrate/fps/resolution
      * can be overridden through the custom params OR the env vars. */
@@ -1900,8 +2264,79 @@ static bool session_announce_channels(const ctrl_session_params *p,
              *
              * `ann_reply.c` reads the fields we want and NEVER copies the key
              * field. What follows logs facts, never bytes. */
+            /* === FT2 2026-10-02 - THE FIRST REPLY WAS NEVER PARSED =========
+             *
+             * This loop starts at r=1 because the first reply is read before
+             * it, for the mode extraction. But `ann_reply_parse` was therefore
+             * never run on that first reply, so one of the eight grants has
+             * always been invisible to everything downstream - which is how the
+             * file-transfer self-test came up empty on a session that received
+             * "8 of 8". Parse it here, with the length it was actually read
+             * with (`reply_len`), before the loop touches `buf`. */
+            {
+                ann_reply_t ar0;
+                if (!ann_reply_parse(buf, reply_len, &ar0)) {
+                    /* === FT2 2026-10-02 - AND WHAT THIS REPLY ACTUALLY IS ====
+                     *
+                     * Measured: `f3.10, 1097 bytes`. Field 10 is DisplayConfig
+                     * (the request this client still calls `register_session`),
+                     * so the reply read BEFORE the loop is that request's
+                     * acknowledgement - not a channel grant at all. A first
+                     * reading of this called it "a lost grant"; that was wrong,
+                     * and failing to parse it here is correct behaviour.
+                     *
+                     * What it does expose is the TALLY below: `received`
+                     * starts at 1 for this reply, so a session that collects
+                     * the DisplayConfig ack plus six grants plus one
+                     * unrecognised answer reports a reassuring "8 of 8" while
+                     * two channels were never granted. Structure only, never
+                     * content: a real FileTransfer grant carries the SSH
+                     * password. */
+                    clog("[FT2] pre-loop reply is not an announcement "
+                         "(%u bytes, f3.%u - f3.10 is the DisplayConfig ack, "
+                         "which is expected here)",
+                         (unsigned)reply_len, ar0.response_field);
+                }
+                if (ann_reply_parse(buf, reply_len, &ar0)) {
+                    clog("[K12] accord %s (1re reponse) : %s, offset %+d",
+                         ann_reply_channel_name(ar0.channel),
+                         ar0.tcp ? "TCP" : "UDP", ann_reply_port_offset(&ar0));
+                    if (ctx && ar0.have_session) {
+                        const int bi0 = shadow_chan_idx_from_ann(ar0.channel);
+                        if (bi0 >= 0) {
+                            ctx->chan_handle[bi0]    = ar0.handle;
+                            ctx->chan_handle_ok[bi0] = 1;
+                        }
+                    }
+                    caps_note_grant(&ar0, p->port_base);   /* INT1 */
+                    if (ar0.channel == ANN_CHAN_FILEXFER) {
+                        caps_note_ft_host(p->vm_host);   /* FT4 */
+                        caps_note_ft_secret(buf, reply_len);
+                        session_ft_reveal(p, buf, reply_len, &ar0);   /* FT3 */
+                        session_ft_selftest(p, buf, reply_len, &ar0);
+                    }
+                }
+            }
             int received = 1;   /* the first reply is already read above */
-            for (int r = 1; r < 8; r++) {
+            int granted_seen = 0;   /* FT2: real channel grants, not messages */
+            /* === FT2 2026-10-02 - READ UNTIL EIGHT GRANTS, NOT EIGHT MESSAGES
+             *
+             * This loop read exactly seven more messages and counted whatever
+             * arrived. The server INTERLEAVES its own traffic with the grants -
+             * measured: one 36-byte message shaped `f2:len7 f4:len25`, i.e. a
+             * Request from the SERVER (field 2), with no field 3 at all, so not
+             * a reply to anything. Each such message consumed one of the seven
+             * slots, and the grants it displaced were simply never read: the
+             * session reported "8 of 8" while two channels (micro and file
+             * transfer) had no grant recorded, and the file-transfer self-test
+             * found nothing to connect to.
+             *
+             * So the budget is now in GRANTS, with a generous ceiling on reads
+             * so an interleaving server cannot starve us, and the loop stops
+             * early the moment all eight are in. A read timeout still breaks
+             * out, which is what ends it when the server really does grant
+             * fewer than eight. */
+            for (int r = 1; r < 24 && granted_seen < 8; r++) {
                 size_t rl = 0;
                 ann_reply_t ar;
                 if (!ctrl_tcp_recv_cleartext(tcp, buf, buf_cap, &rl, 150)) break;
@@ -1918,6 +2353,47 @@ static bool session_announce_channels(const ctrl_session_params *p,
                      * saying WHICH removes the guesswork. Never its content. */
                     clog("[K12] grant #%d: not an announcement (reply f3.%u, %zu bytes)",
                          r, ar.response_field, rl);
+                    /* === FT2 2026-10-02 - WHAT IS THIS REPLY, THEN? =========
+                     *
+                     * This VM grants 6 channels out of 8 (no micro, no file
+                     * transfer) and answers the other two with something this
+                     * parser does not recognise. "f3.0" does not mean field 0
+                     * - it means no field 3 was found at all, so the reply is
+                     * not shaped like a channel grant. Dump its STRUCTURE -
+                     * field numbers, wire types and lengths, never content - so
+                     * the refusal can be named instead of guessed at. A real
+                     * grant for this channel would carry the SSH password,
+                     * which is exactly why only the shape is logged. */
+                    {
+                        char shape[192]; int so = 0; int off2 = 0;
+                        while ((size_t)off2 < rl && so < (int)sizeof shape - 24) {
+                            uint32_t fn = 0, wt = 0;
+                            const int nxt = pb_read_tag(buf, rl, off2, &fn, &wt);
+                            if (nxt < 0) break;
+                            if (wt == 2) {
+                                const uint8_t *sb = NULL; size_t sl2 = 0;
+                                const int a2 = pb_read_lendelim(buf, rl, nxt, &sb, &sl2);
+                                so += snprintf(shape + so, sizeof shape - so,
+                                               "f%u:len%u ", fn, (unsigned)sl2);
+                                if (a2 < 0) break;
+                                off2 = a2;
+                            } else {
+                                uint64_t v = 0;
+                                const int a2 = (wt == 0) ? pb_read_varint(buf, rl, nxt, &v)
+                                                         : pb_skip_field(buf, rl, nxt, wt);
+                                if (wt == 0)
+                                    so += snprintf(shape + so, sizeof shape - so,
+                                                   "f%u=%llu ", fn,
+                                                   (unsigned long long)v);
+                                else
+                                    so += snprintf(shape + so, sizeof shape - so,
+                                                   "f%u:w%u ", fn, wt);
+                                if (a2 < 0) break;
+                                off2 = a2;
+                            }
+                        }
+                        clog("[FT2] unrecognised reply #%d shape: %s", r, shape);
+                    }
                     continue;
                 }
 
@@ -1950,13 +2426,430 @@ static bool session_announce_channels(const ctrl_session_params *p,
                          ann_reply_channel_name(ar.channel),
                          ar.tcp ? "TCP" : "UDP", off);
                 }
+                /* SRV5: keep the granted handle - it is the stream identifier
+                 * the unregister request needs, and without it one channel
+                 * cannot be re-announced. Stored by OUR body index, not by the
+                 * server's channel number: those are two different orders (see
+                 * shadow_chan_idx_from_ann) and mixing them would re-announce the
+                 * wrong channel. */
+                if (ctx && ar.have_session) {
+                    const int bi = shadow_chan_idx_from_ann(ar.channel);
+                    if (bi >= 0) {
+                        if (!ctx->chan_handle_ok[bi]) granted_seen++;
+                        ctx->chan_handle[bi]    = ar.handle;
+                        ctx->chan_handle_ok[bi] = 1;
+                    }
+                }
+                caps_note_grant(&ar, p->port_base);   /* INT1 */
+                if (ar.channel == ANN_CHAN_FILEXFER) {
+                    caps_note_ft_host(p->vm_host);   /* FT4 */
+                    caps_note_ft_secret(buf, rl);
+                    session_ft_reveal(p, buf, rl, &ar);   /* FT3 */
+                    session_ft_selftest(p, buf, rl, &ar);
+                }
                 (void)NOMS;
             }
-            clog("[K12] announcement grants received: %d of 8%s", received,
-                 received == 8 ? "" : "  <- fewer than expected, see SHADOW_ANN_REPLIES");
+            /* === FT2 2026-10-02 - "8 of 8" WAS COUNTING REPLIES, NOT GRANTS
+             *
+             * `received` is incremented for every reply read, and it starts at
+             * 1 for the pre-loop DisplayConfig acknowledgement. So a session
+             * that got six real channel grants, that ack and one unrecognised
+             * answer printed "8 of 8" - and the two channels the server never
+             * granted (measured on this VM: micro and file transfer) were
+             * invisible. The reply count is still worth printing, but the
+             * number that matters is how many CHANNELS were granted. */
+            unsigned granted = 0;
+            if (ctx) for (int i = 0; i < 8; i++) if (ctx->chan_handle_ok[i]) granted++;
+            clog("[K12] replies read: %d | CHANNELS GRANTED: %u of 8%s",
+                 received, granted,
+                 granted == 8 ? "" : "  <- the server did not grant them all");
         }
     }
 
+    return true;
+}
+
+/* === SRV5 2026-10-02 — RE-ANNOUNCE ONE CHANNEL ==============================
+ *
+ * THE ONLY RECOVERY THE SERVER ALLOWS for a stream client it has invalidated.
+ * Read off ShadowStreamer 6.3.1 (details in
+ * halyard-lab/notes/findings/server-vs-halyard.md §2):
+ *
+ *   - `AClient::SetInvalid` @0x140c01640 clears one byte (+218) and calls its
+ *     virtual hook, which is `nullsub_833` in EVERY client class: the client is
+ *     never removed from the channel.
+ *   - the channel's demux (`DtlsChannel::WaitForInputData` @0x140c24570) picks a
+ *     client only when it is valid AND its stored IP prefixes the datagram's
+ *     source; otherwise it logs `Failed to find matching client` and DISCARDS
+ *     the datagram.
+ *
+ * So after an invalidation, every byte we send on that channel is thrown away
+ * before any dispatcher runs - whatever source port we send it from, since the
+ * match is on the IP. That is why AUD5, AUD16 and SHADOW_VIDEO_REREG, which all
+ * re-send the `A` registration DATAGRAM, were measured doing nothing: "900 sends
+ * in 30 min, 807 of them with no line" (§3.38), "twelve attempts with no answer"
+ * (AUD16b). They were never capable of working.
+ *
+ * `AChannel::AddNewClient` @0x140c22240 is what inserts a client, it is reached
+ * only from the control channel's registration path, and it has no duplicate
+ * guard. A fresh client is valid, so the demux breaks on it and skips the stale
+ * one. Hence: request field 9 (unregister this stream) then field 8 (announce it
+ * again), on `:base+11`.
+ *
+ * Measured to choose the default: nothing live yet. This is read off the server
+ * binary, and the mechanism it replaces is proven incapable - that is the whole
+ * argument for making it the default. The unregister half is the uncertain one
+ * (we send the handle the server granted, but no capture shows an unregister
+ * used as a RECOVERY rather than at shutdown), so it has its own toggle.
+ *
+ * `SHADOW_REANN=0` restores the previous behaviour exactly: the callers then
+ * fall back to their `A` datagram resend.
+ * Returns true if both messages went out. */
+/* === CLIP3 2026-10-02 - THE CLIPBOARD, JOINED TO THE SESSION ===============
+ *
+ * `clip_wire` decodes the messages, `clip_chan` reassembles them and `clip_tcp`
+ * carries them; all three are blind to what a clipboard is. This is the piece
+ * that joins them to the clipboard of the machine the client runs ON, in both
+ * directions:
+ *   VM -> here   the receive thread STAGES the text below, and the service loop
+ *                writes it to the local clipboard;
+ *   here -> VM   the service loop polls the local change counter and sends a
+ *                REPLY when it moves.
+ *
+ * WHY THE PASTE IS NOT APPLIED ON THE RECEIVE THREAD. `OpenClipboard` fails
+ * while another process holds the clipboard, so `local_clipboard.c` retries for
+ * up to 100 ms. A receive thread blocked that long stops polling its abort flag
+ * within the 100 ms the Switch demands (CLAUDE.md), and `clip_tcp.h` says in so
+ * many words that a callback must not block. The thread therefore copies and
+ * returns, and the loop does the Win32 work.
+ *
+ * WHY A FILE STATIC AND NOT `session_ctx_t`. The staging slot needs a mutex, and
+ * `session_ctx_t` is also compiled by `tests/test_vid_reasm.c`, which has no
+ * business growing a pthread dependency. So this follows `g_caps` above: a
+ * static that is reset WHOLESALE when the channel opens, explicitly, rather than
+ * relying on `ctx = {0}`.
+ *
+ * === CLIP4 2026-10-02 - THE DIRECTION IS A SETTING, NOT A CONSTANT =========
+ *
+ * `SHADOW_CLIPBOARD` carries FOUR values, not a boolean, so that one key says
+ * both whether the clipboard is shared and which way:
+ *
+ *     0  off          nothing is opened
+ *     1  both ways    the default
+ *     2  PC -> VM     what you copy here lands in the VM; the VM's never comes
+ *     3  VM -> PC     what you copy in the VM lands here; yours never leaves
+ *
+ * `0` keeps exactly the meaning it had, which is why the key was extended
+ * rather than joined by a second one: two keys would allow "off, but one way",
+ * a state with no meaning that someone would eventually have to resolve.
+ *
+ * ONE-WAY IS ENFORCED AT THE PULL, NOT AT DELIVERY. With VM -> PC off we stop
+ * ASKING (`clip_tcp_set_auto_request`): dropping the text after it arrived
+ * would look identical from here and send whatever the user copied in the VM
+ * across the network anyway, which is the one thing the setting is chosen to
+ * prevent. Likewise PC -> VM off means we neither poll the local clipboard nor
+ * answer the VM when it asks for it.
+ *
+ * The direction is re-read at every poll, so changing it takes effect without
+ * reconnecting. Turning it from `0` to anything else does NOT, because at `0`
+ * no channel was opened - the setting's own description says so.
+ *
+ * Default: both ways wherever there IS a local clipboard. The server grants the
+ * channel on every session, it costs one TLS socket plus one 32-bit counter
+ * read every 300 ms, and it carries nothing at all until somebody copies
+ * something. On console `local_clipboard_available()` is false and the channel
+ * is never opened - which is why there is no `#ifdef _WIN32` anywhere in here
+ * (device_caps.h exists because subtractive platform conditions have broken the
+ * Vita port twice). */
+
+/* CLIP6 2026-10-02 - the four predicates moved to `clip_dir.h`, so that the one
+ * testable piece of this feature stops being the one piece with no test. They
+ * were static functions in this file, and no test can include this file: it
+ * pulls wolfSSL, pthreads, sockets and the journal. `tests/test_clip_dir.c`
+ * now covers them with 47 checks, three of them mutation checks on the
+ * fallback, the parse and the asymmetry of the two directions. */
+static int clip_mode_now(void)
+{
+    return clip_dir_from_env(getenv("SHADOW_CLIPBOARD"));
+}
+
+/* The largest local copy we will forward. `local_clipboard_get` REFUSES rather
+ * than truncates, so a bigger copy is simply not forwarded - half a pasted
+ * document is worse than none. 1 MiB is a quarter of `clip_chan`'s own cap and
+ * about 500 pages of text; it lives on the heap because the service loop's
+ * thread stack is already tight (see the 32 KiB note further up). */
+#define CLIP_LOCAL_MAX (1024u * 1024u)
+
+/* How often we look at the local clipboard. 300 ms is below the point at which
+ * a copy-then-paste feels delayed, and `GetClipboardSequenceNumber` costs one
+ * call with no lock and no conversion, so being wrong here is cheap either way.
+ * SHADOW_CLIPBOARD_POLL_MS overrides it. */
+#define CLIP_POLL_MS 300
+
+static struct {
+    pthread_mutex_t lock;
+    char     *in;          /* staged paste from the VM, malloc'd; NULL = none */
+    size_t    in_len;
+    char     *buf;         /* the local read buffer, CLIP_LOCAL_MAX, kept open */
+    uint64_t  token;       /* local change token; see local_clipboard.h */
+    long long t_poll_ms;
+    int       mode;        /* CLIP4: the direction last seen, for the summary */
+    /* Set by the receive thread when the VM ASKS for our clipboard, cleared by
+     * the loop that answers. One int written by one thread and cleared by the
+     * other: a lost race costs one unanswered request, which the VM retries. */
+    volatile int asked;
+    unsigned  applied, pushed, push_fail, staged_drop, not_text;
+} g_clip = { PTHREAD_MUTEX_INITIALIZER, NULL, 0, NULL, 0, 0, CLIP_MODE_BOTH, 0,
+             0, 0, 0, 0, 0 };
+
+/* Runs on the clip receive thread. Copies and returns; see the block above. */
+static void session_clip_text_cb(const uint8_t *text, size_t n, void *user)
+{
+    (void)user;
+    if (!text || n == 0) return;
+    char *copy = (char *)malloc(n);
+    if (!copy) return;
+    memcpy(copy, text, n);
+    pthread_mutex_lock(&g_clip.lock);
+    /* ONE slot, newest wins. A queue would make the user's clipboard replay a
+     * history they have already moved past. */
+    if (g_clip.in) { free(g_clip.in); g_clip.staged_drop++; }
+    g_clip.in     = copy;
+    g_clip.in_len = n;
+    pthread_mutex_unlock(&g_clip.lock);
+}
+
+/* Runs on the clip receive thread: notes that the VM asked and returns. The
+ * answer needs the local clipboard, and reading it can block for 100 ms. */
+static void session_clip_request_cb(void *user)
+{
+    (void)user;
+    g_clip.asked = 1;
+}
+
+static void session_clipboard_open(const ctrl_session_params *p, session_ctx_t *ctx)
+{
+    /* Read fresh every session, not cached in a static: the settings screen
+     * writes this key, and a cache would make the choice take a restart of the
+     * application rather than of the session. */
+    const int mode = clip_mode_now();
+    if (mode == CLIP_MODE_OFF) return;
+
+    if (!local_clipboard_available()) {
+        clog("[CLIP3] no local clipboard on this platform - channel not opened");
+        return;
+    }
+
+    const shadow_chan_caps *cc = &g_caps.chan[SHADOW_CHAN_IDX_CLIPBOARD];
+    if (!cc->granted) {
+        clog("[CLIP3] the server did not grant the clipboard channel - not opened");
+        return;
+    }
+    if (!cc->tcp) {
+        clog("[CLIP3] the clipboard was granted as UDP, which this client cannot "
+             "speak - not opened");
+        return;
+    }
+
+    /* Wholesale reset. A previous session can have left a staged paste and a
+     * stale change token behind, and a stale token makes the first poll report a
+     * change that never happened. */
+    pthread_mutex_lock(&g_clip.lock);
+    free(g_clip.in); g_clip.in = NULL; g_clip.in_len = 0;
+    pthread_mutex_unlock(&g_clip.lock);
+    g_clip.applied = g_clip.pushed = g_clip.push_fail = 0;
+    g_clip.staged_drop = g_clip.not_text = 0;
+    g_clip.t_poll_ms = 0;
+    g_clip.asked = 0;
+    if (!g_clip.buf) {
+        g_clip.buf = (char *)malloc(CLIP_LOCAL_MAX);
+        if (!g_clip.buf) { clog("[CLIP3] out of memory for the clipboard buffer"); return; }
+    }
+    /* Seeded with what the clipboard reads NOW: otherwise the first poll sends
+     * whatever the user had copied before starting the stream to the VM,
+     * unasked. */
+    g_clip.token = local_clipboard_token();
+
+    /* The ABSOLUTE port from the grant, not `port_base + 14` recomputed here.
+     * That is the INT1 rule and the lesson FT2 paid for. */
+    if (clip_tcp_open(&ctx->clip, p->vm_host, (int)cc->port,
+                      session_clip_text_cb, NULL, p->abort_flag) != 0) {
+        clog("[CLIP3] clipboard open FAILED on :%u - continuing without it",
+             (unsigned)cc->port);
+        ctx->clip = NULL;
+        return;
+    }
+    /* CLIP4: the direction, applied to the channel itself. `set_auto_request`
+     * is what makes "VM -> PC off" mean the text is never asked for, rather
+     * than asked for and discarded. */
+    clip_tcp_set_auto_request(ctx->clip, clip_dir_to_pc(mode) ? true : false);
+    clip_tcp_set_request_cb(ctx->clip, session_clip_request_cb, NULL);
+    g_clip.mode = mode;
+    clog("[CLIP3] clipboard wired on :%u, %s (SHADOW_CLIPBOARD=0/1/2/3)",
+         (unsigned)cc->port, clip_dir_name(mode));
+    /* No REQUEST here on purpose: it would pull the VM's current clipboard and
+     * overwrite the user's local one the moment the stream starts, which nobody
+     * asked for. The VM announces an UPDATE as soon as it copies anything. */
+}
+
+static void session_clipboard_tick(session_ctx_t *ctx, long long now_ms)
+{
+    if (!ctx->clip) return;
+
+    /* Take the staged paste under the lock, apply it OUTSIDE: `local_clipboard_set`
+     * can block for 100 ms, and holding a mutex across blocking I/O is the one
+     * thing CLAUDE.md forbids outright. */
+    char *pending = NULL; size_t pending_len = 0;
+    pthread_mutex_lock(&g_clip.lock);
+    pending = g_clip.in; pending_len = g_clip.in_len;
+    g_clip.in = NULL; g_clip.in_len = 0;
+    pthread_mutex_unlock(&g_clip.lock);
+
+    /* CLIP4: the direction, re-read here so a change applies without a
+     * reconnection. `clip_tcp` is told again only when it has actually moved -
+     * the call is cheap, but a log line per pass would not be. */
+    const int mode = clip_mode_now();
+    if (mode != g_clip.mode) {
+        clip_tcp_set_auto_request(ctx->clip, clip_dir_to_pc(mode) ? true : false);
+        clog("[CLIP3] direction changed: %s -> %s",
+             clip_dir_name(g_clip.mode), clip_dir_name(mode));
+        g_clip.mode = mode;
+    }
+
+    /* A paste staged just before VM -> PC was turned off, or while it was off
+     * because the channel was opened both ways and the user has since changed
+     * their mind. Taken out of the slot above and dropped here rather than left
+     * to apply later, which would paste out of nowhere. */
+    if (pending && !clip_dir_to_pc(mode)) {
+        free(pending);
+        pending = NULL;
+    }
+
+    if (pending) {
+        uint64_t tok = 0;
+        if (local_clipboard_set(pending, pending_len, &tok)) {
+            /* Adopt our own write's token, so the poll below does not read it
+             * back as "the user copied something" and bounce it to the VM. The
+             * VM side has the mirror guard; this is the near end of it. */
+            g_clip.token = tok;
+            g_clip.applied++;
+            clog("[CLIP3] VM -> PC: %u bytes onto the local clipboard",
+                 (unsigned)pending_len);
+        } else {
+            clog("[CLIP3] VM -> PC: the local clipboard refused %u bytes",
+                 (unsigned)pending_len);
+        }
+        free(pending);
+    }
+
+    if (!clip_dir_to_vm(mode)) {
+        /* PC -> VM is off. The change token still has to FOLLOW the clipboard,
+         * or turning the direction back on would send whatever happens to be
+         * there as if it had just been copied. */
+        g_clip.asked = 0;
+        (void)local_clipboard_changed(&g_clip.token);
+        return;
+    }
+
+    static int g_poll_ms = -1;
+    if (g_poll_ms < 0) {
+        const char *e = getenv("SHADOW_CLIPBOARD_POLL_MS");
+        g_poll_ms = (e && atoi(e) > 0) ? atoi(e) : (int)CLIP_POLL_MS;
+    }
+    if (now_ms - g_clip.t_poll_ms < g_poll_ms) return;
+    g_clip.t_poll_ms = now_ms;
+
+    /* The VM asking counts as a reason to send even when nothing changed: it
+     * asked because it has nothing, and `local_clipboard_changed` would say no.
+     * Cleared before the send, so a request arriving during it is not lost. */
+    const int asked = g_clip.asked;
+    g_clip.asked = 0;
+    if (!asked && !local_clipboard_changed(&g_clip.token)) return;
+
+    size_t n = 0;
+    if (!local_clipboard_get(g_clip.buf, CLIP_LOCAL_MAX, &n) || n == 0) {
+        /* Ordinary: the clipboard holds an image, or a file list, or more than
+         * CLIP_LOCAL_MAX, or another process had it open. Counted, not reported:
+         * the token has already moved, so this is not retried. */
+        g_clip.not_text++;
+        return;
+    }
+    if (clip_tcp_send_text(ctx->clip, (const uint8_t *)g_clip.buf, n) == 0) {
+        g_clip.pushed++;
+        clog("[CLIP3] PC -> VM: %u bytes sent to the VM clipboard", (unsigned)n);
+    } else {
+        g_clip.push_fail++;
+    }
+}
+
+static void session_clipboard_close(session_ctx_t *ctx)
+{
+    if (ctx->clip) {
+        clip_tcp_stats_t st;
+        clip_tcp_get_stats(ctx->clip, &st);
+        clog("[CLIP3] clipboard summary (%s) - VM->PC applied=%u (updates=%u "
+             "ignored=%u texts=%u stale=%u) | PC->VM sent=%u failed=%u "
+             "not-text=%u asked-by-VM=%u | staged-dropped=%u",
+             clip_dir_name(g_clip.mode),
+             g_clip.applied, st.rx_updates, st.rx_updates_ignored, st.rx_texts,
+             st.rx_stale, g_clip.pushed, g_clip.push_fail, g_clip.not_text,
+             st.rx_asked, g_clip.staged_drop);
+        clip_tcp_close(ctx->clip);
+        ctx->clip = NULL;
+    }
+    /* The staged paste, but NOT `g_clip.buf`: that one is reused by the next
+     * session, and a 1 MiB allocation per session is a cost with no purpose. */
+    pthread_mutex_lock(&g_clip.lock);
+    free(g_clip.in); g_clip.in = NULL; g_clip.in_len = 0;
+    pthread_mutex_unlock(&g_clip.lock);
+}
+
+static bool session_reannounce_channel(ctrl_tcp_session *tcp,
+                                       session_ctx_t *ctx,
+                                       uint32_t *hb_seq,
+                                       int chan_idx,
+                                       const char *why)
+{
+    if (!tcp || !hb_seq || chan_idx < 0 || chan_idx > 7) return false;
+
+    static int g_reann = -1;
+    if (g_reann < 0) {
+        const char *e = getenv("SHADOW_REANN");
+        g_reann = e ? atoi(e) : 1;
+    }
+    if (!g_reann) return false;
+
+    /* The unregister needs the handle the server granted for THIS stream. With
+     * no handle we skip it rather than guess an identifier: unregistering the
+     * wrong stream would take down a channel that works. */
+    static int g_reann_unreg = -1;
+    if (g_reann_unreg < 0) {
+        const char *e = getenv("SHADOW_REANN_UNREG");
+        g_reann_unreg = e ? atoi(e) : 1;
+    }
+    uint8_t buf[512];
+    if (g_reann_unreg && ctx && ctx->chan_handle_ok[chan_idx]) {
+        /* field 9: stream_id = the granted handle, truncated to the 32 bits the
+         * wire field carries. The server prints it as `sessionId %u`. */
+        const int n = ctrl_build_unregister_stream(
+            buf, sizeof buf, (*hb_seq)++,
+            (int64_t)(uint32_t)ctx->chan_handle[chan_idx], 0);
+        if (n > 0 && !ctrl_tcp_send_cleartext(tcp, buf, (size_t)n)) {
+            clog("[SRV5] channel idx=%d: unregister send FAILED (%s)", chan_idx, why);
+            return false;
+        }
+    }
+
+    const int n = ctrl_build_channel_announcement_ex(buf, sizeof buf,
+                                                     (*hb_seq)++, chan_idx, NULL);
+    if (n <= 0 || !ctrl_tcp_send_cleartext(tcp, buf, (size_t)n)) {
+        clog("[SRV5] channel idx=%d: re-announcement send FAILED (%s)", chan_idx, why);
+        return false;
+    }
+    clog("[SRV5] channel idx=%d RE-ANNOUNCED (%s, handle=%s) - the server can only "
+         "revive an invalidated stream client this way",
+         chan_idx, why,
+         (ctx && ctx->chan_handle_ok[chan_idx]) ? "known" : "unknown, unregister skipped");
     return true;
 }
 
@@ -2364,6 +3257,13 @@ static bool session_open_media(const ctrl_session_params *p,
         }
     }
 
+    /* CLIP3 2026-10-02 - the clipboard, last of the side channels. Opened here
+     * and not earlier because it reads the grant snapshot, which
+     * `session_announce_channels` fills: the absolute port comes from the
+     * server, never from an offset recomputed on the spot. A failure is not
+     * fatal - a stream without copy/paste is still a stream. */
+    session_clipboard_open(p, ctx);
+
     if (udp_video < 0 && !video_en_tcp()) {
         emit_progress(p, "M14.fail", "UDP video register FAIL");
         stats->exit_reason = 1; goto fin;
@@ -2440,10 +3340,93 @@ typedef struct {
     uint16_t  ifr_counter;       /* the IFR message counter (starts at 1) */
     idr_rate_t idr;              /* rate limit on key-frame requests */
 
+    /* SRV1 2026-10-02: origin of the microsecond clock reported in gE field 3,
+     * SESSION-relative on purpose (vid_uplink.h). `armed` is separate from the
+     * value: overloading 0 as "not set" collides with a clock that reads 0. */
+    int64_t   gE_t0_us;
+    int       gE_t0_armed;
+
+    /* SRV3 2026-10-02: the 20-byte registration hash, copied so the feedback
+     * tick can re-register on its own. The tick does not see `auth_reply`, and
+     * passing one more argument through a function this repo already calls with
+     * seven would be the worse of the two. */
+    uint8_t   reg_hash[20];
+    int       srv3_said;         /* SRV3: the "gate lost" line, once per session */
+    /* HID1 2026-10-02 - the lock-key probe goes out ONCE per session. Here and
+     * not in a function static: that is the defect family CLAUDE.md names
+     * first, and a probe that fires only on the first session of a process
+     * answers nothing on the second. `fb` is memset per session. */
+    int       hid_probe_sent;
+    uint32_t  hid_probe_seq;     /* HID1: so the REPLY can be recognised */
+    int       hid_reply_logged;
+
     long long t_ka13;            /* the last keepalive frame on :base+13 */
+
+    /* === SRV-OBS 2026-10-02 — THE THREE 2026-10-02 UPLINK FIXES WERE BLIND ===
+     *
+     * SRV1 (gE field 3 is a timestamp), SRV2 (one liveness byte instead of
+     * three) and SRV3 (the key-frame counter never reaching the server's
+     * 0xFFFE sentinel) all changed what leaves this function, and NONE of them
+     * left a trace: after a session one could not say whether the new field 3
+     * was even emitted, let alone whether it stayed monotonic. The periodic
+     * `[SRV-OBS]` line at the end of this function reports these, and they are
+     * SESSION state for the reason the S34 block above gives at length - a
+     * `static` here would carry the first session's totals into the second and
+     * make every A/B wrong, which is the defect family this file keeps paying
+     * for. */
+    long long obs_t0_ms;         /* session origin, for the `t=` of the line */
+    long long obs_log_ms;        /* last summary printed */
+    int       obs_armed;         /* separate from obs_t0_ms, for the reason
+                                  * gE_t0_armed above is separate from its
+                                  * value: a clock that legitimately reads 0
+                                  * must not re-arm the origin on every pass */
+    uint32_t  obs_ge;            /* SRV1: gE packets actually on the wire */
+    uint32_t  obs_f3_last;       /* SRV1: last field-3 value sent, in us */
+    uint32_t  obs_f3_back;       /* SRV1: samples NOT strictly ahead of the
+                                  * previous one (the server differences
+                                  * consecutive samples: see below) */
+    uint32_t  obs_ping50;        /* SRV2: liveness messages sent on :base+10 */
+    int       obs_ping_len;      /* SRV2: 1 byte (the fix) or 3 (SHADOW_PI3=1) */
+    uint32_t  obs_ifr;           /* SRV3: key-frame requests issued */
 
     int       nack_log, ifr_log, ka13_log;  /* per-session log budgets */
 } video_feedback_t;
+
+/* === SRV1 2026-10-02 — THE TIMESTAMP gE FIELD 3 MUST CARRY =================
+ *
+ * The server reads field 3 as a MICROSECOND instant in the same domain as its
+ * own steady clock, and it is the sole input to the RTT it attributes to us:
+ *   sub_140C041E0  : now_us = clock(); if (now_us > f3) estimator(f1, f2, now_us - f3)
+ *   sub_140BFA710  : sliding-window MEAN of those ages, published at est+96
+ *   sub_140BFA270  : returns *(int*)(est+96) / 1000.0  -> the RTT in ms
+ * (ShadowStreamer 6.3.1; the whole chain is read in
+ * halyard-lab/notes/findings/server-vs-halyard.md §1.)
+ *
+ * Two consequences fix the shape of this function:
+ *
+ * 1. We used to put `g_last_frame_id` here - a small counter. `now_us - fid` is
+ *    then the VM's uptime in microseconds, so the server believed our RTT was
+ *    hundreds of thousands of milliseconds. KB §3.27 had ALREADY written
+ *    "field3: a timestamp in microseconds"; only the code disagreed.
+ *
+ * 2. The origin must be the SESSION, not the process and not the epoch. The
+ *    guard is `now_us > f3`, and ShadowStreamer has been running since the VM
+ *    booted: a timestamp larger than its clock makes it DROP the whole sample
+ *    silently. A session-relative microsecond count is always far below the
+ *    server's uptime, so the sample is always accepted.
+ *
+ * Measured to choose the default: nothing live yet - this is read off the
+ * server binary, and the old value is provably not a timestamp. SHADOW_GE_TS=0
+ * restores the frame id so the A/B is exact. */
+static uint32_t ge_horodatage_us(video_feedback_t *fb)
+{
+    struct timespec t;
+    clock_gettime(CLOCK_MONOTONIC, &t);
+    const int64_t us = (int64_t)t.tv_sec * 1000000 + t.tv_nsec / 1000;
+    /* The rule itself is in vid_uplink.h, pure and covered by
+     * tests/test_vid_uplink.c. Only the clock read stays here. */
+    return vid_uplink_ge_f3(us, &fb->gE_t0_us, &fb->gE_t0_armed);
+}
 
 /* Flushes ONE retransmission request. Called either on every turn of the
  * receive loop (the default, V10) or on the 50 ms tick (SHADOW_NACK_TICK=1, the
@@ -2538,7 +3521,20 @@ static void session_video_feedback_tick(session_ctx_t *ctx,
          * previous behaviour makes every A/B wrong, and that is exactly the
          * mistake this repo has been documenting since G20. */
         if (g_nack_tick) nack_vidange(ctx, fb, now_ms, udp_video);
-        uint32_t fid = g_last_frame_id;
+        /* SRV1: field 3 is a session-relative microsecond timestamp, not a
+         * frame id - see ge_horodatage_us(). SHADOW_GE_TS=0 puts the frame id
+         * back. */
+        /* SRV1 RETRACTED 2026-10-02: the default is the ECHO of the server's
+         * own send timestamp (bytes 6-9 of the chunk header), which is what
+         * this client always sent and what `now_us - f3` is built to consume.
+         * `SHADOW_GE_TS=1` selects the session-relative clock, which measured
+         * as a regression - see vid_uplink.h §SRV1. */
+        static int g_ge_ts = -1;
+        if (g_ge_ts < 0) {
+            const char *e = getenv("SHADOW_GE_TS");
+            g_ge_ts = e ? atoi(e) : 0;
+        }
+        uint32_t ge_f3 = g_ge_ts ? ge_horodatage_us(fb) : g_last_frame_id;
         /* V14: compute bytes_rx since the last gE (= delta from stats), then x4. */
         /* === G14 2026-08-22 - THE FIELD IS A RATE, NOT A VOLUME ===
          *
@@ -2597,16 +3593,85 @@ static void session_video_feedback_tick(session_ctx_t *ctx,
             (uint8_t)((delta_us >> 8) & 0xFF),
             (uint8_t)((delta_us >> 16) & 0xFF),
             (uint8_t)((delta_us >> 24) & 0xFF),
-            (uint8_t)(fid & 0xFF),
-            (uint8_t)((fid >> 8) & 0xFF),
-            (uint8_t)((fid >> 16) & 0xFF),
-            (uint8_t)((fid >> 24) & 0xFF)
+            (uint8_t)(ge_f3 & 0xFF),
+            (uint8_t)((ge_f3 >> 8) & 0xFF),
+            (uint8_t)((ge_f3 >> 16) & 0xFF),
+            (uint8_t)((ge_f3 >> 24) & 0xFF)
         };
-        send(udp_video, ge, 15, 0);
+        const ssize_t ge_n = send(udp_video, ge, 15, 0);
+        /* === SRV-OBS 2026-10-02 — WHAT WE ACTUALLY PUT IN FIELD 3 ===========
+         *
+         * Counted only when the datagram really left: in TCP mode `udp_video`
+         * is -1 (K15i) and this send fails every 50 ms, so counting attempts
+         * would report a gE flow that never existed, which is the kind of
+         * figure one then reasons from.
+         *
+         * The monotonicity test is MODULAR, not `<`: field 3 is a u32 of
+         * microseconds and wraps about every 71 min (vid_uplink.h), and a wrap
+         * is forward motion - the server only differences consecutive samples.
+         * So the step is taken as an unsigned difference: a step of 0 means our
+         * clock did not advance between two samples, and a step at or past 2^31
+         * means the value is BEHIND the previous one. Either makes the server's
+         * `now_us - f3` age meaningless, and SHADOW_GE_TS=0 (the frame id we
+         * used to send) makes this counter climb at once - which is exactly the
+         * counter-case this line exists to show. */
+        if (ge_n == 15) {
+            const uint32_t step = ge_f3 - fb->obs_f3_last;
+            if (fb->obs_ge && (step == 0u || step >= 0x80000000u))
+                fb->obs_f3_back++;
+            fb->obs_f3_last = ge_f3;
+            fb->obs_ge++;
+        }
         fb->ip_counter++;
         if ((fb->ip_counter % 14) == 0) {
-            uint8_t pi[3] = {0x50, 0x49, 0x01};
-            send(udp_video, pi, 3, 0);
+            /* === SRV2 2026-10-02 — THESE BYTES ARE NOT ONE MESSAGE ===========
+             *
+             * The server parses a stream channel as a BYTE STREAM, and only the
+             * first byte of each message selects a handler
+             * (ACommonSfpClient::DealWithInput @0x140c12a20, ShadowStreamer
+             * 6.3.1):
+             *   0x50 'P' -> liveness, consumes exactly ONE byte
+             *   0x41 'A' -> registration, consumes 5 + u16@3
+             *   0x78 'x' / 0x77 'w' -> 3 bytes, and a WRONG magic in bytes 1-2
+             *                          calls SetInvalid: the channel dies
+             *   anything else -> consumed one byte at a time, silently
+             *
+             * So `50 49 01` was read as a ping plus two junk message starts
+             * ('I', then 0x01). Harmless today, because neither 0x49 nor 0x01
+             * selects a handler on this channel - but it is the exact shape that
+             * kills a channel the day a stray byte lands on 0x77/0x78, which is
+             * the mechanism behind §3.34/§3.38. One byte is what the protocol
+             * reads; we send one byte. SHADOW_PI3=1 restores the three.
+             *
+             * 0x70 'p' is in the video dispatcher's explicit ignore list
+             * (`C b e f l p s y`), so it refreshes NOTHING server-side. Kept
+             * because the official client sends it and byte-exactness on this
+             * channel has been worth more than one campaign; do not count it as
+             * a keep-alive. */
+            static int g_pi3 = -1;
+            if (g_pi3 < 0) {
+                const char *e = getenv("SHADOW_PI3");
+                g_pi3 = e ? atoi(e) : 0;
+            }
+            /* SRV-OBS 2026-10-02: count the liveness messages and record the
+             * SHAPE we sent (1 byte or 3). The change was invisible otherwise:
+             * nothing in the log distinguished a session run with the fix from
+             * one run with SHADOW_PI3=1, so neither half of the A/B could be
+             * identified after the fact. The length is recorded rather than the
+             * toggle so the line reports what went on the wire. */
+            if (g_pi3) {
+                uint8_t pi[3] = {0x50, 0x49, 0x01};
+                if (send(udp_video, pi, 3, 0) == 3) {
+                    fb->obs_ping50++;
+                    fb->obs_ping_len = 3;
+                }
+            } else {
+                uint8_t pi[1] = {0x50};
+                if (send(udp_video, pi, 1, 0) == 1) {
+                    fb->obs_ping50++;
+                    fb->obs_ping_len = 1;
+                }
+            }
             uint8_t p[1] = {0x70};
             send(udp_video, p, 1, 0);
         }
@@ -2691,6 +3756,57 @@ static void session_video_feedback_tick(session_ctx_t *ctx,
                             && (fb->ip_counter % g_ifr_period) == (g_ifr_period / 2));
         if (!ctrl_strict && (periodic_idr || evt_idr)) {
             if (evt_idr) { g_idr_needed = 0; idr_rate_mark(&fb->idr, fb->ip_counter); }
+            /* === SRV3 2026-10-02 — THE COUNTER MUST NEVER GO BACKWARDS =======
+             *
+             * The server's gate (sub_140C12F70 @0x140c12f70) is
+             *     if (N > stored || stored == 0xFFFF) { stored = N; }
+             * so a request whose counter is NOT GREATER than the last one is
+             * discarded with no log on either side. The only reset is the
+             * 0xFFFF sentinel, which a fresh client gets from its constructor
+             * (`*(_DWORD*)(this+520) = -1`) and which an `A` registration
+             * restores. 0xFFFE must therefore never be our counter: it is the
+             * "served" value the `A` path writes at +522.
+             *
+             * We start at 1 and increment once per request, so the wrap is
+             * 65,535 requests away - hours at our rate, but reachable on a long
+             * session, and past it EVERY request would be silently ignored for
+             * the rest of the session. Re-register instead: `A` resets the gate
+             * to 0xFFFF *and* forces a reference frame, which is exactly what we
+             * want at that moment anyway. SHADOW_IFR_WRAP=0 goes back to
+             * letting it wrap.
+             * Source: halyard-lab/notes/findings/server-vs-halyard.md §3. */
+            static int g_ifr_wrap = -1;
+            if (g_ifr_wrap < 0) {
+                const char *e = getenv("SHADOW_IFR_WRAP");
+                g_ifr_wrap = e ? atoi(e) : 1;
+            }
+            /* Only on the UDP path: in TCP mode the key-frame request leaves
+             * through the control channel and `ctrl_video_tcp` keeps its own
+             * counter, so this one is never on the wire and must not be
+             * "repaired" - the first version of this guard fired on every
+             * request past 0xFFFE in TCP mode, logging in a loop. */
+            if (g_ifr_wrap && udp_video >= 0
+                && vid_uplink_ifr_needs_rereg(fb->ifr_counter)) {
+                uint8_t reg[25];
+                const int rl = ctrl_build_udp_register(reg, sizeof(reg),
+                                                       fb->reg_hash);
+                if (rl > 0 && send(udp_video, reg, (size_t)rl, 0) == rl) {
+                    clog("[SRV3] IFR counter at %u - registration re-sent to reset "
+                         "the server gate, counter back to 1", fb->ifr_counter);
+                    fb->ifr_counter = 1;
+                } else if (!fb->srv3_said) {
+                    /* Said ONCE. Holding at 0xFFFD means we come back here on
+                     * every subsequent request, and a line each time would bury
+                     * the log at the request rate. */
+                    fb->srv3_said = 1;
+                    clog("[SRV3] IFR counter at %u and re-registration failed "
+                         "(errno=%d) - key-frame requests will be ignored by the "
+                         "server for the rest of this session",
+                         fb->ifr_counter, shadow_sock_errno());
+                }
+                if (vid_uplink_ifr_needs_rereg(fb->ifr_counter))
+                    fb->ifr_counter = VID_UPLINK_IFR_HOLD;
+            }
             uint8_t ifr[6] = {0x69, 0x50, 0x00, 0x02,
                                (uint8_t)(fb->ifr_counter & 0xFF),
                                (uint8_t)((fb->ifr_counter >> 8) & 0xFF)};
@@ -2756,6 +3872,15 @@ static void session_video_feedback_tick(session_ctx_t *ctx,
                      fb->ifr_counter, evt_idr, periodic_idr);
                 fb->ifr_log++;
             }
+            /* SRV-OBS 2026-10-02: the running total. `[G6]` above logs the
+             * first eight requests only, so on a long session nothing said how
+             * many were issued, and `ifr_counter` alone cannot answer it - a
+             * re-registration resets it to 1 (SRV3). Both are reported, which
+             * is what makes a reset visible as such rather than as a session
+             * that stopped asking. Counted on both paths: in TCP mode the
+             * request leaves over the control channel and this counter is not
+             * on the wire, but a request was still issued. */
+            fb->obs_ifr++;
             fb->ifr_counter++;
 
             /* F18 NACK 2026-05-22 23h30: drain nack_queue + send the rG packet.
@@ -2816,6 +3941,61 @@ static void session_video_feedback_tick(session_ctx_t *ctx,
             }
         }
         fb->t_last_ip_ms = now_ms;
+    }
+
+    /* === SRV-OBS 2026-10-02 — ONE LINE THAT SAYS WHETHER SRV1/2/3 WORK ======
+     *
+     * The three uplink fixes of 2026-10-02 changed what this function emits and
+     * logged nothing, so a session could not be judged: field 3 could have been
+     * stuck, the liveness byte could have stopped going out, and the key-frame
+     * counter could have been silently reset, all without a line. Each fact
+     * here is one a reader needs to decide whether a change is doing its job -
+     * not a dump, which is what `[G53]`/`[AUD2]` taught this repo to avoid:
+     *   gE=        gE packets that really left (0 in TCP mode, by design)
+     *   f3=        the LAST field-3 value sent, the server's sole RTT input
+     *   f3_back=   samples not strictly ahead of the previous one; must stay 0,
+     *              and climbs immediately under SHADOW_GE_TS=0 (the frame id)
+     *   ping50=    liveness messages on :base+10, with the shape sent (SRV2:
+     *              1 byte, or 3 under SHADOW_PI3=1)
+     *   ifr=/ifr_ctr= requests issued, and the counter now on the wire; the two
+     *              differ exactly when SRV3 re-registered and reset it to 1
+     *   nack=      `rG` retransmission requests, read from the session stats
+     *              that nack_vidange already maintains - a second counter for
+     *              the same sends would be one more thing to keep in step.
+     *
+     * Chosen default: ON. One line every 10 s against ~20 feedback packets a
+     * second is noise-free (the 5 s `stats —` line is twice as frequent and far
+     * longer), and these three changes have no other witness; SHADOW_SRV_OBS=0
+     * silences it for a capture where the log size itself is being measured.
+     * The period is checked on EVERY pass and not inside the 50 ms gate above:
+     * the gate is what we are observing, and an observer that stops when its
+     * subject does reports nothing at the moment it matters. */
+    static int g_srv_obs = -1;   /* env cache: `static` is right here, S34 */
+    if (g_srv_obs < 0) {
+        const char *e = getenv("SHADOW_SRV_OBS");
+        g_srv_obs = e ? atoi(e) : 1;
+    }
+    if (g_srv_obs) {
+        if (!fb->obs_armed) {
+            /* `obs_armed` and not `obs_t0_ms == 0`: a monotonic clock reading 0
+             * is unlikely rather than impossible, and a sentinel that collides
+             * with a valid value is the SRV1 defect vid_uplink.h documents. */
+            fb->obs_armed  = 1;
+            fb->obs_t0_ms  = now_ms;
+            fb->obs_log_ms = now_ms;   /* first line at t=10s, not an empty one */
+        } else if (now_ms - fb->obs_log_ms >= 10000) {
+            fb->obs_log_ms = now_ms;
+            /* No %z anywhere: the vitasdk's newlib neither prints it nor
+             * consumes its argument, so every later conversion on this line
+             * would read the wrong slot (tools/check-z-formats.py). */
+            clog("[SRV-OBS] t=%llds gE=%u f3=%uus f3_back=%u ping50=%u(%dB) "
+                 "ifr=%u ifr_ctr=%u nack=%u",
+                 (long long)((now_ms - fb->obs_t0_ms) / 1000),
+                 fb->obs_ge, fb->obs_f3_last, fb->obs_f3_back,
+                 fb->obs_ping50, fb->obs_ping_len,
+                 fb->obs_ifr, (unsigned)fb->ifr_counter,
+                 ctx->stats->nack_sent);
+        }
     }
 }
 
@@ -3027,7 +4207,7 @@ bool ctrl_session_run(const ctrl_session_params *p, ctrl_session_stats *out) {
     uint8_t buf[8192];
 
     /* Step 7 - see session_announce_channels(). */
-    if (!session_announce_channels(p, tcp, stats, width, height, buf, sizeof(buf)))
+    if (!session_announce_channels(p, tcp, stats, &ctx, width, height, buf, sizeof(buf)))
         goto cleanup;
 
     /* Step 7b: Ready + DisplayReady moved to a delayed send in the main loop, to
@@ -3128,6 +4308,7 @@ bool ctrl_session_run(const ctrl_session_params *p, ctrl_session_stats *out) {
     memset(&fb, 0, sizeof fb);
     fb.ifr_counter = 1;   /* the IFR message numbers from 1 */
     fb.nack_sec    = -1;  /* -1 = aucune seconde entamee */
+    memcpy(fb.reg_hash, auth_reply.hash, sizeof fb.reg_hash);  /* SRV3 */
 
     /* S34: ask for a key frame RIGHT FROM THE START.
      *
@@ -3254,6 +4435,68 @@ bool ctrl_session_run(const ctrl_session_params *p, ctrl_session_stats *out) {
     unsigned  d4_hist[4]     = {0};  /* <500, <1000, <2000, >=2000 ms */
     uint32_t  d4_ctrl_debut  = 0;    /* ctrl frames at the start of the outage */
     long long t_last_video_reg_ms = 0;   /* S41 : reprise de l'abonnement video */
+    /* SRV5: the re-announcement's own spacing and session budget. Locals,
+     * not function statics: a static here is the "works only on the first
+     * session" family this repo keeps paying for. */
+    long long t_last_video_reann_ms = 0;
+    int       video_reann_count     = 0;
+    /* === SRV-FAULT 2026-10-02 — TEST SCAFFOLDING, OFF BY DEFAULT ============
+     *
+     * SRV4 (the audio `'G'`) and SRV5 (re-announcing a channel) are RECOVERY
+     * paths: each one runs only after a failure a healthy session never
+     * produces. SRV4 needs `:base+30` silent for 10 s, SRV5 needs the video
+     * channel silent for SHADOW_VIDEO_REANN_MS (5 s). Neither had ever
+     * executed once against the real server - both were read off the
+     * ShadowStreamer 6.3.1 binary and shipped as executable hypotheses.
+     *
+     * A mechanism nobody can trigger is a mechanism nobody can trust, and the
+     * same day already showed the bill: SRV5's first version fired twice on a
+     * perfectly healthy channel (9995 packets, lost=0, 31 fps) and only the
+     * log said so, after the fact. So the two trigger conditions are made
+     * reachable on demand, without breaking the stream:
+     *
+     *   SHADOW_FAULT_VIDEO_MS=<n>  for n ms, stop advancing `d2_last_rx_ms`
+     *       while the datagrams keep arriving, being reassembled and decoded.
+     *       The picture is untouched on purpose: what is under test is OUR
+     *       reaction and whether the SERVER accepts the field-9 + field-8
+     *       pair, not the decoder. D4, S41's key-frame ask and then SRV5 fire
+     *       exactly as they would on a real outage, and the D4 recovery branch
+     *       reports the whole fake duration when the window closes.
+     *   SHADOW_FAULT_AUDIO_G=1     send one `'G'` (0x47) on `:base+30`,
+     *       independently of the AUD16 stall ladder, and log the number of
+     *       0x02-first-byte frames in the 5 s before and the 5 s after. That
+     *       pair IS the measurement for SRV4: ordinary audio frames start with
+     *       0x12 and only the codec header / stream descriptor starts with
+     *       0x02 (the 271 B frame of `[AUD2] audio frame #1`), so a 0x02 in
+     *       the after window is the server honouring
+     *       `AEncodingSession::SendHeader_` @0x140bec510.
+     *
+     * Inert when unset: one getenv per session and one comparison per pass.
+     * Both injections wait FAULT_SETTLE_MS of real streaming first, so neither
+     * can be confused with a startup artefact - which is precisely the mistake
+     * SRV5's own gate made, `d2_last_rx_ms` being armed at `t_start_ms`.
+     * Per-session state, never function statics: the "works only on the first
+     * session" family KB 3.28 names. Only the env reads are statics, which is
+     * process configuration (S34). */
+    enum { FAULT_SETTLE_MS = 15000 };   /* healthy streaming before injecting */
+    static int g_fault_video_ms = -1;
+    if (g_fault_video_ms < 0) {
+        const char *e = getenv("SHADOW_FAULT_VIDEO_MS");
+        g_fault_video_ms = e ? atoi(e) : 0;
+        if (g_fault_video_ms < 0) g_fault_video_ms = 0;
+    }
+    static int g_fault_aud_g = -1;
+    if (g_fault_aud_g < 0) {
+        const char *e = getenv("SHADOW_FAULT_AUDIO_G");
+        g_fault_aud_g = e ? atoi(e) : 0;
+    }
+    long long fault_vid_t0_ms = 0;      /* 0 = the window has not opened yet */
+    bool      fault_vid_done  = false;  /* one window per session, never two */
+    int       fault_g_step    = 0;      /* 0 wait, 1 armed, 2 sent, 3 reported */
+    long long fault_g_ms      = 0;      /* when the `G` went out */
+    uint32_t  fault_g_hdr0    = 0;      /* 0x02 frames when the census armed */
+    uint32_t  fault_g_hdr1    = 0;      /* 0x02 frames when the `G` went out */
+    uint32_t  fault_g_aud1    = 0;      /* 0x12 frames when the `G` went out */
     /* === S41b 2026-09-03 - WHAT THE STALL WAS NOT SAYING ===
      *
      * The detector could SAY how long the stream had gone quiet, and nothing
@@ -3513,7 +4756,30 @@ bool ctrl_session_run(const ctrl_session_params *p, ctrl_session_stats *out) {
         /* D2 - video stall detector. Without it, the stream stopping leaves NO
          * trace at all: the picture freezes and the log carries on as if nothing
          * had happened. We log once on the stall, once on recovery. */
-        if (stats->udp_video_pkts != d2_last_pkts) {
+        /* SRV-FAULT 2026-10-02 (see the block near the top of this function):
+         * the injected video outage. `hiding` withholds the arrival timestamp
+         * and nothing else - the datagrams of this pass were already drained,
+         * reassembled and handed to the decoder above. */
+        bool fault_vid_hiding = false;
+        if (g_fault_video_ms > 0 && !fault_vid_done && stats->udp_video_pkts > 0
+            && now_ms - t_start_ms >= FAULT_SETTLE_MS) {
+            if (fault_vid_t0_ms == 0) {
+                fault_vid_t0_ms = now_ms;
+                clog("[SRV-FAULT] video: hiding the arrival timestamp for %d ms "
+                     "from t=%ds (%u packets so far) - the picture keeps running; "
+                     "D4 then SRV5 must fire",
+                     g_fault_video_ms, sec, stats->udp_video_pkts);
+            }
+            if (now_ms - fault_vid_t0_ms < g_fault_video_ms)
+                fault_vid_hiding = true;
+            else {
+                fault_vid_done = true;
+                clog("[SRV-FAULT] video: window closed after %lld ms (t=%ds, "
+                     "%u packets) - the next arrival ends the fake outage",
+                     now_ms - fault_vid_t0_ms, sec, stats->udp_video_pkts);
+            }
+        }
+        if (stats->udp_video_pkts != d2_last_pkts && !fault_vid_hiding) {
             /* D4b 2026-08-28 - TAKE THE DURATION BEFORE UPDATING THE MARK.
              * First version: `d2_last_rx_ms = now_ms` ran BEFORE the
              * computation, which therefore returned `0 ms` for every stall - 68
@@ -3591,6 +4857,11 @@ bool ctrl_session_run(const ctrl_session_params *p, ctrl_session_stats *out) {
                 d2_stalled = false;
             }
         } else {
+            /* SRV-FAULT: swallow the arrival, so the next pass still compares
+             * equal and the detector stays in this silent branch for the whole
+             * window. Without it the test branch above would be taken again
+             * and the injected silence would never grow. */
+            if (fault_vid_hiding) d2_last_pkts = stats->udp_video_pkts;
             static int g_stall_ms = -1;
             if (g_stall_ms < 0) {
                 const char *e = getenv("SHADOW_STALL_MS");
@@ -3712,6 +4983,73 @@ bool ctrl_session_run(const ctrl_session_params *p, ctrl_session_stats *out) {
                 const char *e = getenv("SHADOW_VIDEO_REREG");
                 g_video_rereg = e ? atoi(e) : 0;
             }
+            /* === SRV5 2026-10-02 - THE RECOVERY S41 WAS MISSING ==============
+             *
+             * === AND ITS FIRST VERSION FIRED ON A HEALTHY CHANNEL (same day) ==
+             * Measured on the first live Windows session: two
+             * `[SRV5] channel idx=0 RE-ANNOUNCED` lines while the video was
+             * perfectly fine (9995 packets, lost=0, 31 fps, rx_age=0ms). The
+             * cause is the gate it was hung on: `d2_stalled` flips as soon as
+             * `now_ms - d2_last_rx_ms > SHADOW_STALL_MS`, which defaults to
+             * **300 ms**. That is an ORACLE - it exists to date an outage in the
+             * log - not a statement that the channel is dead, and
+             * `d2_last_rx_ms` is armed at `t_start_ms`, so the very wait for the
+             * first datagram trips it.
+             *
+             * Re-announcing a LIVE channel is not harmless: it hands the server
+             * a second stream registration for a client that already works. So
+             * this action gets its own threshold, on AUD16's reasoning: a silent
+             * VM still sends ~10 packets/s on this channel (video runs at ~400),
+             * so several seconds at zero is a death and not a hiccup. Two
+             * conditions, both needed:
+             *   - at least one datagram has arrived THIS session, so startup can
+             *     never qualify;
+             *   - and the silence is at least SHADOW_VIDEO_REANN_MS (5 s).
+             * `g_video_rereg` had the same flaw and never showed it, because it
+             * defaults to 0.
+             *
+             * The comment above is right that step 12 of 12 repairs nothing, and
+             * the server binary now says why: a stream client the server has
+             * invalidated is skipped by the channel's demux, so the `A` datagram
+             * is discarded before anything reads it, whatever source port it
+             * comes from. Re-announcing the channel on `:base+11` is the only
+             * door back in - which is also, note, exactly the sequence the
+             * official client was observed performing on its reconnect (the
+             * "step 12 of 12" list above is that same sequence).
+             *
+             * Bounded like everything else on this path: at most one every 5 s,
+             * and 6 per session. A re-announcement is a control message, not a
+             * flood on a dead socket, so S57's lesson does not apply to it - but
+             * the ceiling stays, because a channel that does not come back after
+             * six will not come back after sixty.
+             * `SHADOW_VIDEO_REANN=0` removes it; `SHADOW_VIDEO_REREG=1` still
+             * restores the old datagram resend, independently. */
+            static int g_video_reann = -1;
+            if (g_video_reann < 0) {
+                const char *e = getenv("SHADOW_VIDEO_REANN");
+                g_video_reann = e ? atoi(e) : 1;
+            }
+            static int g_reann_ms = -1;
+            if (g_reann_ms < 0) {
+                const char *e = getenv("SHADOW_VIDEO_REANN_MS");
+                g_reann_ms = e ? atoi(e) : 5000;
+                if (g_reann_ms < 2000) g_reann_ms = 2000;
+            }
+            if (g_video_reann && video_reann_count < 6
+                && stats->udp_video_pkts > 0
+                && now_ms - d2_last_rx_ms >= g_reann_ms
+                && now_ms - t_last_video_reann_ms >= 5000) {
+                t_last_video_reann_ms = now_ms;
+                /* The duration is in the line: without it, a future reader
+                 * cannot tell a real death from the false positive this guard
+                 * was added to stop. */
+                char why[64];
+                snprintf(why, sizeof why, "video silent %llu ms",
+                         (unsigned long long)(now_ms - d2_last_rx_ms));
+                if (session_reannounce_channel(tcp, &ctx, &hb_seq,
+                                               SHADOW_CHAN_IDX_VIDEO, why))
+                    video_reann_count++;
+            }
             if (g_video_rereg && now_ms - t_last_video_reg_ms >= 2000) {
                 uint8_t reg[32];
                 int rlen = ctrl_build_udp_register(reg, sizeof(reg), auth_reply.hash);
@@ -3741,6 +5079,13 @@ bool ctrl_session_run(const ctrl_session_params *p, ctrl_session_stats *out) {
         session_video_feedback_tick(&ctx, &fb, now_ms,
                                     udp_video, udp_input, port_base_used,
                                     g_ctrl_strict);
+
+        /* CLIP3: the clipboard's two halves, both on this thread. Applies the
+         * paste the receive thread staged, then looks at the local clipboard
+         * every SHADOW_CLIPBOARD_POLL_MS. Returns immediately when the channel
+         * is not open, which is the console case and the SHADOW_CLIPBOARD=0
+         * case. */
+        session_clipboard_tick(&ctx, now_ms);
 
         /* Send VideoEncodingConfig + Ready + DisplayReady ~3 s after bootstrap.
          * RE 2026-05-13 strace: the desktop sends seq=17 = VideoEncodingConfig
@@ -3937,6 +5282,105 @@ bool ctrl_session_run(const ctrl_session_params *p, ctrl_session_stats *out) {
                 {
                     ann_reply_t ar;
                     (void)ann_reply_parse(rxbuf, rxlen, &ar);   /* seq even when this is not an announcement */
+
+                    /* === HID1 2026-10-02 - THE MEASUREMENT =================
+                     *
+                     * The one reply whose shape settles the `[C70]` half of
+                     * `hid_lock.h`: the field numbers of the three locks inside
+                     * the Hid message are read off the server's memory layout,
+                     * not off a message. This walks the reply that answers our
+                     * probe - matched by its sequence number, so it cannot be
+                     * confused with a heartbeat's - and prints the field
+                     * numbers it actually contains.
+                     *
+                     * Shape only: `f<n>:len<n>` and the lock states, never the
+                     * raw bytes. The reply carries nothing secret, but a habit
+                     * of dumping control bodies into the log is how a session
+                     * token ends up in one (SEC2).
+                     *
+                     * Once per session, and only when the probe was armed. */
+                    if (fb.hid_probe_sent && !fb.hid_reply_logged
+                        && ar.seq && ar.seq == fb.hid_probe_seq) {
+                        fb.hid_reply_logged = 1;
+                        char shape[256]; int so = 0;
+                        shape[0] = '\0';
+                        /* Walk the top level for f3 (the Response), then the
+                         * Response for the Hid field, then the Hid body. */
+                        const uint8_t *resp = NULL; size_t rl2 = 0;
+                        int off2 = 0;
+                        while ((size_t)off2 < rxlen) {
+                            uint32_t fn = 0, wt = 0;
+                            const int nx = pb_read_tag(rxbuf, rxlen, off2, &fn, &wt);
+                            if (nx < 0) break;
+                            if (wt == 2) {
+                                const uint8_t *sb = NULL; size_t sl = 0;
+                                const int a2 = pb_read_lendelim(rxbuf, rxlen, nx, &sb, &sl);
+                                if (a2 < 0) break;
+                                if (so < (int)sizeof shape - 24)
+                                    so += snprintf(shape + so, sizeof shape - so,
+                                                   "f%u:len%u ", fn, (unsigned)sl);
+                                if (fn == 3) { resp = sb; rl2 = sl; }
+                                off2 = a2;
+                            } else {
+                                const int a2 = pb_skip_field(rxbuf, rxlen, nx, wt);
+                                if (a2 < 0) break;
+                                off2 = a2;
+                            }
+                        }
+                        clog("[HID1] reply to seq=%u, %zu bytes, top level: %s",
+                             ar.seq, rxlen, shape);
+
+                        const uint8_t *hid = NULL; size_t hl = 0;
+                        if (resp) {
+                            char rs[160]; int ro = 0; rs[0] = '\0';
+                            int o3 = 0;
+                            while ((size_t)o3 < rl2) {
+                                uint32_t fn = 0, wt = 0;
+                                const int nx = pb_read_tag(resp, rl2, o3, &fn, &wt);
+                                if (nx < 0) break;
+                                if (wt == 2) {
+                                    const uint8_t *sb = NULL; size_t sl = 0;
+                                    const int a2 = pb_read_lendelim(resp, rl2, nx, &sb, &sl);
+                                    if (a2 < 0) break;
+                                    if (ro < (int)sizeof rs - 24)
+                                        ro += snprintf(rs + ro, sizeof rs - ro,
+                                                       "f%u:len%u ", fn, (unsigned)sl);
+                                    if (fn == HID_REQ_FIELD) { hid = sb; hl = sl; }
+                                    o3 = a2;
+                                } else {
+                                    const int a2 = pb_skip_field(resp, rl2, nx, wt);
+                                    if (a2 < 0) break;
+                                    o3 = a2;
+                                }
+                            }
+                            clog("[HID1] Response (f3) carries: %s%s", rs,
+                                 hid ? "" : "- NO field 6, so the reply is not a Hid reply");
+                        }
+
+                        if (hid) {
+                            hid_locks got;
+                            uint32_t seen = 0;
+                            const bool ok = hid_lock_parse_reply(hid, hl, &got, &seen);
+                            clog("[HID1] MEASURED - Hid body %zu bytes, fields seen 0x%x, "
+                                 "parse %s | num=%s caps=%s scroll=%s",
+                                 hl, seen, ok ? "ok" : "FAILED",
+                                 got.num.known    ? (got.num.on    ? "on" : "off") : "absent",
+                                 got.caps.known   ? (got.caps.on   ? "on" : "off") : "absent",
+                                 got.scroll.known ? (got.scroll.on ? "on" : "off") : "absent");
+                            /* The verdict on [C70], said plainly so a reader does
+                             * not have to decode the bitmask. */
+                            const uint32_t want = (1u << HID_LOCK_F_NUM)
+                                                | (1u << HID_LOCK_F_CAPS)
+                                                | (1u << HID_LOCK_F_SCROLL);
+                            if ((seen & want) == want)
+                                clog("[HID1] the [C70] field numbers %d/%d/%d are CONFIRMED",
+                                     HID_LOCK_F_NUM, HID_LOCK_F_CAPS, HID_LOCK_F_SCROLL);
+                            else
+                                clog("[HID1] the [C70] guess is WRONG or partial: expected "
+                                     "0x%x, saw 0x%x - hid_lock.h must be corrected",
+                                     want, seen);
+                        }
+                    }
                     {
                         const uint32_t us = ar.seq
                                           ? rtt_reply(&ctrl_rtt, ar.seq, t_rx)   /* ING-2: us, before the read */
@@ -4522,17 +5966,75 @@ bool ctrl_session_run(const ctrl_session_params *p, ctrl_session_stats *out) {
                         aud16_last_try_ms = now_ms;
                         aud16_essais++;
                         aud16_total++;
-                        uint8_t reg[25];
-                        int rl = ctrl_build_udp_register(reg, sizeof(reg),
-                                                          auth_reply.hash);
-                        if (rl > 0 && cursor_send(udp_cursor, reg, (size_t)rl) > 0) {
-                            aud30_tx.ms = now_ms; aud30_tx.kind = "AUD16"; aud30_tx.n = aud16_total;
-                            clog("[AUD16] reenvoi de l'enregistrement :base+30 "
-                                 "(#%u/12, silent for %lld ms) | %u in total",
-                                 aud16_essais, now_ms - aud16_last_rx_ms, aud16_total);
-                        } else
-                            clog("[AUD16] :base+30 resend failed (errno=%d) | %u in total",
-                                 shadow_sock_errno(), aud16_total);
+                        /* === SRV4 2026-10-02 - THE LADDER, CHEAPEST RUNG FIRST ===
+                         *
+                         * Two distinct failures look identical from here - no
+                         * datagram - and the server has a different answer for
+                         * each. Trying the cheap one first is also what tells
+                         * them apart:
+                         *
+                         * 1. The channel is ALIVE but we never got (or lost) the
+                         *    codec header. `Audio::Clients::SufpClient::DealWithInput`
+                         *    @0x140be1480 answers a single `'G'` (0x47) byte by
+                         *    incrementing the client's "wants a reference frame"
+                         *    counter, which is exactly what
+                         *    `AEncodingSession::SendHeader_` @0x140bec510 tests
+                         *    (slot 8 = `+520 != +522`) before re-sending the
+                         *    header. One byte, no state reset.
+                         * 2. The stream client has been INVALIDATED. Then
+                         *    nothing we put on this socket is even looked at
+                         *    (see session_reannounce_channel), and only a
+                         *    control-channel re-announcement can help.
+                         *
+                         * So: `'G'` on the first attempt of an episode, and a
+                         * re-announcement on the ones after. If `'G'` is
+                         * answered, case 1 and we are done; if it is not, the
+                         * re-announcement handles case 2. The old `A` datagram
+                         * resend stays as the fallback when either toggle is
+                         * off.
+                         * SHADOW_AUD_G=0 removes the `'G'` rung,
+                         * SHADOW_REANN=0 the re-announcement, and with both off
+                         * the behaviour is exactly AUD-LC-4's. */
+                        static int g_aud_g = -1;
+                        if (g_aud_g < 0) {
+                            const char *e = getenv("SHADOW_AUD_G");
+                            g_aud_g = e ? atoi(e) : 1;
+                        }
+                        int done = 0;
+                        if (g_aud_g && aud16_essais == 1) {
+                            const uint8_t g_req = 0x47;   /* 'G' */
+                            if (cursor_send(udp_cursor, &g_req, 1) >= 0) {
+                                aud30_tx.ms = now_ms; aud30_tx.kind = "SRV4-G";
+                                aud30_tx.n = aud16_total;
+                                clog("[SRV4] :base+30 'G' (0x47) sent - asks the "
+                                     "server for the codec header again "
+                                     "(#%u/12, silent for %lld ms) | %u in total",
+                                     aud16_essais, now_ms - aud16_last_rx_ms,
+                                     aud16_total);
+                                done = 1;
+                            }
+                        }
+                        if (!done
+                            && session_reannounce_channel(tcp, &ctx, &hb_seq,
+                                                          SHADOW_CHAN_IDX_AUDIO,
+                                                          "audio channel silent")) {
+                            aud30_tx.ms = now_ms; aud30_tx.kind = "SRV5-reann";
+                            aud30_tx.n = aud16_total;
+                            done = 1;
+                        }
+                        if (!done) {
+                            uint8_t reg[25];
+                            int rl = ctrl_build_udp_register(reg, sizeof(reg),
+                                                              auth_reply.hash);
+                            if (rl > 0 && cursor_send(udp_cursor, reg, (size_t)rl) > 0) {
+                                aud30_tx.ms = now_ms; aud30_tx.kind = "AUD16"; aud30_tx.n = aud16_total;
+                                clog("[AUD16] reenvoi de l'enregistrement :base+30 "
+                                     "(#%u/12, silent for %lld ms) | %u in total",
+                                     aud16_essais, now_ms - aud16_last_rx_ms, aud16_total);
+                            } else
+                                clog("[AUD16] :base+30 resend failed (errno=%d) | %u in total",
+                                     shadow_sock_errno(), aud16_total);
+                        }
                     } else if (aud16_essais >= 12 && !aud16_abandon) {
                         aud16_abandon = 1;
                         clog("[AUD16] twelve attempts with no answer - going quiet "
@@ -4546,6 +6048,51 @@ bool ctrl_session_run(const ctrl_session_params *p, ctrl_session_stats *out) {
                              aud16_total, g_revive_max);
                     }
                 }
+            }
+        }
+
+        /* === SRV-FAULT 2026-10-02 — SRV4's `G`, ON DEMAND ====================
+         * See the SRV-FAULT block near the top of this function. Three steps
+         * 5 s apart, so the before and after windows have the same width and
+         * neither overlaps the handshake: arm at FAULT_SETTLE_MS, send at
+         * +5 s, report at +10 s. The count comes from `g_aud30.d_ptype[]`, the
+         * per-session census of first plaintext bytes that on_cursor_packet
+         * already maintains - a second counter for the same frames would be
+         * one more thing to keep in step, and this one cannot disagree with
+         * what the `[AUD2]` lines say. The 0x12 delta goes on the result line
+         * too: without it a zero `after` cannot be told from a channel that
+         * had gone quiet on its own. */
+        if (g_fault_aud_g && udp_cursor >= 0 && fault_g_step < 3) {
+            const long long el = now_ms - t_start_ms;
+            if (fault_g_step == 0 && el >= FAULT_SETTLE_MS) {
+                fault_g_step = 1;
+                fault_g_hdr0 = g_aud30.d_ptype[0x02];
+                clog("[SRV-FAULT] audio: 0x02 census armed at t=%ds "
+                     "(hdr=%u audio=%u) - `G` in 5 s",
+                     sec, fault_g_hdr0, g_aud30.d_ptype[0x12]);
+            } else if (fault_g_step == 1 && el >= FAULT_SETTLE_MS + 5000) {
+                fault_g_hdr1 = g_aud30.d_ptype[0x02];
+                fault_g_aud1 = g_aud30.d_ptype[0x12];
+                const uint8_t g_req = 0x47;   /* `G`, SufpClient::DealWithInput */
+                if (cursor_send(udp_cursor, &g_req, 1) >= 0) {
+                    fault_g_step = 2;
+                    fault_g_ms   = now_ms;
+                    clog("[SRV4] :base+30 `G` (0x47) sent by SRV-FAULT at t=%ds "
+                         "- 0x02 headers in the 5 s before: %u",
+                         sec, fault_g_hdr1 - fault_g_hdr0);
+                } else {
+                    fault_g_step = 3;
+                    clog("[SRV-FAULT] audio: `G` send failed (errno=%d) - no "
+                         "measurement this session", shadow_sock_errno());
+                }
+            } else if (fault_g_step == 2 && now_ms - fault_g_ms >= 5000) {
+                fault_g_step = 3;
+                clog("[SRV4] SRV-FAULT result at t=%ds: 0x02 headers before=%u "
+                     "after=%u | 0x12 audio frames after=%u - a non-zero "
+                     "`after` is the server re-sending the codec header",
+                     sec, fault_g_hdr1 - fault_g_hdr0,
+                     g_aud30.d_ptype[0x02] - fault_g_hdr1,
+                     g_aud30.d_ptype[0x12] - fault_g_aud1);
             }
         }
 
@@ -4678,6 +6225,75 @@ cursor_reg_fait: ;
                                      : bitrate_wire_mbps(p->max_bitrate_mbps);
             if (send_bitrate(tcp, &hb_seq, want_mbps, "ui") && g_adapt_user_cap)
                 bitrate_ctl_on_wire(&bctl, want_mbps);   /* CFG-1, new rule only */
+        }
+
+        /* === HID1 2026-10-02 - THE LOCK-KEY PROBE =========================
+         *
+         * Sends ONE Hid request (Request field 6) per session and logs what
+         * comes back. It exists to turn the `[C70]` half of `hid_lock.h` into a
+         * measurement: the three field numbers inside the Hid message are read
+         * off the server's memory layout, not off a captured message, and this
+         * is the one session that settles it.
+         *
+         * The body is EMPTY on purpose - `hid_lock_build` with nothing known.
+         * That asks the VM for its three states without asserting any of ours,
+         * so the probe cannot toggle a key on the remote desktop while it is
+         * being used. Sending our own states is what a real feature would do,
+         * and it is deliberately not what a probe does.
+         *
+         * OFF by default: it emits a message the official client does not send
+         * at this point in the session, and S1 is the standing finding that
+         * surplus messages on `:base+11` may be how the server tells us apart.
+         * SHADOW_HID_LOCK_PROBE=1 arms it.
+         *
+         * Fired at the 5 s mark rather than at bootstrap: the control channel
+         * is quiet by then, so the reply is easy to attribute in the log. */
+        static int g_hid_probe = -1;
+        if (g_hid_probe < 0) {
+            const char *e = getenv("SHADOW_HID_LOCK_PROBE");
+            g_hid_probe = e ? atoi(e) : 0;
+        }
+        if (g_hid_probe && !fb.hid_probe_sent && now_ms - t_start_ms >= 5000) {
+            fb.hid_probe_sent = 1;
+            hid_locks ask;
+            memset(&ask, 0, sizeof ask);
+            /* === HID1 phase 2 2026-10-02 - AN EMPTY REQUEST ANSWERS NOTHING
+             *
+             * Phase 1 sent an empty Hid body and got `f6:len0` back. Re-reading
+             * the decompile explains it: the handler reads the FIRST field slot
+             * of the incoming Hid and, when it is null, jumps straight to the
+             * reply without creating any of the three lock sub-messages. There
+             * is no "tell me yours" mode - the VM only ever echoes the locks
+             * you asserted.
+             *
+             * So phase 2 asserts a state. All three OFF: that is the ordinary
+             * state of all three keys, so on a VM that already has them off
+             * nothing changes, and on one that does not, what changes is a lock
+             * key - visible, harmless and reversible. It is also exactly what
+             * the feature does in normal use.
+             *
+             * SHADOW_HID_LOCK_PROBE=2 asks for this; =1 keeps the (now known to
+             * be mute) empty question, because the difference between the two
+             * replies IS the finding. */
+            if (g_hid_probe >= 2) {
+                ask.num.known = ask.caps.known = ask.scroll.known = true;
+                ask.num.on = ask.caps.on = ask.scroll.on = false;
+            }
+            uint8_t hm[192];
+            const int hmn = ctrl_build_hid_locks(hm, sizeof hm, hb_seq, &ask);
+            if (hmn > 0 && ctrl_tcp_send_cleartext(tcp, hm, (size_t)hmn)) {
+                clog("[HID1] lock-key probe sent, seq=%u, %d bytes - Request "
+                     "field %d, %s",
+                     hb_seq, hmn, HID_REQ_FIELD,
+                     g_hid_probe >= 2
+                         ? "asserting all three locks OFF (the VM will toggle to match)"
+                         : "with an EMPTY Hid body, which the server answers with "
+                           "nothing - kept as the counter-case");
+                fb.hid_probe_seq = hb_seq;
+                hb_seq++;
+            } else {
+                clog("[HID1] lock-key probe could NOT be sent (build=%d)", hmn);
+            }
         }
 
         if (now_ms - t_last_heartbeat_ms >= g_hb_period_ms) {
@@ -5183,6 +6799,11 @@ cleanup:
     pthread_mutex_lock(&g_active_vst_mtx);
     g_active_vst = NULL;
     pthread_mutex_unlock(&g_active_vst_mtx);
+    session_ft_reveal_clear();   /* FT3: the credential dies with the session */
+    /* CLIP3: before the others only so its summary line lands next to the
+     * channel's own. It joins its receive thread, which honours the abort flag
+     * within 100 ms. */
+    session_clipboard_close(&ctx);
     if (ctx.comchan) ctrl_comchan_close(ctx.comchan);
     if (ctx.vst) ctrl_video_tcp_close(ctx.vst);
     if (ctx.vtcp) ctrl_video_tcp_close(ctx.vtcp);   /* K15k */

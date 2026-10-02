@@ -16,7 +16,12 @@
 //                                            server sends 0..max, i.e. max+1
 //                                            chunks (G4/G21, then S32 for this
 //                                            channel)
-//   [6..9]    frame_id (uint32 LE)           monotonic counter per channel
+//   [6..9]    frame_id (uint32 LE)           NOT a counter: the sender's
+//                                           timestamp in MICROSECONDS (V9
+//                                           2026-08-28, and SRV1-AB measured
+//                                           it running across sessions). It is
+//                                           echoed back in gE field 3, where
+//                                           the server computes now_us - it.
 //   [byte10]  flags                          bit 0 = SELF-CONTAINED chunk,
 //                                            encrypted `[ct][nonce 12][tag 16]`.
 //                                            bit 0 clear = plaintext

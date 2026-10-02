@@ -1,3 +1,4 @@
+#include "hid_lock.h"   /* HID1: the lock-key message */
 #include "ctrl_msgs.h"
 #include "proto.h"
 
@@ -249,7 +250,7 @@ int ctrl_build_unregister_session(uint8_t *out, size_t out_cap, uint32_t seq) {
  * `stream_id < 0` produces the official client's first frame, the one with no
  * identifier: `f9 { f1 { f2 = timestamp, f3 = 0 } }`. */
 int ctrl_build_unregister_stream(uint8_t *out, size_t out_cap, uint32_t seq,
-                                 int stream_id, uint32_t horodatage) {
+                                 int64_t stream_id, uint32_t horodatage) {
     if (!out) return -1;
     uint8_t inner[24];
     int io = 0;
@@ -334,6 +335,60 @@ int ctrl_build_display_ready_msg(uint8_t *out, size_t out_cap, uint32_t seq) {
     off = pb_write_submsg(out, out_cap, off, 2, f2, f2o);
     if (off < 0) return -1;
     return append_caps_and_ocapture(out, out_cap, off);
+}
+
+/* === HID1 2026-10-02 - the lock keys, Request field 6 ======================
+ *
+ * `ProcessHidRequestMessage_` @0x140b30330 reads the states this carries,
+ * compares each with `GetKeyState(VK_NUMLOCK | VK_CAPITAL | VK_SCROLL)`,
+ * calls `ToggleKey` on the ones that differ, and replies with what it then
+ * has. A lock LEFT OUT of the body is left alone - `hid_lock.h` explains why
+ * each lock is a sub-message rather than a bool, and holds the layout.
+ *
+ * The envelope is the heartbeat's, minus nothing: f1 seq, f2 Request, f4
+ * client info, f5 OCapture. The server reads f2 and would answer a message
+ * without f4/f5, but every request we send carries them and a message that is
+ * shaped differently from its siblings is a variable nobody needs (S1). */
+int ctrl_build_hid_locks(uint8_t *out, size_t out_cap, uint32_t seq,
+                         const hid_locks *locks) {
+    if (!out || !locks) return -1;
+
+    uint8_t hid[32];
+    const int hn = hid_lock_build(hid, sizeof hid, locks);
+    if (hn < 0) return -1;
+
+    /* f2 = Request { f6 = Hid }. An EMPTY Hid is legitimate and means "tell me
+     * yours without asserting mine" - see hid_lock_build. */
+    uint8_t f2[48];
+    int f2o = pb_write_submsg(f2, sizeof(f2), 0, HID_REQ_FIELD, hid, (size_t)hn);
+    if (f2o < 0) return -1;
+
+    uint8_t f4[256];
+    int f4o = 0;
+    f4o = pb_write_uint(f4, sizeof(f4), f4o, 1, 2);
+    if (f4o < 0) return -1;
+    f4o = pb_write_string(f4, sizeof(f4), f4o, 2, "12.3.3");
+    if (f4o < 0) return -1;
+    f4o = pb_write_string(f4, sizeof(f4), f4o, 3,
+                          "Linux;x64;App 9.9.10388;Launcher 4.85.6;Client 12.3.3");
+    if (f4o < 0) return -1;
+
+    uint8_t f5[64];
+    int f5o = 0;
+    f5o = pb_write_uint(f5, sizeof(f5), f5o, 1, 1);
+    if (f5o < 0) return -1;
+    f5o = pb_write_string(f5, sizeof(f5), f5o, 3, "OCapture");
+    if (f5o < 0) return -1;
+
+    int off = 0;
+    off = pb_write_uint(out, out_cap, off, 1, seq);
+    if (off < 0) return -1;
+    off = pb_write_submsg(out, out_cap, off, 2, f2, f2o);
+    if (off < 0) return -1;
+    off = pb_write_submsg(out, out_cap, off, 4, f4, f4o);
+    if (off < 0) return -1;
+    off = pb_write_submsg(out, out_cap, off, 5, f5, f5o);
+    return off;
 }
 
 int ctrl_build_heartbeat(uint8_t *out, size_t out_cap, uint32_t seq) {
@@ -1277,6 +1332,103 @@ int ctrl_build_udp_register(uint8_t *out_buf, size_t out_cap,
     out_buf[4] = 0x00;
     memcpy(out_buf + 5, hash, 20);
     return 25;
+}
+
+/* === SRV8 2026-10-02 — THE SERVER TELLS US ITS VERSION, FOR FREE ============
+ *
+ * `sub_140B301A0` @0x140b301a0 is the whole handler for the Capabilities
+ * request (Request field 3, inner case 1). Its last act before replying is
+ * three stores:
+ *     v8[4] = 6;  v8[5] = 3;  v8[6] = 1;
+ * which is 6.3.1 - the ShadowStreamer build on the VM. We send that request at
+ * every session's step 3 and threw its reply away.
+ *
+ * Worth reading because every byte-exact decision in this repo is dated against
+ * ONE server build. The day a VM moves to 6.4 or back to 6.2.7 (the emergency
+ * MSI the installer carries), the first symptom will be a channel that stops
+ * behaving, and the version will be the first thing anyone asks for. Logging it
+ * costs one parse per session.
+ *
+ * Nesting, from the same function: Message f3 = Reply, Reply f3 = sub, inner
+ * f1 = sub, and the three varints inside it. Their FIELD NUMBERS are not in the
+ * binary - only the generated struct's member order is - so we read the first
+ * three varints in ascending field order and call them major/minor/patch. If
+ * the shape does not match we report nothing rather than invent a version:
+ * `out_major == 0` means "not found". */
+bool ctrl_parse_capabilities_reply(const uint8_t *buf, size_t len,
+                                   unsigned *out_major, unsigned *out_minor,
+                                   unsigned *out_patch) {
+    if (out_major) *out_major = 0;
+    if (out_minor) *out_minor = 0;
+    if (out_patch) *out_patch = 0;
+    if (!buf) return false;
+
+    int off = 0;
+    while ((size_t)off < len) {
+        uint32_t fn = 0, wt = 0;
+        off = pb_read_tag(buf, len, off, &fn, &wt);
+        if (off < 0) return false;
+        if (fn != 3 || wt != PB_WIRE_LENDELIM) {
+            off = pb_skip_field(buf, len, off, wt);
+            if (off < 0) return false;
+            continue;
+        }
+        const uint8_t *rep = NULL; size_t rep_len = 0;
+        off = pb_read_lendelim(buf, len, off, &rep, &rep_len);
+        if (off < 0) return false;
+
+        int ro = 0;
+        while ((size_t)ro < rep_len) {
+            uint32_t rfn = 0, rwt = 0;
+            ro = pb_read_tag(rep, rep_len, ro, &rfn, &rwt);
+            if (ro < 0) return false;
+            if (rfn != 3 || rwt != PB_WIRE_LENDELIM) {
+                ro = pb_skip_field(rep, rep_len, ro, rwt);
+                if (ro < 0) return false;
+                continue;
+            }
+            const uint8_t *in1 = NULL; size_t in1_len = 0;
+            ro = pb_read_lendelim(rep, rep_len, ro, &in1, &in1_len);
+            if (ro < 0) return false;
+
+            int io1 = 0;
+            while ((size_t)io1 < in1_len) {
+                uint32_t ifn = 0, iwt = 0;
+                io1 = pb_read_tag(in1, in1_len, io1, &ifn, &iwt);
+                if (io1 < 0) return false;
+                if (ifn != 1 || iwt != PB_WIRE_LENDELIM) {
+                    io1 = pb_skip_field(in1, in1_len, io1, iwt);
+                    if (io1 < 0) return false;
+                    continue;
+                }
+                const uint8_t *ver = NULL; size_t ver_len = 0;
+                io1 = pb_read_lendelim(in1, in1_len, io1, &ver, &ver_len);
+                if (io1 < 0) return false;
+
+                unsigned got = 0;
+                int vo = 0;
+                while ((size_t)vo < ver_len && got < 3) {
+                    uint32_t vfn = 0, vwt = 0;
+                    vo = pb_read_tag(ver, ver_len, vo, &vfn, &vwt);
+                    if (vo < 0) return false;
+                    if (vwt != PB_WIRE_VARINT) {
+                        vo = pb_skip_field(ver, ver_len, vo, vwt);
+                        if (vo < 0) return false;
+                        continue;
+                    }
+                    uint64_t v = 0;
+                    vo = pb_read_varint(ver, ver_len, vo, &v);
+                    if (vo < 0) return false;
+                    if (got == 0 && out_major) *out_major = (unsigned)v;
+                    if (got == 1 && out_minor) *out_minor = (unsigned)v;
+                    if (got == 2 && out_patch) *out_patch = (unsigned)v;
+                    got++;
+                }
+                return got == 3;
+            }
+        }
+    }
+    return false;
 }
 
 bool ctrl_parse_authentication_reply_v2(const uint8_t *buf, size_t len,

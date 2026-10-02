@@ -88,6 +88,13 @@ void ctrl_gamepad_diagnostic(char *buf, size_t cap);
 void ctrl_gamepad_replug_tick(void);
 int ctrl_gamepad_button(int button_id, bool pressed);
 int ctrl_gamepad_axis(int axis_idx, uint8_t value);
+/* SRV6 2026-10-02 - bytes 12..13 of an axis message are ONE little-endian
+ * int16, not a value plus a second representation: the 8-bit call above encodes
+ * `257*value + 32768` without having meant to. This variant writes the full
+ * 16 bits the wire carries, for a caller that has them (the Switch pad). No
+ * caller yet - the pad pipeline is uint8_t end to end; see the comment on
+ * ctrl_gamepad_axis in ctrl_gamepad.c. */
+int ctrl_gamepad_axis16(int axis_idx, int16_t value);
 int ctrl_gamepad_dpad(uint8_t value);
 
 /* Local evdev reader (Linux): reads the gamepad plugged into this machine and
