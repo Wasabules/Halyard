@@ -1,16 +1,16 @@
 /* ctrl_session_glue.c - see header. */
 
 #include "ctrl_session_glue.h"
-#include "ctrl_session.h"
-#include "idr_policy.h"
-#include "freeze_stat.h"    /* HO-2: G44 micro-freeze detector, per session */
-#include "cursor_state.h"   /* CUR1 phase 2 2026-05-18 */
+#include "../protocol/ctrl_session.h"
+#include "../protocol/idr_policy.h"
+#include "../protocol/freeze_stat.h"    /* HO-2: G44 micro-freeze detector, per session */
+#include "../protocol/cursor_state.h"   /* CUR1 phase 2 2026-05-18 */
 #include "../media/h264_decoder.h"
-#include "../common/stats.h"
+#include "../services/stats.h"
 #include "../media/audio.h"          /* I3 2026-05-18 audio path natif */
 #include "../input/shadow_input.h"   /* the UI input queue and its drain */
-#include "../common/log.h"
-#include "latency.h"   /* L5 : instrumentation du chemin video */
+#include "../services/log.h"
+#include "../protocol/latency.h"   /* L5 : instrumentation du chemin video */
 
 /* S81 - this module's log category. See shadow/journal.h: it is declared here,
  * never inferred from the text of the messages. */

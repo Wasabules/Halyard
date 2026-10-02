@@ -8,7 +8,7 @@
 #include <wolfssl/wolfcrypt/random.h>
 #include <wolfssl/wolfcrypt/wc_port.h>   /* SEC3: wolfCrypt_Init */
 
-#include "../common/log.h"
+#include "../services/log.h"
 
 /* S81 - the log category is DECLARED here, never inferred from the message
  * text. `elog` stays at INFO so no existing call goes silent. `edbg` exists

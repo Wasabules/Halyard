@@ -2,7 +2,7 @@
 
 #include "rumble_hid.h"
 
-#include "../common/log.h"
+#include "../services/log.h"
 
 /* S81 - this module's log category. See shadow/journal.h: the category is
  * declared here, never inferred from the text of the messages. */

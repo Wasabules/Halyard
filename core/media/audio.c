@@ -7,7 +7,7 @@
 // audout requires).
 
 #include "audio.h"
-#include "../common/log.h"
+#include "../services/log.h"
 #include "../protocol/audio_gain.h"
 #include "../protocol/eq.h"
 #include "../protocol/latency.h"   /* L5: depth of the output queue */

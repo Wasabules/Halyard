@@ -7,7 +7,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <sys/time.h>
-#include "../common/log.h"
+#include "../services/log.h"
 #include "session_host.h"   /* DNS1: one lookup of the VM name per session */
 
 /* S81 - this module's log category. See shadow/journal.h: it is DECLARED

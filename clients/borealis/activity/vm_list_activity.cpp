@@ -6,7 +6,7 @@
 extern "C" {
 #include "core/services/errors.h"
 }
-#include "core/common/log.h"        /* [NAV] traces */
+#include "core/services/log.h"        /* [NAV] traces */
 /* S81 - this module's log category. See shadow/journal.h: it is DECLARED here,
  * never inferred from the text of the messages. */
 #define vllog(...) JOURNAL_INFO_(JOURNAL_CAT_UI, __VA_ARGS__)

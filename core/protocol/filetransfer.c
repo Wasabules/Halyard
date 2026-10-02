@@ -6,9 +6,9 @@
 #include <stdlib.h>
 #include <stdio.h>
 
-#include "../protocol/ft_path.h"
-#include "../protocol/proto.h"
-#include "../protocol/ann_reply.h"
+#include "ft_path.h"
+#include "proto.h"
+#include "ann_reply.h"
 
 /* === The secret extractor, built WITHOUT libssh =============================
  *
@@ -123,7 +123,7 @@ const char *shadow_ft_strerror(shadow_ft_err e)
 #include <libssh/libssh.h>
 #include <libssh/sftp.h>
 
-#include "../common/log.h"
+#include "../services/log.h"
 #define ftlog(...) JOURNAL_INFO_(JOURNAL_CAT_NETWORK, __VA_ARGS__)
 
 /* The server caps a READ reply at 64 KiB (its dispatch loop @0x140c890f0), so

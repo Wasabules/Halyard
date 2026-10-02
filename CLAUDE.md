@@ -66,18 +66,40 @@ Lint guards (CI `lint.yml`; the test script already runs the first two):
 
 ## Architecture
 
-**`core/`** (C, shared by every platform)
+**`core/`** (C, the `halyard-core` library, shared by every platform)
+
+It is LAYERED, and the layering is enforced by `tools/check-core-independence.py`
+— bottom first, and no subdirectory may include from its own level or above:
+
+```
+services                 no outgoing edge at all
+   ↑
+protocol                 41 edges into services
+   ↑           ↑
+media        input       both into protocol and services, never into each other
+   ↑           ↑
+session                  the only layer allowed to know all of them
+```
+
+`protocol/` therefore **does not know that `media/` or `input/` exist**, which
+is what lets a client bringing its own decoder (VideoToolbox, WebCodecs) take
+the protocol and leave the 31 platform `#ifdef`s of `core/media` behind. It was
+not so until 2026-10-02: there were four dependency cycles, closed by nine
+includes in four files, each one a file in the wrong directory.
+
+- `services/` is the bottom: no dependency on anything else in core.
+  - account and machine access: OAuth device grant (`oauth`), VM start (`launcher`), proximus credentials and SSE (`proximus`), `http`, `tinag`;
+  - the log (`journal`, with redaction and masking) and its macro facade `log.h`;
+  - settings support: `env_override`, `atomic_file`, `applock`;
+  - pure utilities with no dependency of their own: `jwt.h` (the `instance` field), `stats`.
 - `protocol/` holds the wire protocol.
-  - `ctrl_session.c` orchestrates a session. `ctrl_session_glue.c` connects its video callback to the decoder and the stream view, and is what the UI calls.
-  - Each channel has its own module: `ctrl_tcp`, `ctrl_audio_dtls`, `ctrl_gamepad`, `ctrl_input_tcp`, `ctrl_video_tcp`, `cursor_*`.
+  - `ctrl_session.c` orchestrates a session.
+  - Each channel has its own module: `ctrl_tcp`, `ctrl_audio_dtls`, `ctrl_gamepad`, `ctrl_input_tcp`, `ctrl_video_tcp`, `cursor_*`, `clip_*` (clipboard), `filetransfer` (SFTP on `:base+15` — a channel, not a service).
   - The wire codecs (`proto.c` protobuf, `vid_wire`/`vid_reasm` for video chunks, `sufp`, `msgframe`, `encryption` ChaCha20-Poly1305) are kept pure so they can be tested.
   - `ctrl_msgs.c` holds the byte-exact message bodies captured from the official client.
-- `services/` holds everything around the stream:
-  - account and machine access: OAuth device grant (`oauth`), VM start (`launcher`), proximus credentials and SSE (`proximus`), `http`, `tinag`;
-  - the log (`journal`, with redaction and masking);
-  - settings support: `env_override`, `atomic_file`, `applock`.
 - `media/` holds the platform decoders and audio outputs (`h264_decoder` for libavcodec/nvtegra, `*_vita.c` for SceAvcdec and Vita audio, `audio_out_win.c` for WASAPI).
 - `input/` maps pads, touch and mouse.
+- `session/` is the composition layer, and the only one that may reach into all the others: `ctrl_session_glue.c` joins the protocol to the decoder and to the input path and is what a UI calls, `smoke_test.c` drives a session end to end for diagnostics. The decoded picture leaves by a REGISTERED CALLBACK (`ctrl_session_glue_set_frame_sink`), never by a link-time symbol.
 
 **Session sequence:**
 1. OAuth device grant.

@@ -3,7 +3,7 @@
 #include "clients/borealis/activity/gl_video_renderer.hpp"
 
 extern "C" {
-#include "../../../core/common/log.h"
+#include "../../../core/services/log.h"
 #include "../../../core/media/h264_decoder.h"   /* COL1 - the colorimetry the stream declares */
 }
 
@@ -418,7 +418,7 @@ bool GLVideoRenderer::render(int frame_w, int frame_h,
  *
  * `init()` logs once so the reason is in the session log rather than in a
  * commit message. */
-#include "../../../core/common/log.h"
+#include "../../../core/services/log.h"
 
 bool GLVideoRenderer::init()
 {

@@ -3,7 +3,7 @@
 #include "h264_decoder.h"
 #include "h264_decoder_vita.h"
 #include "../services/config.h"
-#include "../common/log.h"
+#include "../services/log.h"
 
 #ifdef __SWITCH__
 #include <switch.h>

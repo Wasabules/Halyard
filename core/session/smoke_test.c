@@ -1,8 +1,9 @@
 #include "smoke_test.h"
-#include "ctrl_rest.h"
-#include "ctrl_tcp.h"
-#include "ctrl_msgs.h"
-#include "encryption.h"
+#include "../services/jwt.h"
+#include "../protocol/ctrl_rest.h"
+#include "../protocol/ctrl_tcp.h"
+#include "../protocol/ctrl_msgs.h"
+#include "../protocol/encryption.h"
 #include "../services/http.h"
 #include "../media/h264_decoder.h"
 #include "../services/sockets_compat.h"
@@ -23,7 +24,7 @@
 #include <wolfssl/options.h>
 #include <wolfssl/wolfcrypt/random.h>
 
-#include "../common/log.h"
+#include "../services/log.h"
 #include "../services/log_mask.h"   /* SEC2: secrets in the log, start and end only */
 
 /* S81 - the category is DECLARED here, not guessed from the message text.
@@ -31,76 +32,13 @@
  * there for the high-volume lines, which move over to it one at a time. */
 #define slog(...) JOURNAL_INFO_(JOURNAL_CAT_SESSION, __VA_ARGS__)
 #define sdbg(...) JOURNAL_DEBUG_(JOURNAL_CAT_SESSION, __VA_ARGS__)
-/* Minimal JWT decode, just enough to pull out the "instance" field.
- * JWT = header.payload.signature, the payload being base64url-encoded JSON.
- * Returns the instance number (1..99), or -1 on error. */
-int jwt_instance(const char *jwt);
-
-static int jwt_extract_instance(const char *jwt) {
-    if (!jwt) return -1;
-    /* Find first '.' (header end) */
-    const char *dot1 = strchr(jwt, '.');
-    if (!dot1) return -1;
-    const char *payload = dot1 + 1;
-    const char *dot2 = strchr(payload, '.');
-    size_t plen = dot2 ? (size_t)(dot2 - payload) : strlen(payload);
-    if (plen > 4096) return -1;
-    /* base64url-decode minimal (we just look for "instance":N inside as
-     * substring after replacing '-_' with '+/' and adding padding) */
-    char b64[4200];
-    size_t out = 0;
-    for (size_t i = 0; i < plen && out < sizeof(b64) - 5; i++) {
-        char c = payload[i];
-        if (c == '-') c = '+';
-        else if (c == '_') c = '/';
-        b64[out++] = c;
-    }
-    /* S49 2026-08-26: the bound used to be `out < sizeof(b64)`, so `out` could
-     * reach sizeof(b64) and the `b64[out] = 0` right below then wrote ONE byte
-     * past the array, onto the stack. The compiler only pointed it out once the
-     * surrounding code moved - it never had before. We now keep room for the
-     * terminating zero. */
-    while (out % 4 != 0 && out < sizeof(b64) - 1) b64[out++] = '=';
-    b64[out] = 0;
-    /* base64 decode: standard, fits in plen bytes */
-    static const int8_t dt[256] = {
-        ['A']=0,['B']=1,['C']=2,['D']=3,['E']=4,['F']=5,['G']=6,['H']=7,
-        ['I']=8,['J']=9,['K']=10,['L']=11,['M']=12,['N']=13,['O']=14,['P']=15,
-        ['Q']=16,['R']=17,['S']=18,['T']=19,['U']=20,['V']=21,['W']=22,['X']=23,
-        ['Y']=24,['Z']=25,
-        ['a']=26,['b']=27,['c']=28,['d']=29,['e']=30,['f']=31,['g']=32,['h']=33,
-        ['i']=34,['j']=35,['k']=36,['l']=37,['m']=38,['n']=39,['o']=40,['p']=41,
-        ['q']=42,['r']=43,['s']=44,['t']=45,['u']=46,['v']=47,['w']=48,['x']=49,
-        ['y']=50,['z']=51,
-        ['0']=52,['1']=53,['2']=54,['3']=55,['4']=56,['5']=57,['6']=58,['7']=59,
-        ['8']=60,['9']=61,['+']=62,['/']=63,
-    };
-    char json[4200];
-    size_t jl = 0;
-    for (size_t i = 0; i + 4 <= out && jl + 3 <= sizeof(json); i += 4) {
-        if (b64[i] == '=') break;
-        int a = dt[(unsigned char)b64[i]];
-        int b = dt[(unsigned char)b64[i+1]];
-        int c = b64[i+2] == '=' ? -1 : dt[(unsigned char)b64[i+2]];
-        int d = b64[i+3] == '=' ? -1 : dt[(unsigned char)b64[i+3]];
-        json[jl++] = (a << 2) | (b >> 4);
-        if (c >= 0) json[jl++] = ((b & 0xf) << 4) | (c >> 2);
-        if (d >= 0) json[jl++] = ((c & 0x3) << 6) | d;
-    }
-    json[jl < sizeof(json) ? jl : sizeof(json)-1] = 0;
-    /* Search for "instance":N */
-    const char *inst = strstr(json, "\"instance\":");
-    if (!inst) return -1;
-    inst += 11;
-    while (*inst == ' ') inst++;
-    int v = atoi(inst);
-    return (v >= 1 && v <= 99) ? v : -1;
-}
-
-/* Public wrapper for jwt_instance - used by other modules. */
-int jwt_instance(const char *jwt) {
-    return jwt_extract_instance(jwt);
-}
+/* LIB2 2026-10-02 - `jwt_instance` moved to `core/protocol/jwt.h`.
+ *
+ * It was 70 lines of base64url decoding in the middle of a smoke test, called
+ * by two modules that are not smoke tests (`ctrl_session.c`, `vid_reasm.c`) -
+ * and it was the one thing keeping this file inside `core/protocol/`. It is
+ * pure, so it is now a header-only module with 27 checks of its own, including
+ * the bounds of the buffer that S49 once overflowed by a byte. */
 
 /* Generates an ASCII UUID v4 (36 chars + \0) from the wolfSSL RNG. */
 static bool gen_uuid_v4(char out[37]) {
@@ -233,7 +171,7 @@ bool streaming_smoke_test_m32(const char *vm_host,
      * Those two calls seem to be what tells the VM a client is coming - the
      * 2026-05-06 tcpdump shows :13011 only opening AFTER them, with the
      * SSE /N/stream also live. */
-    int rest_instance = jwt_extract_instance(bearer_jwt);
+    int rest_instance = jwt_instance(bearer_jwt);
     if (rest_instance <= 0) rest_instance = 6;
     /* Strip the ipv6-/ipv4- prefix for the HTTP calls: http.c forces
      * IPRESOLVE_V4 and the ipv6-... hostname has no A record. The bare gpu-*
@@ -297,7 +235,7 @@ bool streaming_smoke_test_m32(const char *vm_host,
     }
     slog("M32: ctrl_tcp_open OK ✓");
     ctrl_tcp_set_bearer(tcp, bearer_jwt);
-    int instance = jwt_extract_instance(bearer_jwt);
+    int instance = jwt_instance(bearer_jwt);
     if (instance > 0) {
         slog("M32: JWT instance=%d → using path /%d/forward", instance, instance);
         ctrl_tcp_set_instance(tcp, instance);

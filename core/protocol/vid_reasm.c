@@ -12,9 +12,9 @@
 #include "ctrl_msgs.h"
 #include "encryption.h"
 #include "sufp.h"
-#include "smoke_test.h"   /* jwt_instance */
-#include "../common/log.h"
-#include "../common/stats.h"
+#include "../services/jwt.h"   /* LIB2: jwt_instance, no longer in smoke_test */
+#include "../services/log.h"
+#include "../services/stats.h"
 #include "../services/sockets_compat.h"
 
 #include <fcntl.h>

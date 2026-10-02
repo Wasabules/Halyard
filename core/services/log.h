@@ -1,5 +1,19 @@
 /* log.h - COMPATIBILITY FACADE over `core/services/journal.h`.
  *
+ * === LIB2 2026-10-02 - MOVED OUT OF `core/common/`, WHICH IS GONE ==========
+ *
+ * `core/common/` held this file and `stats`, and this one reached up into
+ * `core/services/` for `journal.h` - the `common <-> services` cycle inside
+ * core/. The cheap fix looked like moving the journal DOWN into common;
+ * measured, `journal.c` depends on four other services files (atomic_file,
+ * config, sockets_compat, log_redact), so that would have created four back
+ * edges to remove one.
+ *
+ * The real finding is that `core/common` was not a layer. Two files, one of
+ * them a macro facade over a service, is a leftover - so it was dissolved
+ * instead of defended. `log` and `stats` are services, like the journal this
+ * wraps, which is now a sibling.
+ *
  * === WHY THIS FILE STILL EXISTS (S81, 2026-08-29) ===
  *
  * The journal now has a severity, a category and a filter: see
@@ -14,7 +28,7 @@
  * So the migration happens PER MODULE, by redirecting the alias at the top of
  * the file to the category that already fits it:
  *
- *     #include "../services/journal.h"
+ *     #include "journal.h"
  *     #define vlog(...) JOURNAL_INFO_(JOURNAL_CAT_VIDEO,  __VA_ARGS__)
  *     #define vdbg(...) JOURNAL_DEBUG_(JOURNAL_CAT_VIDEO, __VA_ARGS__)
  *
@@ -29,7 +43,7 @@
 
 #pragma once
 
-#include "../services/journal.h"
+#include "journal.h"
 
 #ifdef __cplusplus
 extern "C" {

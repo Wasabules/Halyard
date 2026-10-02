@@ -1,7 +1,7 @@
 /* cursor_state - see header. */
 
 #include "cursor_state.h"
-#include "../common/log.h"
+#include "../services/log.h"
 
 /* S81 - this module's log category. See shadow/journal.h: it is declared here,
  * never inferred from the text of the messages. */

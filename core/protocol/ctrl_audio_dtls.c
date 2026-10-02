@@ -5,7 +5,7 @@
  */
 
 #include "ctrl_audio_dtls.h"
-#include "../common/log.h"
+#include "../services/log.h"
 /* S81 - this module's log category. See shadow/journal.h: the category is
  * declared here, never inferred from the text of the messages. */
 #define adlog(...) JOURNAL_INFO_(JOURNAL_CAT_AUDIO, __VA_ARGS__)

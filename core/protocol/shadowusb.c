@@ -7,7 +7,7 @@
 #include <string.h>
 
 #include "../services/http.h"
-#include "../common/log.h"
+#include "../services/log.h"
 #include "../services/log_mask.h"   /* SEC2: secrets in the log, start and end only */
 
 /* S81 - the category is DECLARED here, not guessed from the message text.

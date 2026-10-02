@@ -6,7 +6,7 @@
 #include <string.h>
 
 #include "../services/http.h"
-#include "../common/log.h"
+#include "../services/log.h"
 
 /* S81 - the category is DECLARED here, not guessed from the message text.
  * `rlog` stays at INFO, so the existing calls do not disappear. `rdbg` is

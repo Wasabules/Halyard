@@ -5,7 +5,7 @@
 #include "activity/vm_list_activity.hpp"
 #include "../demo.hpp"                /* DEMO-1 - fictional data for screenshots */
 #include "core/version.h"           /* S85 - build fingerprint shown on the error screen */
-#include "core/common/log.h"        /* [NAV] traces */
+#include "core/services/log.h"        /* [NAV] traces */
 /* S81 - this module's log category. See shadow/journal.h: it is DECLARED here,
  * never inferred from the text of the messages. */
 #define balog(...) JOURNAL_INFO_(JOURNAL_CAT_UI, __VA_ARGS__)

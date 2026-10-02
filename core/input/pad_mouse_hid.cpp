@@ -5,7 +5,7 @@
 
 extern "C" {
 #include "shadow_input.h"
-#include "../common/log.h"
+#include "../services/log.h"
 /* S81 - this module's category. See shadow/journal.h: it is declared here,
  * never inferred from the text of the messages. */
 #define pmlog(...) JOURNAL_INFO_(JOURNAL_CAT_GAMEPAD, __VA_ARGS__)

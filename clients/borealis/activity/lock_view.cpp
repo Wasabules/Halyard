@@ -11,7 +11,7 @@
 #include "../ui/pointer.hpp"
 #include "../device_mode.hpp"
 
-#include "../../../core/common/log.h"
+#include "../../../core/services/log.h"
 #define alockwarn(...) JOURNAL_WARN_(JOURNAL_CAT_UI, __VA_ARGS__)
 
 #ifdef __SWITCH__

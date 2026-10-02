@@ -3,7 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "../common/log.h"
+#include "../services/log.h"
 
 /* S81 — the category is DECLARED here, not inferred from the message text.
  * `slog` stays at INFO: the existing calls do not disappear. `sdbg` is there for

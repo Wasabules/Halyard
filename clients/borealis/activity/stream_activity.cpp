@@ -38,7 +38,7 @@ extern "C" {
 }
 
 extern "C" {
-#include "core/common/log.h"
+#include "core/services/log.h"
 /* S81 - this module's category. See shadow/journal.h: it is declared here,
  * never inferred from the text of the messages. */
 #define salog(...) JOURNAL_INFO_(JOURNAL_CAT_UI, __VA_ARGS__)

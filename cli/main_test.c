@@ -48,10 +48,10 @@
 #include "../core/services/tinag.h"
 #include "../core/services/time_sync.h"
 #include "../core/services/telemetry.h"
-#include "../core/protocol/ctrl_session_glue.h"
+#include "../core/session/ctrl_session_glue.h"
 #include "../core/protocol/vid_reasm.h"   /* V9: the short-packet counter on :base+10 */
-#include "../core/common/log.h"
-#include "../core/common/stats.h"
+#include "../core/services/log.h"
+#include "../core/services/stats.h"
 #include "../core/input/shadow_input.h"
 
 static volatile int g_abort = 0;

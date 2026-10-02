@@ -8,7 +8,7 @@
 
 extern "C" {
 #include "../../../core/protocol/rumble_hid.h"
-#include "../../../core/common/log.h"
+#include "../../../core/services/log.h"
 /* S81 - this module's log category. See shadow/journal.h: it is declared here,
  * never inferred from the text of the messages. */
 #define pvlog(...) JOURNAL_INFO_(JOURNAL_CAT_GAMEPAD, __VA_ARGS__)

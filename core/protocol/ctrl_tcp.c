@@ -14,7 +14,7 @@
  * `#undef _POSIX_THREADS` - see the note above. */
 #include "tls_chan.h"
 
-#include "../common/log.h"
+#include "../services/log.h"
 /* S81 - the log category is DECLARED here, not inferred from the text of the
  * messages. `tlog` stays at INFO: the existing calls do not disappear. `tdbg`
  * is there for the high-volume lines, which move over to it one at a time. */

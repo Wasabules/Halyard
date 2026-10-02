@@ -10,7 +10,7 @@
 #include "../device_mode.hpp"
 
 extern "C" {
-#include "../../../core/common/stats.h"
+#include "../../../core/services/stats.h"
 #include "../../../core/protocol/path_probe.h"
 }
 

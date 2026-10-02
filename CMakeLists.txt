@@ -241,7 +241,7 @@ list(APPEND APP_PLATFORM_INCLUDE
 # Measured before splitting, so the split is a guarantee of something that was
 # already the case rather than a repair: zero includes of `clients/` anywhere in
 # `core/`, and linked by hand into a 736 KB archive whose only non-library
-# undefined symbol was `shadow_link_info` (now weak, see core/common/).
+# undefined symbol was `shadow_link_info` (now weak, see core/protocol/ctrl_session.c).
 #
 # Two targets instead of one list:
 #   halyard-core   every .c and .cpp under core/, and nothing else;

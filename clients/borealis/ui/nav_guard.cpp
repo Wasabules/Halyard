@@ -3,7 +3,7 @@
 
 #include <deque>
 
-#include "../../../core/common/log.h"
+#include "../../../core/services/log.h"
 #include "shutdown.hpp"   /* UX10 */
 #define nvlog(...) JOURNAL_INFO_(JOURNAL_CAT_UI, __VA_ARGS__)
 

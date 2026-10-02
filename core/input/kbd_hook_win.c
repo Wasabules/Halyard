@@ -8,7 +8,7 @@
 #include <windows.h>
 
 #include "shadow_input.h"
-#include "../common/log.h"
+#include "../services/log.h"
 
 /* JOURNAL_CAT_INPUT is "mouse, keyboard, touch" - this is the keyboard. */
 #define klog(...) JOURNAL_INFO_(JOURNAL_CAT_INPUT, __VA_ARGS__)

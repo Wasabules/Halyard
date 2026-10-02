@@ -1,5 +1,18 @@
 /* filetransfer - the SFTP channel on `:base+15`, CORE side.
  *
+ * === LIB2 2026-10-02 - MOVED OUT OF `core/services/` =======================
+ *
+ * It lived in `services/` and reached up into `protocol/` for three headers -
+ * `proto.h` to walk protobuf, `ann_reply.h` to find the credential in the
+ * announcement reply, `ft_path.h` to refuse a path that would escape. That is
+ * one of the four dependency cycles inside `core/`, and it existed because the
+ * file was in the wrong directory: this is a protocol channel (`:base+15`,
+ * KB §3.50) that happens to speak SSH, not a service the protocol uses.
+ *
+ * A service is something the session calls out to - HTTP, the journal, the
+ * settings file, the lock. A channel is part of the session. Nothing else
+ * changed.
+ *
  * === FT1 2026-10-02 — WHAT THIS IS AND WHO IT IS FOR ========================
  *
  * The VM runs a libssh SSH/SFTP **server** on `:base+15`, outside the control

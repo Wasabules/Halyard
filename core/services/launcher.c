@@ -1,4 +1,5 @@
 #include "launcher.h"
+#include "jwt.h"
 #include "http.h"
 #include "config.h"
 #include "journal.h"
@@ -484,7 +485,9 @@ void vmconn_free(VmConnectionInfo *c) {
 
 /* Decodes JWT.instance - delegated to the parser tested in
  * streaming/smoke_test.c. */
-extern int jwt_instance(const char *jwt);
+/* LIB2 2026-10-02 - was `extern int jwt_instance(...)`, a declaration with no
+ * definition anywhere in this library: the symbol lived in `smoke_test.c`.
+ * It is a pure header-only utility now, and a sibling. */
 int launcher_jwt_instance(const char *jwt) {
     return jwt_instance(jwt);
 }

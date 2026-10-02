@@ -20,7 +20,7 @@ static int shadow_random_bytes(uint8_t *out, size_t n) {
 #include <string.h>
 #include <time.h>
 
-#include "../common/log.h"
+#include "../services/log.h"
 /* S81 - the category is DECLARED here, not inferred from the message text.
  * `mlog` stays at INFO: the existing calls do not disappear. `mdbg` is there for the
  * bulky lines, which migrate to it one at a time. */

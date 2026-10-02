@@ -11,7 +11,7 @@
 #include <borealis/core/assets.hpp>   /* BRLS_RESOURCES */
 
 extern "C" {
-#include "../../core/common/stats.h"
+#include "../../core/services/stats.h"
 #include "../../core/services/journal.h"
 #include <libavutil/pixfmt.h>
 /* nanovg compiles stb_image into Borealis (nanovg.c), with extern linkage:

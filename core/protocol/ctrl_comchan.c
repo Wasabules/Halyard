@@ -11,7 +11,7 @@
 #include <wolfssl/options.h>
 #include <wolfssl/ssl.h>
 
-#include "../common/log.h"
+#include "../services/log.h"
 /* S81 - the log category is DECLARED here, not inferred from the text of the
  * messages. `cclog` stays at INFO: the existing calls do not disappear.
  * `ccdbg` is there for the noisy lines, which move over to it one at a time. */

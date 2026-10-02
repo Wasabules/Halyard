@@ -12,13 +12,13 @@
 
 extern "C" {
 #include <libavutil/pixfmt.h>
-#include "../../../core/common/log.h"      /* streaming log, WITHOUT any level filter */
+#include "../../../core/services/log.h"      /* streaming log, WITHOUT any level filter */
 /* S81 - log category of this module. See shadow/journal.h: it is declared
  * here, never inferred from the text of the messages. */
 #define svlog(...) JOURNAL_INFO_(JOURNAL_CAT_UI, __VA_ARGS__)
 #define svdbg(...) JOURNAL_DEBUG_(JOURNAL_CAT_UI, __VA_ARGS__)
 
-#include "../../../core/common/stats.h"
+#include "../../../core/services/stats.h"
 #include "../../../core/input/shadow_input.h"
 #include "../../../core/protocol/rumble_state.h"   /* G57: force feedback */
 #include "../../../core/services/power_profile.h"   /* LAT-V1: clock read-back */
@@ -26,7 +26,7 @@ extern "C" {
 #include "../../../core/protocol/cursor_state.h"   /* CUR1 phase 2 2026-05-18 */
 #include "../../../core/protocol/ctrl_gamepad.h"   /* gamepad: actions of the dev menu */
 #include "../../../core/protocol/ctrl_session.h"   /* picture refresh request */
-#include "../../../core/protocol/ctrl_session_glue.h"  /* actual codec, for the panel */
+#include "../../../core/session/ctrl_session_glue.h"  /* actual codec, for the panel */
 #include "../../../core/protocol/latency.h"      /* L5: instrumentation of the video path */
 }
 

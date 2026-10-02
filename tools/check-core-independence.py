@@ -83,8 +83,79 @@ for dirpath, _dirs, files in os.walk(CORE):
                             % (rel, line, m.group(0)))
             break   # one per file is enough to make the point
 
-print("== core/ depends on no client (LIB1) ==")
+# === LIB2 2026-10-02 - AND core/ IS LAYERED, WHICH IS ALSO CHECKED ==========
+#
+# Measured on 2026-10-02, before any of it was moved: the five subdirectories of
+# `core/` had FOUR dependency cycles between them (`common<->services`,
+# `input<->protocol`, `media<->protocol`, `protocol<->services`). Nine includes
+# in four files closed them, and each one was a file in the wrong directory:
+# `filetransfer` was a protocol channel sitting in services/, `log.h` was a
+# facade over a service sitting in a `common/` that was not a layer,
+# `ctrl_session_glue` and `smoke_test` were the composition layer sitting in
+# protocol/, and `jwt_instance` was a pure utility buried in a smoke test.
+#
+# What that bought, and it is the point of the whole exercise: **`protocol/` no
+# longer knows that `media/` or `input/` exist**. A client that brings its own
+# decoder - a Mac front end on VideoToolbox, a browser on WebCodecs - can take
+# the protocol and leave the 31 platform #ifdefs of `core/media` behind.
+#
+# A layering is only worth having if it cannot drift, so the order is declared
+# here and any edge going the wrong way is a failure. Bottom first:
+LAYERS = ["services", "protocol", "media", "input", "session"]
+# `media` and `input` are siblings: neither may include the other. `session` is
+# the only subdirectory allowed to reach into all of them, which is what makes
+# it the composition layer rather than a sixth peer.
+RANK = {name: i for i, name in enumerate(LAYERS)}
+
+def owners_of_headers():
+    out = {}
+    for dp, _d, fs in os.walk(CORE):
+        sub = os.path.relpath(dp, CORE).split(os.sep)[0]
+        for f in fs:
+            if f.endswith((".h", ".hpp")):
+                out[f] = sub
+    return out
+
+HEADER_OWNER = owners_of_headers()
+layer_bad = []
+unknown = set()
+
+for dirpath, _dirs, files in os.walk(CORE):
+    sub = os.path.relpath(dirpath, CORE).split(os.sep)[0]
+    if sub == ".":
+        # `core/version.h` is the one file at core/'s root - the app identity,
+        # generated from CMake, and it includes nothing. The layering is about
+        # the subdirectories; a root header belongs to all of them.
+        continue
+    if sub not in RANK:
+        unknown.add(sub)
+        continue
+    for name in sorted(files):
+        if not name.endswith((".c", ".h", ".cpp", ".hpp")):
+            continue
+        path = os.path.join(dirpath, name)
+        rel = os.path.relpath(path, ROOT).replace("\\", "/")
+        with open(path, encoding="utf-8", errors="replace") as f:
+            body = f.read()
+        body = re.sub(r"/\*.*?\*/", "", body, flags=re.S)
+        body = re.sub(r"//[^\n]*", "", body)
+        for m in INCLUDE.finditer(body):
+            tgt = HEADER_OWNER.get(os.path.basename(m.group(1)))
+            if tgt is None or tgt == sub or tgt not in RANK:
+                continue
+            if RANK[tgt] >= RANK[sub]:
+                line = body.count("\n", 0, m.start()) + 1
+                layer_bad.append("%s:%d  %s -> %s  (`%s`)"
+                                 % (rel, line, sub, tgt, m.group(1)))
+
+print("== core/ depends on no client, and is layered (LIB1/LIB2) ==")
 print("  %d file(s) under core/ checked" % checked)
+print("  layers, bottom first: %s" % " < ".join(LAYERS))
+if unknown:
+    failures.append("unknown subdirectory of core/: %s - add it to LAYERS in "
+                    "tools/check-core-independence.py, deciding where it sits"
+                    % ", ".join(sorted(unknown)))
+failures.extend(layer_bad)
 
 if failures:
     print("  FAIL: %d violation(s):" % len(failures))

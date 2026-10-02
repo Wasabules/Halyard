@@ -13,7 +13,7 @@
 
 extern "C" {
 #include "../../../core/media/audio.h"
-#include "../../../core/common/log.h"
+#include "../../../core/services/log.h"
 #include "../../../core/services/journal.h"
 }
 #include "../ui/i18n.hpp"

@@ -13,7 +13,7 @@
  */
 #include "shadow_input.h"
 #include "../protocol/latency.h"   /* L5 : instrumentation du chemin d'entree */
-#include "../common/log.h"
+#include "../services/log.h"
 #include "../services/time_sync.h"
 #include "../protocol/native_input.h"  /* I1 phase 3 2026-05-18 */
 

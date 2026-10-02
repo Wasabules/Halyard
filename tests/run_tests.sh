@@ -154,6 +154,7 @@ run test_clip_wire   test_clip_wire.c "${PURE_MODULES[@]}" ../core/protocol/clip
 run test_gamepad_wire test_gamepad_wire.c "${PURE_MODULES[@]}"
 run test_ctrl_inv     test_ctrl_inv.c      # header-only: which Request field a ctrl message carries (SRV7)
 run test_ft_path      test_ft_path.c       # header-only: remote paths we refuse to send, since the VM confines none (FT1)
+run test_jwt          test_jwt.c           # header-only: the JWT `instance` field, and the buffer S49 once overflowed (LIB2)
 run test_ft_uri       test_ft_uri.c        # header-only: the SFTP URI a file manager opens - base64 escaping, IPv6 brackets (FT4)
 run test_clip_dir     test_clip_dir.c      # header-only: which way the clipboard may travel, and the clamp (CLIP6)
 run test_hid_lock     test_hid_lock.c ../core/protocol/proto.c  # the Caps/Num/Scroll Lock message on :base+11 (HID1)
@@ -187,7 +188,7 @@ run test_rtt          test_rtt.c                 # header-only
 # AUD-INS-3 - the metrics panel's snapshot: one writer thread per field group.
 # Its stress half runs two real writer threads and a reader for about two
 # seconds; -pthread takes winpthreads on MinGW.
-run test_stats        test_stats.c   ../core/common/stats.c -pthread
+run test_stats        test_stats.c   ../core/services/stats.c -pthread
 run test_wav          test_wav.c     ../clients/borealis/ui/wav.c
 run test_eq           test_eq.c      ../core/protocol/eq.c -lm
 # S86 - splitting a log line into columns. It reads a format ANOTHER file writes

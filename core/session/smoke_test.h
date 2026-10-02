@@ -30,7 +30,8 @@ bool streaming_smoke_test_full(const char *vm_host,
 
 /* Decodes a JWT to extract the instance field (varint).
  * Returns the instance, or -1 on error. */
-int jwt_instance(const char *jwt);
+/* LIB2: `jwt_instance` is in `core/protocol/jwt.h` now - it is a protocol
+ * utility, not a smoke test, and two modules that are neither used it. */
 
 /* M32 bootstrap: SSL connect host:443 (no ALPN) -> Authentication protobuf ->
  * Encryption protobuf -> parse reply -> log key.

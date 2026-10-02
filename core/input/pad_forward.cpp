@@ -9,7 +9,7 @@
 #include <pthread.h>
 
 extern "C" {
-#include "../common/log.h"
+#include "../services/log.h"
 #include "../protocol/latency.h"
 }
 

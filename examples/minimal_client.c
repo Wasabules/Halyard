@@ -48,7 +48,7 @@
 #include <stdint.h>
 
 #include "core/protocol/ctrl_session.h"
-#include "core/protocol/ctrl_session_glue.h"
+#include "core/session/ctrl_session_glue.h"
 #include "core/protocol/session_caps.h"
 
 /* Where decoded pictures arrive. Called on the DECODE thread, and the planes

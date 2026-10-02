@@ -14,7 +14,7 @@
  * thread, then as the same pattern under two real threads.
  *
  * Built with -pthread; no other dependency (MinGW winpthreads, Linux). */
-#include "../core/common/stats.h"
+#include "../core/services/stats.h"
 
 #include <pthread.h>
 #include <sched.h>

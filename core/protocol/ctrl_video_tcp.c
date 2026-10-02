@@ -15,7 +15,7 @@
  * `#undef _POSIX_THREADS` - see the note above. */
 #include "tls_chan.h"
 
-#include "../common/log.h"
+#include "../services/log.h"
 /* S81 - the category is DECLARED here, not inferred from the message text.
  * `vlog` stays at INFO: the existing calls do not disappear. `vdbg` is there
  * for the verbose lines, which move over to it one at a time. */

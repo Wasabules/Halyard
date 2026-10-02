@@ -14,7 +14,7 @@ extern "C" {
 #include "../demo.hpp"                /* DEMO-1 */
 
 extern "C" {
-#include "../../../core/common/log.h"
+#include "../../../core/services/log.h"
 /* S81 — this module's log category. See shadow/journal.h: it is declared
  * here, never inferred from the text of the messages. */
 #define calog(...) JOURNAL_INFO_(JOURNAL_CAT_SESSION, __VA_ARGS__)
@@ -31,9 +31,10 @@ extern "C" {
 extern "C" {
 #include "core/services/launcher.h"
 #include "core/services/proximus.h"
-#include "core/protocol/smoke_test.h"
+#include "core/session/smoke_test.h"
+#include "core/services/jwt.h"   /* LIB2: jwt_instance moved out of smoke_test */
 #include "core/protocol/shadowusb.h"
-#include "core/protocol/ctrl_session_glue.h"  /* the native Shadow protocol */
+#include "core/session/ctrl_session_glue.h"  /* the native Shadow protocol */
 #include "core/protocol/ctrl_tcp.h"      /* S60: g_channels_down */
 #include "core/protocol/ctrl_rest.h"          /* clean_my_zombies before native bootstrap */
 }

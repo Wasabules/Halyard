@@ -8,7 +8,7 @@
 #include "ctrl_input_tcp.h"
 #include "kbd_scancode.h"
 #include "msgframe.h"
-#include "../common/log.h"
+#include "../services/log.h"
 /* S81 - this module's log category. See shadow/journal.h: it is declared
  * here, never inferred from the text of the messages. */
 #define itlog(...) JOURNAL_INFO_(JOURNAL_CAT_INPUT, __VA_ARGS__)

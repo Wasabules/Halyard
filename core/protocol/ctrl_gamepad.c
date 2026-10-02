@@ -2,7 +2,7 @@
 #include "ctrl_gamepad.h"
 #include "rumble_state.h"
 
-#include "../common/log.h"
+#include "../services/log.h"
 /* S81 - this module's log category. See shadow/journal.h: the category is
  * declared here, never inferred from the text of the messages. */
 #define gplog(...) JOURNAL_INFO_(JOURNAL_CAT_GAMEPAD, __VA_ARGS__)

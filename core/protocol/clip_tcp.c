@@ -12,7 +12,7 @@
 #include "tls_chan.h"
 #include "clip_wire.h"
 #include "clip_chan.h"
-#include "../common/log.h"
+#include "../services/log.h"
 
 #define cliplog(...) JOURNAL_INFO_(JOURNAL_CAT_NETWORK, __VA_ARGS__)
 

@@ -25,13 +25,13 @@
 #include "ctrl_msgs.h"
 #include "session_caps.h"   /* INT1: the public grant snapshot */
 #include "vid_uplink.h"   /* SRV1/SRV3: the uplink rules, pure and tested */
-#include "../services/filetransfer.h"   /* FT2: the SFTP self-test */
+#include "filetransfer.h"   /* FT2: the SFTP self-test */
 #include "proto.h"                       /* FT2: reply-shape diagnostic */
 #include "encryption.h"
 #include "sufp.h"
-#include "smoke_test.h"   /* jwt_instance */
-#include "../common/log.h"
-#include "../common/stats.h"
+#include "../services/jwt.h"   /* LIB2: jwt_instance, no longer in smoke_test */
+#include "../services/log.h"
+#include "../services/stats.h"
 #include "../services/sockets_compat.h"
 
 #ifndef _WIN32

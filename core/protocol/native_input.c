@@ -2,7 +2,7 @@
 
 #include "native_input.h"
 #include "ctrl_input_tcp.h"
-#include "../common/log.h"
+#include "../services/log.h"
 
 /* S81 - this module's journal category. See shadow/journal.h: it is declared
  * here, never inferred from the text of the messages. */
