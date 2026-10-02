@@ -706,6 +706,29 @@ if (PLATFORM_DESKTOP AND SHADOW_BUILD_TEST_CLI)
     target_link_libraries(halyard-cli PRIVATE ${APP_PLATFORM_LIB})
 endif ()
 
+# === FT1 2026-10-02 - the file-transfer channel, OFF by default ==============
+#
+# `core/services/filetransfer.c` speaks SFTP to the VM on `:base+15` (KB §3.50).
+# It is for a FUTURE desktop client (Qt/Tauri); the homebrew UI does not expose
+# it and nothing in `clients/` calls it. libssh is a real dependency, and the
+# consoles have no business carrying it, so this is opt-in:
+#
+#   cmake -DSHADOW_FILETRANSFER=ON ...
+#
+# With the option OFF the .c still compiles - `file(GLOB_RECURSE core/*.c)`
+# sweeps it up on every target - but its body is behind
+# `SHADOW_HAVE_FILETRANSFER` and every entry point returns
+# SHADOW_FT_UNSUPPORTED. One nearly empty translation unit, no dependency, and
+# the secret-extraction half (pure protobuf) stays available everywhere.
+option(SHADOW_FILETRANSFER "Build the SFTP file-transfer client (needs libssh)" OFF)
+if (SHADOW_FILETRANSFER)
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(LIBSSH REQUIRED IMPORTED_TARGET libssh)
+    target_compile_definitions(${PROJECT_NAME} PRIVATE SHADOW_HAVE_FILETRANSFER=1)
+    target_link_libraries(${PROJECT_NAME} PRIVATE PkgConfig::LIBSSH)
+    message(STATUS "file transfer: ON (libssh ${LIBSSH_VERSION})")
+endif ()
+
 # ---------------------------------------------------------------------------
 # Offline tests of the protocol logic (`make tests`).
 # They need no console, no VM and no network: they check the PURE functions of
