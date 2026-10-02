@@ -150,7 +150,8 @@ file(WRITE \"${SHADOW_BUILD_ID_H}\"\n\
   \"#define SHADOW_APP_NAME   \\\"${APP_TITLE}\\\"\\n\"\n\
   \"#define SHADOW_APP_AUTHOR \\\"${APP_AUTHOR}\\\"\\n\"\n\
   \"#define SHADOW_APP_URL    \\\"${APP_URL}\\\"\\n\"\n\
-  \"#define SHADOW_APP_LICENSE \\\"${APP_LICENSE}\\\"\\n\")\n")
+  \"#define SHADOW_APP_LICENSE \\\"${APP_LICENSE}\\\"\\n\"\n\
+  \"#define SHADOW_APP_DESC   \\\"${APP_DESCRIPTION}\\\"\\n\")\n")
 # === THE FINGERPRINT MUST MAKE ITS READERS DIRTY, NOT MERELY PRECEDE THEM ===
 #
 # This was an `add_custom_target(... ALL)` with an order-only dependency, and
@@ -782,26 +783,97 @@ endif ()
 # developer who has not installed it should not have their build fail.
 option(SHADOW_BUILD_QT "Build the Qt desktop client (needs Qt 6.8+)" OFF)
 if (SHADOW_BUILD_QT AND PLATFORM_DESKTOP)
-    find_package(Qt6 6.8 REQUIRED COMPONENTS Widgets Multimedia MultimediaWidgets)
+    find_package(Qt6 6.8 REQUIRED COMPONENTS Widgets Multimedia MultimediaWidgets Concurrent
+                 LinguistTools)
     qt_standard_project_setup()
 
+    # QT2 2026-10-03 - headers are listed so AUTOMOC sees them: every one of
+    # these carries Q_OBJECT, and a missing moc file is a link error about a
+    # vtable, far from its cause.
     qt_add_executable(halyard-qt
         clients/qt/main.cpp
-        clients/qt/session_worker.cpp
-        clients/qt/session_worker.hpp
-        clients/qt/video_widget.cpp
-        clients/qt/video_widget.hpp
+        clients/qt/main_window.cpp          clients/qt/main_window.hpp
+        clients/qt/auth_worker.cpp          clients/qt/auth_worker.hpp
+        clients/qt/bootstrap_worker.cpp     clients/qt/bootstrap_worker.hpp
+        clients/qt/session_worker.cpp       clients/qt/session_worker.hpp
+        clients/qt/step_list_widget.cpp     clients/qt/step_list_widget.hpp
+        clients/qt/video_widget.cpp         clients/qt/video_widget.hpp
+        clients/qt/settings_window.cpp      clients/qt/settings_window.hpp
+        clients/qt/metrics_window.cpp       clients/qt/metrics_window.hpp
+        clients/qt/about_dialog.cpp         clients/qt/about_dialog.hpp
+        clients/qt/theme.cpp                clients/qt/theme.hpp
+        clients/qt/i18n.cpp                 clients/qt/i18n.hpp
+        clients/qt/settings_store.cpp       clients/qt/settings_store.hpp
+        clients/qt/i18n_match.hpp
+        clients/qt/core_scope.hpp
+        clients/qt/settings_model.hpp
+        clients/qt/plane_copy.hpp
     )
+    # QT5 - C++20 for the settings table's designated initializers: a row of
+    # fifteen positional fields is how two of them end up swapped unseen.
+    set_target_properties(halyard-qt PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
+
+    # === QT5 2026-10-03 - TRANSLATIONS =======================================
+    #
+    # Qt Linguist's standard path: `lupdate` extracts tr() and QT_TRANSLATE_NOOP
+    # from the sources into the .ts files, `lrelease` compiles them at build
+    # time, and the .qm
+    # are EMBEDDED under :/i18n - no file to forget next to the binary, which
+    # the CA bundle already showed is how a release breaks.
+    #
+    # RESOURCE_PREFIX must match `kResourceDir` in clients/qt/i18n.cpp: the
+    # selector lists what it finds there, so a mismatch does not fail - it
+    # silently offers English only.
+    #
+    # SOURCE_TARGETS is not optional. Since Qt 6.7 the default is EVERY target
+    # in the project, and the first run pulled 880 strings, a third of them
+    # from Borealis's own `ui::tr()` - a function that merely shares the name.
+    #
+    # The extraction target is `halyard_lupdate` (or `update_translations`),
+    # named after the project, not the executable.
+    #
+    # Adding a language = adding its .ts here. No code names a language.
+    qt_add_translations(halyard-qt
+        SOURCE_TARGETS halyard-qt
+        TS_FILES clients/qt/i18n/halyard_fr.ts
+        RESOURCE_PREFIX /i18n
+        LUPDATE_OPTIONS -no-obsolete -locations none)
     # halyard-core, and NOT borealis: this client shares the library and nothing
     # else. `tools/check-core-independence.py` keeps core from reaching into
     # either client; this link line is what keeps the two clients apart.
     target_link_libraries(halyard-qt PRIVATE
-        halyard-core Qt6::Widgets Qt6::Multimedia Qt6::MultimediaWidgets)
+        halyard-core Qt6::Widgets Qt6::Multimedia Qt6::MultimediaWidgets
+        # QT2: Concurrent for the one short blocking call that does not justify
+        # a worker of its own (the machine list).
+        Qt6::Concurrent)
     target_include_directories(halyard-qt PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     set_target_properties(halyard-qt PROPERTIES WIN32_EXECUTABLE OFF)
     # WIN32_EXECUTABLE OFF on purpose while this is a skeleton: a console
     # subsystem binary shows qDebug/qCritical, and the first thing being
     # debugged here is a thread contract.
+    # === QT2 2026-10-03 - THE CA BUNDLE TRAVELS WITH THE BINARY ============
+    #
+    # `core/services/http.c` (WIN2) points the desktop at `resources/cacert.pem`
+    # RELATIVE TO THE WORKING DIRECTORY, because MSYS2's libcurl derives its own
+    # CA path from its DLL's directory and that is wrong once the DLLs sit next
+    # to the executable.
+    #
+    # The Borealis build happens to copy `resources/` as part of its asset step,
+    # so it never noticed. This target has no asset step, so the first run of
+    # halyard-qt failed EVERY verified request with
+    # "Problem with the SSL CA cert" - the same defect as WIN2, in a new build
+    # directory, for the same reason the test runner found TMP again.
+    #
+    # Copied at build time rather than at install: a developer runs the binary
+    # out of the build directory, which is where it has to work.
+    add_custom_command(TARGET halyard-qt POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory
+                $<TARGET_FILE_DIR:halyard-qt>/resources
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                ${CMAKE_CURRENT_SOURCE_DIR}/resources/cacert.pem
+                $<TARGET_FILE_DIR:halyard-qt>/resources/cacert.pem
+        COMMENT "halyard-qt: the CA bundle next to the binary (QT2/WIN2)")
+
     message(STATUS "Qt client: ON (Qt ${Qt6_VERSION}, floor 6.8 LTS)")
 endif ()
 

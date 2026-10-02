@@ -165,8 +165,18 @@ void SessionWorker::onFrame(int width, int height,
 
 /* ------------------------------------------------------------- the session */
 
-void SessionWorker::run(const QString &vmHost, int portBase)
+void SessionWorker::runSession(const BootstrapWorker::Ready &r)
 {
+    /* The keepalives are stopped on EVERY exit from this function, including
+     * the early one below - see the header. */
+    struct SseGuard {
+        proximus_sse_keepalive *l, *m;
+        ~SseGuard() {
+            if (l) proximus_sse_stop(l);
+            if (m) proximus_sse_stop(m);
+        }
+    } sse{r.sseLauncher, r.sseMain};
+
     if (running_.exchange(true)) {
         emit finished(false, QStringLiteral("a session is already running"));
         return;
@@ -177,33 +187,35 @@ void SessionWorker::run(const QString &vmHost, int portBase)
      * core says so once in the log, which is how a client author finds out. */
     ctrl_session_glue_set_frame_sink(&SessionWorker::frameSinkTrampoline);
 
-    const QByteArray host = vmHost.toUtf8();
+    /* The byte arrays must outlive the call: `ctrl_session_glue_params` holds
+     * `const char *` into them, and a QString temporary would be gone before
+     * the session read it. */
+    const QByteArray host  = r.vmHost.toUtf8();
+    const QByteArray token = r.streamingToken.toUtf8();
+    const QByteArray cid   = r.clientId.toUtf8();
+    const QByteArray jwt   = r.bearer.toUtf8();
 
     ctrl_session_glue_params p{};
-    p.vm_host        = host.constData();
-    p.display_width  = 1920;
-    p.display_height = 1080;
-    p.port_base      = portBase;
-    p.abort_flag     = &abort_flag_;
+    p.vm_host         = host.constData();
+    p.streaming_token = token.constData();
+    p.client_id       = cid.constData();
+    p.bearer_jwt      = jwt.constData();
+    p.display_width   = 1920;
+    p.display_height  = 1080;
+    p.port_base       = r.portBase;
+    p.abort_flag      = &abort_flag_;
 
-    /* NOT filled here: streaming_token, client_id, bearer_jwt. They come from
-     * the REST bootstrap (OAuth device grant, VM start, service tokens) which
-     * this skeleton does not do yet - `clients/borealis/activity/
-     * connecting_activity.cpp` is the worked example, seven steps long.
-     *
-     * So this call is expected to fail at the control channel, and that is the
-     * point: it proves the wiring, the thread and the frame sink without an
-     * account. */
-    emit progress(QStringLiteral("M0.skeleton"),
-                  QStringLiteral("no credentials: the session will stop at the "
-                                 "control channel, by design"));
+    emit progress(QStringLiteral("M7.stream"),
+                  QStringLiteral("opening the control channel on :%1")
+                      .arg(r.portBase + 11));
 
     ctrl_session_glue_stats st{};
     const bool ok = ctrl_session_glue_run(&p, &st);
 
     running_ = false;
-    emit finished(ok, ok ? QStringLiteral("session ended")
-                         : QStringLiteral("bootstrap failed (expected without "
-                                          "credentials), exit_reason=%1")
-                               .arg(st.exit_reason));
+    emit finished(ok, ok
+        ? QStringLiteral("%1 s, %2 pictures decoded")
+              .arg(st.session_seconds).arg(st.frames_displayed)
+        : QStringLiteral("exit_reason=%1 after %2 s")
+              .arg(st.exit_reason).arg(st.session_seconds));
 }

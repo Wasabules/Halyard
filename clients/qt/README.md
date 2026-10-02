@@ -69,23 +69,77 @@ settings therefore take effect on the NEXT session.
 ```bash
 cmake -S . -B build_qt -DPLATFORM_DESKTOP=ON -DSHADOW_BUILD_QT=ON
 cmake --build build_qt --target halyard-qt
+./build_qt/halyard-qt --settings --metrics --lang fr   # all three optional
 ```
 
-On MSYS2 UCRT64, `pacman -S mingw-w64-ucrt-x86_64-qt6-base
-mingw-w64-ucrt-x86_64-qt6-multimedia`. On Debian/Ubuntu, `qt6-base-dev
-qt6-multimedia-dev`. On macOS, `brew install qt`.
+Packages: on MSYS2 UCRT64, `qt6-base qt6-multimedia qt6-tools` plus
+`qt6-declarative` (MSYS2's `lupdate` links `Qt6Qml.dll` and fails to start
+without it - `0xc0000135`, nothing more). On Debian/Ubuntu, `qt6-base-dev
+qt6-multimedia-dev qt6-l10n-tools`. On macOS, `brew install qt`.
+
+`--settings` / `--metrics` open those windows at start-up and `--lang <code>`
+picks a language for that run without storing it: a window reachable only
+through a menu can only be checked by driving the menu.
+
+## Settings
+
+`settings_model.hpp` is the whole settings window as data - one row per
+variable, with what core does when it is ABSENT (`def`), read out of each
+`getenv` site. The window (`settings_window.cpp`) is generated from it: pages,
+sections inside each page, the default preselected and labelled, presets
+instead of free numbers, a Reset that REMOVES the variable rather than writing
+today's default. `tests/test_qt_settings.cpp` checks the rules and the
+table's own invariants.
+
+Choices are saved in an INI file (`QSettings`, `[env]` section) and restored
+at the next launch, after `env_override_snapshot()` - so a stored value is
+never mistaken for the user's environment - and never over a variable set
+outside the application, which always wins.
+
+## Translations
+
+Qt Linguist, nothing home-made:
+
+```bash
+cmake --build build_qt --target halyard_lupdate   # extract into clients/qt/i18n/*.ts
+# translate in Qt Linguist (or any .ts editor), then just build: lrelease runs
+# and the .qm files are embedded under :/i18n
+```
+
+- Strings in code: `tr()`. Strings in the settings table:
+  `QT_TRANSLATE_NOOP("Settings", ...)`, translated at display time. A `tr()`
+  of a VARIABLE is invisible to `lupdate` - use `QT_TR_NOOP` on the array.
+- Adding a language is adding its `.ts` to `qt_add_translations` in
+  CMakeLists.txt. The selector (Settings > General) lists what is embedded;
+  no code names a language.
+- The language switches live (`QEvent::LanguageChange`); every window re-sets
+  its static texts on that event.
+- The default follows the system's ordered preference list
+  (`QLocale::uiLanguages()`), and English FIRST stays English even when a
+  French catalogue exists - `i18n_match.hpp` explains why, and
+  `tests/test_qt_i18n.cpp` pins it. The start-up log says what was chosen
+  from what: `i18n: requested '', system [...], catalogues [fr] -> en`.
+- Shipped: English (source) and French. Borealis also has Russian and
+  Simplified Chinese; they are a `.ts` each away.
 
 ## What is here
 
 | File | What it does |
 |---|---|
-| `main.cpp` | `QApplication`, the window, and the one place that owns the worker |
-| `session_worker.{hpp,cpp}` | the thread that runs a session, and the frame sink that copies out of it |
-| `video_widget.{hpp,cpp}` | a `QVideoFrame` surface fed by the worker, YUV→RGB on the GPU |
+| `main.cpp` | start-up order: environment snapshot, stored settings, language, window |
+| `main_window.{hpp,cpp}` | the four states (pairing, machines, connecting, streaming) and three workers |
+| `auth_worker`, `bootstrap_worker`, `session_worker` | OAuth, the seven bootstrap steps, the session thread and its frame sink |
+| `video_widget.{hpp,cpp}` | a `QVideoFrame` surface fed by the worker, YUV->RGB on the GPU |
+| `settings_model.hpp`, `settings_window`, `settings_store` | the settings as data, the generated window, persistence |
+| `i18n.{hpp,cpp}`, `i18n_match.hpp`, `i18n/*.ts` | the translation engine, the language choice, the catalogues |
+| `theme.{hpp,cpp}` | every colour, spacing and font, derived from the palette; the drawn app mark |
+| `about_dialog`, `metrics_window`, `step_list_widget` | identity and build info, live grants, bootstrap progress |
+| `core_scope.hpp`, `plane_copy.hpp` | RAII over core's `_free()` functions; the stride-aware plane copy |
 
 ## What is deliberately NOT here yet
 
-No OAuth screen, no machine list, no settings, no pause menu, no input. The
-next step is the measurement the choice of framework hangs on: end-to-end
-latency of this path against what the Borealis client does today. If that
-number holds, the rest is forms.
+No pause menu and no input forwarding yet; no integrated file manager (the
+answer to SFTP, since no third-party client can use the credential - FT5), no
+audio device selection, no shortcut editor. The measurement the choice of
+framework hangs on also still stands: end-to-end latency of this path against
+what the Borealis client does today.

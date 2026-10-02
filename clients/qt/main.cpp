@@ -1,88 +1,107 @@
-/* halyard-qt - the desktop client's skeleton.
+/* halyard-qt - the desktop client.
  *
- * It does ONE thing on purpose: start a session on a worker thread, and put
- * whatever pictures come out of it on screen. No OAuth, no machine list, no
- * settings. Those are forms; this is the part the choice of framework hangs on.
+ * Four states in a straight line: pairing, machines, connecting, streaming.
+ * `main_window.hpp` explains the structure; `clients/qt/README.md` explains the
+ * choice of Qt and the three contracts `halyard-core` imposes.
  *
- * Run it with a VM address and port base to exercise the real path:
- *     halyard-qt <vm-host> <port-base>
- * Without arguments it still starts, shows the window, and reports that the
- * session stops at the control channel - which is correct, since the REST
- * bootstrap that yields the tokens is not written yet.
- *
- * See clients/qt/README.md for why Qt, which version, and the three contracts.
+ * This file does one thing: hand the environment to core before anything reads
+ * it. That ordering is contract 3 and it is the only thing that cannot be done
+ * later — the ~260 `SHADOW_*` toggles are read with `getenv` at FIRST USE and
+ * cached in statics, so a setting applied after the first session does nothing
+ * until the next one.
  */
 #include <QApplication>
-#include <QMainWindow>
-#include <QThread>
-#include <QStatusBar>
-#include <QTimer>
+#include <QSettings>
 
-#include "session_worker.hpp"
-#include "video_widget.hpp"
+#include "i18n.hpp"
+#include "main_window.hpp"
+#include "settings_store.hpp"
+#include "theme.hpp"
+
+extern "C" {
+#include "core/services/env_override.h"
+#include "core/version.h"
+}
 
 int main(int argc, char **argv)
 {
     QApplication app(argc, argv);
-    QApplication::setApplicationName(QStringLiteral("halyard-qt"));
 
-    QMainWindow win;
-    win.setWindowTitle(QStringLiteral("Halyard (Qt skeleton)"));
+    /* === QT4 — THE IDENTITY, FROM THE ONE DECLARATION =====================
+     *
+     * Every string here comes from `build_id.h`, which CMake generates from the
+     * single app-identity block near the top of `CMakeLists.txt` - the same
+     * source the NACP, `param.sfo` and the LiveArea are derived from. Nothing
+     * is retyped, because the version being retyped in two places is the exact
+     * defect `core/version.h` was written to end (S85).
+     *
+     * What each one is actually for, since they are not interchangeable:
+     *
+     *  - `applicationName` is the DISPLAY name. It is what a desktop shows and
+     *    what several Qt dialogs fall back to; "halyard-qt" was a build
+     *    target's name leaking into the UI.
+     *  - `applicationDisplayName` is deliberately NOT set. Qt APPENDS it to
+     *    every window title that does not already contain it, so with it set
+     *    the settings window read "Halyard settings - Halyard" and the About
+     *    box "About Halyard - Halyard". Each window titles itself.
+     *  - `organizationName`/`organizationDomain` decide where QSettings puts
+     *    its file. Changing them later ORPHANS whatever was stored, so they are
+     *    set now, before anything stores anything - which is the real reason
+     *    this is worth doing before the first feature that needs it.
+     *  - `desktopFileName` is how Wayland ties a window to its .desktop entry;
+     *    without it the taskbar shows a generic icon regardless of what
+     *    `setWindowIcon` says. */
+    QApplication::setApplicationName(QString::fromUtf8(SHADOW_APP_NAME));
+    QApplication::setApplicationVersion(QString::fromUtf8(SHADOW_VERSION));
+    QApplication::setOrganizationName(QString::fromUtf8(SHADOW_APP_AUTHOR));
+    QApplication::setOrganizationDomain(QStringLiteral("halyard.invalid"));
+    QApplication::setDesktopFileName(QStringLiteral("halyard"));
 
-    auto *video = new VideoWidget(&win);
-    win.setCentralWidget(video);
-    win.resize(1280, 720);
+    /* Set on the application and not only on each window: a dialog created
+     * without an explicit icon inherits this one, so the About box and every
+     * future window are right without remembering to ask. */
+    QApplication::setWindowIcon(halyard::theme::appIcon());
 
-    /* The worker lives on its own thread for the whole run. `deleteLater` on
-     * the thread's `finished` is what keeps the destruction order right: the
-     * worker unregisters the frame sink in its destructor, and that must happen
-     * on the thread that ran the session. */
-    auto *thread = new QThread(&win);
-    auto *worker = new SessionWorker;
-    worker->moveToThread(thread);
-    QObject::connect(thread, &QThread::finished, worker, &QObject::deleteLater);
+    /* === CONTRACT 3, AND IT MUST BE FIRST ==================================
+     *
+     * `env_override_snapshot()` records which `SHADOW_*` variables came from
+     * OUTSIDE the application, so a settings screen can later show which of
+     * its rows the session is ignoring. It has to run BEFORE the client sets
+     * any of its own, or the client's writes read as the user's.
+     *
+     * The Borealis client does the same thing in the same order
+     * (`main.cpp`: env.txt -> env_override_snapshot -> applyToggles), and
+     * getting it backwards is the defect that order exists to prevent. */
+    env_override_snapshot();
 
-    /* QUEUED, both of them: the frame signal is emitted from the DECODE thread
-     * and the progress signal from the session thread. A direct connection
-     * would run Qt widget code off the GUI thread, which is the one thing Qt
-     * does not forgive. */
-    QObject::connect(worker, &SessionWorker::frameReady,
-                     video, &VideoWidget::presentFrame, Qt::QueuedConnection);
-    QObject::connect(worker, &SessionWorker::progress, video,
-                     [video](const QString &step, const QString &detail) {
-                         video->setStatus(step + QStringLiteral(" - ") + detail);
-                     }, Qt::QueuedConnection);
-    QObject::connect(worker, &SessionWorker::finished, video,
-                     [video](bool ok, const QString &why) {
-                         video->setStatus((ok ? QObject::tr("ended: ")
-                                              : QObject::tr("stopped: ")) + why);
-                     }, Qt::QueuedConnection);
+    /* QT5 - the settings window's saved choices, AFTER the snapshot (so they
+     * are not mistaken for the user's environment and do not lock their own
+     * rows) and BEFORE anything core reads. INI rather than the registry: a
+     * file that can be read, diffed, deleted and attached to a report. */
+    QSettings::setDefaultFormat(QSettings::IniFormat);
+    halyard::store::loadIntoEnvironment();
 
-    /* Closing the window raises the abort flag and waits for the session to
-     * leave. Core polls it within ~100 ms - the bound the consoles impose, and
-     * which this client inherits without doing anything. */
-    QObject::connect(&app, &QApplication::aboutToQuit, [worker, thread] {
-        worker->requestStop();
-        thread->quit();
-        thread->wait(3000);
-    });
-
-    thread->start();
-
-    const QStringList args = QApplication::arguments();
-    const QString host = args.size() > 1 ? args.at(1) : QString();
-    const int portBase = args.size() > 2 ? args.at(2).toInt() : 0;
-
-    if (host.isEmpty()) {
-        video->setStatus(QObject::tr(
-            "no VM given - run: halyard-qt <vm-host> <port-base>. "
-            "The window, the thread and the frame sink are wired."));
-    } else {
-        /* Invoked on the worker's thread, never called directly. */
-        QMetaObject::invokeMethod(worker, "run", Qt::QueuedConnection,
-                                  Q_ARG(QString, host), Q_ARG(int, portBase));
+    /* The language before the first widget, so nothing is built in one
+     * language and immediately rebuilt in another. */
+    {
+        /* `--lang <code>` for this run only (see i18n::init). */
+        const QStringList a = QApplication::arguments();
+        const int at = a.indexOf(QStringLiteral("--lang"));
+        halyard::i18n::init(at >= 0 && at + 1 < a.size() ? a.at(at + 1) : QString());
     }
 
+    MainWindow win;
     win.show();
+
+    /* QT3 - `--metrics` and `--settings` open those windows at startup.
+     *
+     * Not a convenience: a window reached only through a menu can only be
+     * tested by driving the menu, and driving a menu from a script is how a
+     * verification turns into a guess about focus. A flag makes "does it open"
+     * answerable. */
+    const QStringList args = QApplication::arguments();
+    if (args.contains(QStringLiteral("--settings"))) win.openSettings();
+    if (args.contains(QStringLiteral("--metrics")))  win.openMetrics();
+
     return app.exec();
 }

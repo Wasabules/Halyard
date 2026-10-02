@@ -1,0 +1,621 @@
+/* SettingsWindow - see settings_window.hpp for the shape and for the reported
+ * defects this file was reshaped around. */
+#include "settings_window.hpp"
+
+#include "i18n.hpp"
+#include "settings_model.hpp"
+#include "settings_store.hpp"
+#include "theme.hpp"
+
+#include <QCheckBox>
+#include <QComboBox>
+#include <QDir>
+#include <QEvent>
+#include <QFileDialog>
+#include <QFormLayout>
+#include <QFrame>
+#include <QGridLayout>
+#include <QHBoxLayout>
+#include <QLabel>
+#include <QLineEdit>
+#include <QListWidget>
+#include <QMessageBox>
+#include <QPushButton>
+#include <QScrollArea>
+#include <QSignalBlocker>
+#include <QSpinBox>
+#include <QStackedWidget>
+#include <QTimer>
+#include <QToolButton>
+#include <QVBoxLayout>
+
+#include <cstdlib>
+#include <memory>
+
+extern "C" {
+#include "core/services/env_override.h"
+#include "core/services/win_compat.h"   /* setenv/unsetenv on Windows */
+}
+
+using halyard::Setting;
+namespace theme = halyard::theme;
+
+namespace {
+
+/* The table's strings are marked QT_TRANSLATE_NOOP("Settings", ...); this is
+ * the other half of that contract. */
+QString T(const char *s) { return QCoreApplication::translate("Settings", s); }
+QString T(const QString &s) { return T(s.toUtf8().constData()); }
+
+const char *envRaw(const Setting &s) { return std::getenv(s.env); }
+
+QLabel *mutedLabel(const QString &text, QWidget *parent, bool italic = false)
+{
+    auto *l = new QLabel(text, parent);
+    l->setWordWrap(true);
+    l->setStyleSheet(theme::css(theme::muted(parent)) +
+                     (italic ? QStringLiteral(" font-style: italic;") : QString()));
+    return l;
+}
+
+/* The variable's name as a secondary tag (QT4 defect 1): mono because it is an
+ * identifier, muted because it is not the row's name, selectable because it
+ * gets copied into env.txt and into issues. */
+QLabel *envTag(const QString &env, QWidget *parent)
+{
+    auto *tag = new QLabel(env, parent);
+    tag->setFont(theme::monoFont(parent));
+    tag->setStyleSheet(theme::css(theme::muted(parent)));
+    tag->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    tag->setToolTip(SettingsWindow::tr(
+        "The environment variable this row writes - what the log and env.txt "
+        "call it."));
+    return tag;
+}
+
+/* What core does when nothing is set, in words, or empty when that is not a
+ * single value (an "Automatic" entry already says it). */
+QString defaultText(const Setting &s)
+{
+    switch (s.kind) {
+    case Setting::Kind::Toggle:
+        if (s.def < 0) return QString();
+        return s.def ? SettingsWindow::tr("On") : SettingsWindow::tr("Off");
+    case Setting::Kind::Choice: {
+        const int d = halyard::settingDefaultChoice(s);
+        return d >= 0 ? T(s.choices.at(d)) : QString();
+    }
+    case Setting::Kind::Number:
+        if (s.def < 0) return QString();
+        return s.unit ? QStringLiteral("%1 %2").arg(s.def).arg(T(s.unit))
+                      : QString::number(s.def);
+    case Setting::Kind::Flags:
+        return SettingsWindow::tr("All");
+    case Setting::Kind::Text:
+        return QString();
+    }
+    return QString();
+}
+
+}  // namespace
+
+SettingsWindow::SettingsWindow(QWidget *parent)
+    : QWidget(parent, Qt::Window)
+{
+    setWindowIcon(theme::appIcon());
+    resize(1000, 720);
+    root_ = new QVBoxLayout(this);
+    root_->setContentsMargins(0, 0, 0, 0);
+    rebuild();
+}
+
+/* ============================================================ rebuilding */
+
+void SettingsWindow::changeEvent(QEvent *e)
+{
+    if (e->type() == QEvent::LanguageChange && content_) {
+        /* Deferred and coalesced. The language combo box that caused this
+         * event is part of the content being rebuilt, and deleting a widget
+         * from inside its own signal is undefined; installing two translators
+         * (ours and Qt's) also sends the event twice. */
+        if (!rebuildPending_) {
+            rebuildPending_ = true;
+            QTimer::singleShot(0, this, [this] {
+                rebuildPending_ = false;
+                rebuild();
+            });
+        }
+    }
+    QWidget::changeEvent(e);
+}
+
+void SettingsWindow::rebuild()
+{
+    if (rail_)   keepRow_ = qMax(0, rail_->currentRow());
+    if (filter_) keepFilter_ = filter_->text();
+
+    setWindowTitle(tr("Halyard settings"));
+    rows_.clear();
+    if (content_) {
+        root_->removeWidget(content_);
+        content_->deleteLater();
+    }
+    content_ = buildContent();
+    root_->addWidget(content_);
+
+    rail_->setCurrentRow(qBound(0, keepRow_, rail_->count() - 1));
+    if (!keepFilter_.isEmpty()) filter_->setText(keepFilter_);
+}
+
+QWidget *SettingsWindow::buildContent()
+{
+    auto *content = new QWidget(this);
+
+    rail_ = new QListWidget(content);
+    rail_->setFixedWidth(180);
+    pages_ = new QStackedWidget(content);
+
+    filter_ = new QLineEdit(content);
+    filter_->setClearButtonEnabled(true);
+    filter_->setPlaceholderText(
+        tr("Search - a setting, a variable name, or a word from a description"));
+    connect(filter_, &QLineEdit::textChanged, this, &SettingsWindow::applyFilter);
+
+    /* --- General: what is the client's, not core's --------------------- */
+    rail_->addItem(tr("General"));
+    {
+        auto *scroll = new QScrollArea(pages_);
+        scroll->setWidget(buildGeneralPage(scroll));
+        scroll->setWidgetResizable(true);
+        scroll->setFrameShape(QFrame::NoFrame);
+        pages_->addWidget(scroll);
+    }
+
+    /* --- one page per table page, one section per group ---------------- */
+    const QStringList pageNames = halyard::settingsPages();
+    for (int p = 0; p < pageNames.size(); p++) {
+        const QString page = pageNames.at(p);
+        const int pageIndex = p + 1;            /* General is 0 */
+        rail_->addItem(T(page));
+
+        auto *holder = new QWidget(pages_);
+        auto *col = new QVBoxLayout(holder);
+        col->setContentsMargins(theme::SpaceRow, theme::SpaceRow,
+                                theme::SpaceGroup, theme::SpaceGroup);
+        col->setSpacing(theme::SpaceRow);
+
+        for (const QString &group : halyard::settingsGroups(page)) {
+            /* The section heading: QT5's "category within the category". */
+            auto *head = new QLabel(T(group), holder);
+            head->setFont(theme::headingFont(holder));
+            auto *rule = new QFrame(holder);
+            rule->setFrameShape(QFrame::HLine);
+            rule->setFrameShadow(QFrame::Plain);
+            rule->setStyleSheet(theme::css(theme::muted(holder)));
+            col->addSpacing(theme::SpaceTight);
+            col->addWidget(head);
+            col->addWidget(rule);
+
+            auto *form = new QFormLayout;
+            form->setLabelAlignment(Qt::AlignLeft | Qt::AlignTop);
+            form->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
+            form->setHorizontalSpacing(theme::SpaceGroup);
+            form->setVerticalSpacing(theme::SpaceGroup);
+            form->setContentsMargins(0, theme::SpaceTight, 0, theme::SpaceRow);
+
+            QVector<Row *> groupRows;
+            for (const Setting &s : halyard::settings()) {
+                if (QString::fromUtf8(s.page) != page ||
+                    QString::fromUtf8(s.group) != group) continue;
+
+                const QString env = QString::fromUtf8(s.env);
+                const bool forced = env_override_active(s.env) != 0;
+
+                /* --- left: the clean name, then the variable ----------- */
+                auto *left = new QWidget(holder);
+                auto *ll = new QVBoxLayout(left);
+                ll->setContentsMargins(0, 0, 0, 0);
+                ll->setSpacing(theme::SpaceTight);
+                auto *name = new QLabel(T(s.label), left);
+                name->setWordWrap(true);
+                ll->addWidget(name);
+                ll->addWidget(envTag(env, left));
+                ll->addStretch(1);
+                left->setFixedWidth(240);
+
+                /* --- right: control line, description, status ---------- */
+                auto *right = new QWidget(holder);
+                auto *rl = new QVBoxLayout(right);
+                rl->setContentsMargins(0, 0, 0, 0);
+                rl->setSpacing(theme::SpaceTight);
+
+                auto *line = new QHBoxLayout;
+                line->setSpacing(theme::SpaceRow);
+                rl->addLayout(line);
+
+                auto *reset = new QToolButton(right);
+                reset->setText(tr("Reset"));
+                reset->setToolTip(tr("Remove the variable, so core uses its "
+                                     "own default again"));
+                reset->setAutoRaise(true);
+
+                auto *status = new QLabel(right);
+                status->setWordWrap(true);
+
+                rl->addWidget(mutedLabel(T(s.description), right));
+                rl->addWidget(status);
+
+                /* The status line and the reset button both depend on the
+                 * CURRENT state, so they are recomputed by `refresh`. */
+                auto refreshChrome = [this, &s, reset, status, forced, right] {
+                    const bool set = envRaw(s) && *envRaw(s);
+                    reset->setVisible(set && !forced);
+                    QString text;
+                    if (forced) {
+                        text = tr("Set outside the application (environment or "
+                                  "env.txt) - this window cannot change it.");
+                        status->setStyleSheet(theme::css(theme::overridden(right)) +
+                                              QStringLiteral(" font-style: italic;"));
+                    } else {
+                        QStringList parts;
+                        const QString d = defaultText(s);
+                        if (!d.isEmpty()) parts << tr("Default: %1").arg(d);
+                        parts << (s.appliesLive ? tr("applies immediately")
+                                                : tr("applies on the next session"));
+                        text = parts.join(QStringLiteral("  ·  "));
+                        status->setStyleSheet(theme::css(theme::muted(right)) +
+                                              QStringLiteral(" font-style: italic;"));
+                    }
+                    status->setText(text);
+                };
+
+                std::function<void()> refreshControl;
+                QWidget *control = nullptr;
+
+                switch (s.kind) {
+                case Setting::Kind::Toggle: {
+                    auto *cb = new QCheckBox(right);
+                    connect(cb, &QCheckBox::toggled, this, [this, &s](bool on) {
+                        write(QString::fromUtf8(s.env),
+                              halyard::settingWrite(s, on ? 1 : 0));
+                    });
+                    refreshControl = [cb, &s] {
+                        const QSignalBlocker b(cb);
+                        cb->setChecked(halyard::settingDisplayIndex(s, envRaw(s)) == 1);
+                    };
+                    control = cb;
+                    break;
+                }
+                case Setting::Kind::Choice: {
+                    auto *box = new QComboBox(right);
+                    box->setSizeAdjustPolicy(QComboBox::AdjustToContents);
+                    const int defChoice = halyard::settingDefaultChoice(s);
+                    for (int i = 0; i < s.choices.size(); i++) {
+                        const QString label = T(s.choices.at(i));
+                        box->addItem(i == defChoice ? tr("%1 (default)").arg(label)
+                                                    : label, i);
+                    }
+                    connect(box, &QComboBox::currentIndexChanged, this,
+                            [this, &s, box](int i) {
+                        const QVariant d = box->itemData(i);
+                        if (!d.isValid() || d.toInt() < 0) return;  /* "Custom" */
+                        write(QString::fromUtf8(s.env),
+                              halyard::settingWrite(s, d.toInt()));
+                    });
+                    refreshControl = [box, &s] {
+                        const QSignalBlocker b(box);
+                        /* Drop a previous "Custom" entry before deciding. */
+                        const int last = box->count() - 1;
+                        if (last >= 0 && box->itemData(last).toInt() < 0)
+                            box->removeItem(last);
+                        const char *raw = envRaw(s);
+                        const int idx = halyard::settingDisplayIndex(s, raw);
+                        if (idx >= 0) {
+                            box->setCurrentIndex(box->findData(idx));
+                        } else if (raw && *raw) {
+                            /* Set elsewhere to a value with no preset: shown as
+                             * it is, not as an empty box, and not writable. */
+                            box->addItem(tr("Custom: %1").arg(QString::fromUtf8(raw)), -1);
+                            box->setCurrentIndex(box->count() - 1);
+                        } else {
+                            box->setCurrentIndex(-1);
+                        }
+                    };
+                    control = box;
+                    break;
+                }
+                case Setting::Kind::Number: {
+                    auto *sp = new QSpinBox(right);
+                    sp->setRange(halyard::numberFloor(s), s.max);
+                    if (s.unit) sp->setSuffix(QStringLiteral(" ") + T(s.unit));
+                    if (halyard::numberFloor(s) < s.min)
+                        sp->setSpecialValueText(tr("Automatic"));
+                    sp->setMinimumWidth(110);
+                    connect(sp, &QSpinBox::valueChanged, this, [this, &s](int v) {
+                        write(QString::fromUtf8(s.env), halyard::settingWrite(s, v));
+                    });
+                    refreshControl = [sp, &s] {
+                        const QSignalBlocker b(sp);
+                        const int idx = halyard::settingDisplayIndex(s, envRaw(s));
+                        sp->setValue(idx >= halyard::numberFloor(s) ? idx
+                                                                    : halyard::numberFloor(s));
+                    };
+                    control = sp;
+                    break;
+                }
+                case Setting::Kind::Flags: {
+                    auto *box = new QWidget(right);
+                    auto *grid = new QGridLayout(box);
+                    grid->setContentsMargins(0, 0, 0, 0);
+                    grid->setHorizontalSpacing(theme::SpaceGroup);
+                    auto checks = std::make_shared<QVector<QCheckBox *>>();
+                    for (int i = 0; i < s.choices.size(); i++) {
+                        auto *cb = new QCheckBox(T(s.choices.at(i)), box);
+                        grid->addWidget(cb, i / 4, i % 4);
+                        checks->append(cb);
+                        connect(cb, &QCheckBox::toggled, this, [this, &s, checks] {
+                            int mask = 0;
+                            for (int b = 0; b < checks->size(); b++)
+                                if (checks->at(b)->isChecked()) mask |= 1 << b;
+                            write(QString::fromUtf8(s.env), halyard::settingWrite(s, mask));
+                        });
+                    }
+                    refreshControl = [checks, &s] {
+                        int mask = halyard::settingDisplayIndex(s, envRaw(s));
+                        if (mask < 0) mask = halyard::flagsAll(s);
+                        for (int b = 0; b < checks->size(); b++) {
+                            const QSignalBlocker blk(checks->at(b));
+                            checks->at(b)->setChecked(mask & (1 << b));
+                        }
+                    };
+                    control = box;
+                    break;
+                }
+                case Setting::Kind::Text: {
+                    auto *le = new QLineEdit(right);
+                    le->setClearButtonEnabled(true);
+                    le->setFont(theme::monoFont(right));
+                    le->setPlaceholderText(tr("Not set"));
+                    /* editingFinished, not textChanged: setenv on every keystroke
+                     * lets a session that starts mid-edit read half a path. */
+                    connect(le, &QLineEdit::editingFinished, this, [this, &s, le] {
+                        write(QString::fromUtf8(s.env), le->text().trimmed());
+                    });
+                    if (s.isPath) {
+                        auto *browse = new QPushButton(tr("Browse..."), right);
+                        connect(browse, &QPushButton::clicked, this, [this, le, &s] {
+                            const QString f = QFileDialog::getOpenFileName(
+                                this, T(s.label), le->text(),
+                                tr("Certificates (*.pem *.crt);;All files (*)"));
+                            if (f.isEmpty()) return;
+                            le->setText(QDir::toNativeSeparators(f));
+                            write(QString::fromUtf8(s.env), le->text());
+                        });
+                        browse->setEnabled(!forced);
+                        line->addWidget(le, 1);
+                        line->addWidget(browse);
+                    }
+                    refreshControl = [le, &s] {
+                        const QSignalBlocker b(le);
+                        const char *raw = envRaw(s);
+                        le->setText(raw ? QString::fromUtf8(raw) : QString());
+                    };
+                    control = le;
+                    break;
+                }
+                }
+
+                if (!(s.kind == Setting::Kind::Text && s.isPath)) {
+                    line->addWidget(control);
+                    line->addStretch(1);
+                }
+                line->addWidget(reset);
+
+                if (forced) {
+                    control->setEnabled(false);
+                    control->setToolTip(tr("Set outside the application - the "
+                                           "environment has priority over this "
+                                           "window."));
+                }
+
+                Row row;
+                row.env = env;
+                row.left = left;
+                row.right = right;
+                row.page = pageIndex;
+                row.haystack = (T(s.label) + QLatin1Char(' ') + env + QLatin1Char(' ') +
+                                T(s.description) + QLatin1Char(' ') + T(group))
+                                   .toCaseFolded();
+                row.refresh = [refreshControl, refreshChrome] {
+                    refreshControl();
+                    refreshChrome();
+                };
+                row.refresh();
+
+                connect(reset, &QToolButton::clicked, this, [this, &s] {
+                    write(QString::fromUtf8(s.env), QString());
+                });
+
+                form->addRow(left, right);
+                rows_.append(row);
+            }
+            col->addLayout(form);
+        }
+        col->addStretch(1);
+
+        auto *scroll = new QScrollArea(pages_);
+        scroll->setWidget(holder);
+        scroll->setWidgetResizable(true);
+        scroll->setFrameShape(QFrame::NoFrame);
+        pages_->addWidget(scroll);
+    }
+
+    connect(rail_, &QListWidget::currentRowChanged,
+            pages_, &QStackedWidget::setCurrentIndex);
+
+    auto *footer = mutedLabel(
+        tr("Settings are saved and restored at the next launch. Most are read "
+           "when a session starts, so they take effect the next time you "
+           "connect; each row says which. A variable set outside the "
+           "application always wins over this window."), content);
+
+    auto *split = new QHBoxLayout;
+    split->setSpacing(theme::SpaceGroup);
+    split->addWidget(rail_);
+    split->addWidget(pages_, 1);
+
+    auto *lay = new QVBoxLayout(content);
+    lay->setContentsMargins(theme::SpaceGroup, theme::SpaceGroup,
+                            theme::SpaceGroup, theme::SpaceRow);
+    lay->setSpacing(theme::SpaceRow);
+    lay->addWidget(filter_);
+    lay->addLayout(split, 1);
+    lay->addWidget(footer);
+    return content;
+}
+
+/* ========================================================== General page */
+
+QWidget *SettingsWindow::buildGeneralPage(QWidget *parent)
+{
+    auto *page = new QWidget(parent);
+    auto *col = new QVBoxLayout(page);
+    col->setContentsMargins(theme::SpaceRow, theme::SpaceRow,
+                            theme::SpaceGroup, theme::SpaceGroup);
+    col->setSpacing(theme::SpaceRow);
+
+    auto section = [&](const QString &title) {
+        auto *head = new QLabel(title, page);
+        head->setFont(theme::headingFont(page));
+        auto *rule = new QFrame(page);
+        rule->setFrameShape(QFrame::HLine);
+        rule->setFrameShadow(QFrame::Plain);
+        rule->setStyleSheet(theme::css(theme::muted(page)));
+        col->addSpacing(theme::SpaceTight);
+        col->addWidget(head);
+        col->addWidget(rule);
+    };
+
+    /* --- Language ------------------------------------------------------- */
+    section(tr("Language"));
+    {
+        auto *form = new QFormLayout;
+        form->setHorizontalSpacing(theme::SpaceGroup);
+        auto *box = new QComboBox(page);
+        box->setSizeAdjustPolicy(QComboBox::AdjustToContents);
+
+        /* "Follow the system" first, and it SAYS what the system resolves to:
+         * otherwise choosing it looks like doing nothing. */
+        QString resolvedName = halyard::i18n::current();
+        const auto langs = halyard::i18n::available();
+        for (const auto &l : langs)
+            if (l.code == halyard::i18n::current()) resolvedName = l.nativeName;
+        box->addItem(tr("Follow the system (%1)").arg(resolvedName), QString());
+        for (const auto &l : langs) box->addItem(l.nativeName, l.code);
+
+        const int sel = box->findData(halyard::i18n::requested());
+        box->setCurrentIndex(sel >= 0 ? sel : 0);
+        connect(box, &QComboBox::currentIndexChanged, this, [box](int i) {
+            halyard::i18n::setRequested(box->itemData(i).toString());
+        });
+        form->addRow(tr("Interface language"), box);
+        col->addLayout(form);
+        col->addWidget(mutedLabel(
+            tr("Applies immediately to every window. Translations cover the "
+               "interface and the settings; the session log stays in English, "
+               "because it is what gets attached to a report."), page));
+    }
+
+    /* --- Defaults ------------------------------------------------------- */
+    section(tr("Defaults"));
+    {
+        auto *btn = new QPushButton(tr("Restore all defaults..."), page);
+        connect(btn, &QPushButton::clicked, this, &SettingsWindow::restoreDefaults);
+        auto *line = new QHBoxLayout;
+        line->addWidget(btn);
+        line->addStretch(1);
+        col->addLayout(line);
+        col->addWidget(mutedLabel(
+            tr("Removes every variable this window has set, so core uses its own "
+               "defaults again. Variables set outside the application are not "
+               "touched."), page));
+    }
+
+    col->addStretch(1);
+    return page;
+}
+
+void SettingsWindow::restoreDefaults()
+{
+    const auto answer = QMessageBox::question(
+        this, tr("Restore all defaults"),
+        tr("Remove every setting made in this window? Variables set outside the "
+           "application are kept."));
+    if (answer != QMessageBox::Yes) return;
+
+    for (const Setting &s : halyard::settings()) {
+        if (env_override_active(s.env) != 0) continue;
+        unsetenv(s.env);
+    }
+    halyard::store::forgetAll();
+    for (const Row &r : rows_) if (r.refresh) r.refresh();
+}
+
+/* =============================================================== writing */
+
+void SettingsWindow::write(const QString &env, const QString &value)
+{
+    const QByteArray key = env.toUtf8();
+    /* The environment has priority in core itself, so writing here would be
+     * misleading even though it would not take effect. Refused. */
+    if (env_override_active(key.constData()) != 0) return;
+
+    const Setting *s = nullptr;
+    for (const Setting &row : halyard::settings())
+        if (env == QString::fromUtf8(row.env)) { s = &row; break; }
+    if (!s) return;
+
+    if (value.isEmpty()) {
+        /* Fact 3: for these keys, absent means something different from 0. */
+        unsetenv(key.constData());
+    } else {
+        const QByteArray val = value.toUtf8();
+        setenv(key.constData(), val.constData(), 1);
+    }
+    halyard::store::saveVariable(env, value);
+
+    /* Show the result of the write, not the click: a reset must put the
+     * control back on the default, and a "Custom" entry must disappear once
+     * a preset is chosen. */
+    for (const Row &r : rows_) {
+        if (r.env == env && r.refresh) r.refresh();
+    }
+    emit settingChanged(env, value, s->appliesLive);
+}
+
+void SettingsWindow::applyFilter(const QString &needle)
+{
+    const QString n = needle.trimmed().toCaseFolded();
+    QVector<int> hits(rail_->count(), 0);
+    hits[0] = n.isEmpty() ? 1 : 0;   /* General has no table rows */
+
+    for (const Row &r : rows_) {
+        const bool show = n.isEmpty() || r.haystack.contains(n);
+        if (r.left)  r.left->setVisible(show);
+        if (r.right) r.right->setVisible(show);
+        if (show && r.page < hits.size()) hits[r.page]++;
+    }
+
+    /* Grey the empty pages rather than hide them: hiding would renumber the
+     * rail and break the row -> page mapping. */
+    for (int i = 0; i < rail_->count(); i++) {
+        QListWidgetItem *it = rail_->item(i);
+        it->setForeground(hits.value(i) > 0 || n.isEmpty()
+                              ? QBrush(palette().color(QPalette::WindowText))
+                              : QBrush(theme::muted(this)));
+    }
+    if (!n.isEmpty() && hits.value(rail_->currentRow()) == 0) {
+        for (int i = 0; i < hits.size(); i++)
+            if (hits[i] > 0) { rail_->setCurrentRow(i); break; }
+    }
+}

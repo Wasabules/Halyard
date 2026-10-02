@@ -69,4 +69,22 @@
 #define SHADOW_APP_NAME "Halyard"
 #endif
 
+/* QT4 2026-10-03 - the rest of the identity, with the same fallbacks as the
+ * name above. `build_id.h` carries the real values, generated from the ONE
+ * declaration near the top of CMakeLists.txt; these exist so a translation
+ * unit compiled without it still builds, and so an About box never shows an
+ * empty line. */
+#ifndef SHADOW_APP_AUTHOR
+#define SHADOW_APP_AUTHOR "Wasabules"
+#endif
+#ifndef SHADOW_APP_URL
+#define SHADOW_APP_URL "https://github.com/Wasabules/halyard"
+#endif
+#ifndef SHADOW_APP_LICENSE
+#define SHADOW_APP_LICENSE "GPL-3.0-or-later"
+#endif
+#ifndef SHADOW_APP_DESC
+#define SHADOW_APP_DESC "Unofficial Shadow PC client"
+#endif
+
 #endif /* SHADOW_VERSION_H */

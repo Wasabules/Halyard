@@ -41,6 +41,8 @@
 
 #include <atomic>
 
+#include "bootstrap_worker.hpp"
+
 class SessionWorker : public QObject
 {
     Q_OBJECT
@@ -55,9 +57,14 @@ public:
     void requestStop();
 
 public slots:
-    /* Runs one session. Call it on the worker thread (a queued invocation from
-     * the GUI), never directly. */
-    void run(const QString &vmHost, int portBase);
+    /* Runs one session from what the bootstrap produced. Call it on the worker
+     * thread (a queued invocation), never directly.
+     *
+     * The two SSE keepalives come with it and are STOPPED HERE when the session
+     * ends: they must outlive the bootstrap worker (KB §3.37 - the control port
+     * on `:base+11` opens only while both are up) and they must not outlive the
+     * session. That makes this the one place with both facts in view. */
+    void runSession(const BootstrapWorker::Ready &r);
 
 signals:
     /* A decoded picture, already copied and owned by the receiver. Connect with

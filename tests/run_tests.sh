@@ -159,6 +159,18 @@ run test_jwt          test_jwt.c           # header-only: the JWT `instance` fie
 # it needs no Qt, no GPU and no window; the shear it prevents looks like a
 # decoder fault.
 run_cpp test_qt_planes test_qt_planes.cpp
+# QT3..QT5 - the settings table and the language choice. Pure (no widgets), so
+# they need only Qt6Core. The table pins the rules the window is generated from
+# (absent is not zero, out of range falls back, some values UNSET, the value is
+# not always the index, absent shows core's default); the language test pins
+# the preference walk (fr-CA -> fr, English first stays English, scripts).
+# C++20 for the table's designated initializers.
+if pkg-config --exists Qt6Core 2>/dev/null; then
+    run_cpp test_qt_settings test_qt_settings.cpp -std=c++20 $(pkg-config --cflags --libs Qt6Core)
+    run_cpp test_qt_i18n     test_qt_i18n.cpp     -std=c++20 $(pkg-config --cflags --libs Qt6Core)
+else
+    echo "== the Qt settings table / language choice: SKIPPED ==  (no Qt6Core through pkg-config)"
+fi
 run test_ft_uri       test_ft_uri.c        # header-only: the SFTP URI a file manager opens - base64 escaping, IPv6 brackets (FT4)
 run test_clip_dir     test_clip_dir.c      # header-only: which way the clipboard may travel, and the clamp (CLIP6)
 run test_hid_lock     test_hid_lock.c ../core/protocol/proto.c  # the Caps/Num/Scroll Lock message on :base+11 (HID1)
