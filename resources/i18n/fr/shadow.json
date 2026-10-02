@@ -40,7 +40,8 @@
     "grant_waiting": "En attente de validation… ({} restant)",
     "auth_failed": "Authentification échouée ou expirée.",
     "retry_dc": "Le centre de données ne répond pas — nouvel essai {}/3 dans {} s…",
-    "err_device_init": "Impossible de lancer la connexion au compte (HTTP {})."
+    "err_device_init": "Impossible de lancer la connexion au compte (HTTP {}).",
+    "grant_copied": "Code copié dans le presse-papier — collez-le dans la page Shadow"
   },
   "shutdown": {
     "title": "Fermeture en cours…",
@@ -393,7 +394,12 @@
     "pad_mouse_gyro_both": "Les deux (moyenne)",
     "pad_mouse_gyro_split_dg": "Separe : D horizontal, G vertical",
     "pad_mouse_gyro_split_gd": "Separe : G horizontal, D vertical",
-    "info_fps_received": "{} i/s — {} reçues"
+    "info_fps_received": "{} i/s — {} reçues",
+    "dbg_sftp": "Transfert de fichiers",
+    "dbg_sftp_none": "pas de session",
+    "dbg_sftp_refused": "non accordé",
+    "dbg_sftp_files": "Identifiants SFTP de la VM",
+    "dbg_sftp_files_desc": "Ouvre le dossier qui contient les identifiants SFTP de cette session et l’explication de ce qu’ils sont. À écrire d’abord avec SHADOW_FT_REVEAL=1 dans env.txt. Attention : WinSCP et FileZilla ne peuvent pas s’en servir — le mot de passe fait 395 octets et contient des sauts de ligne, ce qu’une case de mot de passe ne sait pas porter. Il faut une bibliothèque (libssh) ou un client qui lit le mot de passe dans un fichier."
   },
   "pad": {
     "btn_a": "A",
@@ -652,6 +658,12 @@
     "cursor_none": "Celui de la machine",
     "cursor_image": "Image reçue",
     "cursor_arrow": "Flèche",
+    "clipboard": "Presse-papier",
+    "clipboard_desc": "Dans quel sens le presse-papier est partagé avec la machine distante. Ce que vous copiez d’un côté devient collable de l’autre. Un sens unique protège ce qui ne doit pas sortir : sinon tout ce qui est copié sur Shadow atterrit dans le presse-papier de ce PC, où n’importe quelle autre application peut le lire. Quitter « Désactivé » demande de se reconnecter.",
+    "clipboard_off": "Désactivé",
+    "clipboard_both": "Dans les deux sens",
+    "clipboard_to_vm": "Ce PC vers Shadow",
+    "clipboard_to_pc": "Shadow vers ce PC",
     "rate_wifi_desc": "Plafond demandé au serveur en Wi-Fi. Les valeurs hautes n'ont jamais été validées en jeu : voir l'avertissement sur le débit Ethernet.",
     "rate_eth_desc": "Plafond demandé au serveur en Ethernet. ⚠ Au-delà de ~25 Mb/s, l’image se dégrade en jeu sur console (artefacts, image précédente qui persiste) : 100 Mb/s casse, 25 Mb/s tient.",
     "video_tcp": "Video en TCP (fiabilite)",
@@ -692,7 +704,12 @@
     "about_source": "Source",
     "about_source_desc": "Ou obtenir le code source correspondant a ce build precis",
     "about_author": "Auteur",
-    "about_author_desc": "Client non officiel, sans affiliation avec Shadow, Nintendo ou Sony. S'y connecter peut enfreindre les conditions d'utilisation de Shadow et mettre votre compte en peril. Aucune garantie (GPL-3.0 §15-16)."
+    "about_author_desc": "Client non officiel, sans affiliation avec Shadow, Nintendo ou Sony. S'y connecter peut enfreindre les conditions d'utilisation de Shadow et mettre votre compte en peril. Aucune garantie (GPL-3.0 §15-16).",
+    "net_family": "Famille d'adresses",
+    "net_family_desc": "Quelle famille d’adresses utiliser pour joindre la machine distante. En automatique les deux sont essayées, l’une après l’autre : si votre réseau en bloque une, la moitié de chaque tentative est perdue à attendre une adresse qui ne répondra jamais (mesuré ici : 8,6 s perdues sur un démarrage, là où la bonne a répondu en 22 ms). N’en forcez une que si vous savez laquelle marche : forcer la mauvaise empêche toute connexion. Prend effet à la prochaine connexion.",
+    "net_auto": "Automatique",
+    "net_v4": "IPv4 uniquement",
+    "net_v6": "IPv6 uniquement"
   },
   "stream": {
     "waiting": "En attente de la vidéo",

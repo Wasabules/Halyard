@@ -400,6 +400,8 @@ void VmListActivity::refreshVms() {
             /* The reply has arrived: "no machines" is now an assertion we are
              * entitled to make. */
             if (view) view->setEmptyMessage(ui::tr("vm/empty"));
+            /* UI11 - published so `renderVmCards` says the same thing. */
+            ShadowApp::instance().vms_total = total;
             if (view) view->setStatus(ui::tr("vm/count",
                                              ShadowApp::instance().vms.size(), total),
                                       false);
@@ -437,8 +439,13 @@ void VmListActivity::renderVmCards() {
     }
     vmView->setVms(rows);
 
-    vmView->setStatus(app.vms.empty() ? ui::tr("vm/empty")
-                                      : ui::tr("vm/count", (int)app.vms.size()),
+    /* UI11 - TWO arguments, because the format has two. Passing one made
+     * Borealis refuse the string and leave the status line blank. When no reply
+     * has been seen yet the list IS the total, which is true and not a guess. */
+    vmView->setStatus(app.vms.empty()
+                          ? ui::tr("vm/empty")
+                          : ui::tr("vm/count", app.vms.size(),
+                                   app.vms_total ? app.vms_total : app.vms.size()),
                       false);
 
     if (app.vms.empty()) return;

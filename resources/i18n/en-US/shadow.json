@@ -40,7 +40,8 @@
     "grant_waiting": "Waiting for approval… ({} left)",
     "auth_failed": "Authentication failed or expired.",
     "retry_dc": "The data centre is not answering — new attempt {}/3 in {} s…",
-    "err_device_init": "Could not start the sign-in (HTTP {})."
+    "err_device_init": "Could not start the sign-in (HTTP {}).",
+    "grant_copied": "Code copied to the clipboard — paste it into the Shadow page"
   },
   "shutdown": {
     "title": "Closing…",
@@ -393,7 +394,12 @@
     "pad_mouse_gyro_both": "Both (average)",
     "pad_mouse_gyro_split_dg": "Split: right horizontal, left vertical",
     "pad_mouse_gyro_split_gd": "Split: left horizontal, right vertical",
-    "info_fps_received": "{} fps — {} received"
+    "info_fps_received": "{} fps — {} received",
+    "dbg_sftp": "File transfer",
+    "dbg_sftp_none": "no session",
+    "dbg_sftp_refused": "not granted",
+    "dbg_sftp_files": "The VM's SFTP credential",
+    "dbg_sftp_files_desc": "Opens the folder holding this session's SFTP credential and the explanation of what it is. Have it written first with SHADOW_FT_REVEAL=1 in env.txt. Careful: WinSCP and FileZilla cannot use it — the password is 395 bytes with newlines in it, which a password box cannot carry. It needs a library (libssh), or a client that reads the password from a file."
   },
   "pad": {
     "btn_a": "A",
@@ -652,6 +658,12 @@
     "cursor_none": "The machine's own",
     "cursor_image": "Received image",
     "cursor_arrow": "Arrow",
+    "clipboard": "Clipboard",
+    "clipboard_desc": "Which way the clipboard is shared with the remote machine. What you copy on one side becomes pasteable on the other. One way protects what must not leave: otherwise anything copied on Shadow lands in this PC’s clipboard, where any other application can read it. Leaving “Off” needs a reconnection.",
+    "clipboard_off": "Off",
+    "clipboard_both": "Both ways",
+    "clipboard_to_vm": "This PC to Shadow",
+    "clipboard_to_pc": "Shadow to this PC",
     "rate_wifi_desc": "Cap requested from the server on Wi-Fi. High values have never been validated in-game: see the warning on the Ethernet rate.",
     "rate_eth_desc": "Cap requested from the server on Ethernet. ⚠ Above ~25 Mb/s the picture degrades in play on console (artefacts, the previous frame persisting): 100 Mb/s breaks, 25 Mb/s holds.",
     "video_tcp": "Video over TCP (reliability)",
@@ -692,7 +704,12 @@
     "about_source": "Source",
     "about_source_desc": "Where to get the source code corresponding to this exact build",
     "about_author": "Author",
-    "about_author_desc": "Unofficial client, not affiliated with Shadow, Nintendo or Sony. Connecting with it may breach Shadow's terms of service and put your account at risk. No warranty (GPL-3.0 §15-16)."
+    "about_author_desc": "Unofficial client, not affiliated with Shadow, Nintendo or Sony. Connecting with it may breach Shadow's terms of service and put your account at risk. No warranty (GPL-3.0 §15-16).",
+    "net_family": "Address family",
+    "net_family_desc": "Which address family to reach the remote machine with. Automatic tries both, one after the other: if your network blocks one, half of every attempt is spent waiting on an address that will never answer (measured here: 8.6 s lost on one start-up, where the working one answered in 22 ms). Only force one if you know which works: forcing the wrong one prevents any connection. Takes effect on the next connection.",
+    "net_auto": "Automatic",
+    "net_v4": "IPv4 only",
+    "net_v6": "IPv6 only"
   },
   "stream": {
     "waiting": "Waiting for video",

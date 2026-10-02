@@ -309,6 +309,25 @@ void SettingsView::build(int r, std::vector<ui::Item> &v)
                            ui::tr("settings/keyboard"),
                            { "AZERTY", "QWERTY" },
                            s.kb_layout == Settings::KbLayout::Qwerty ? 1 : 0));
+        /* CLIP4 - the clipboard, among the controls rather than in "Session":
+         * it is something the user DOES with a keyboard, next to the layout and
+         * the mouse mode, not something the session is configured with.
+         *
+         * Hidden where there is no local clipboard to share (console): see
+         * SHADOW_HAS_CLIPBOARD in device_caps.h. */
+#if SHADOW_HAS_CLIPBOARD
+        {
+            std::vector<std::string> dirs = { ui::tr("settings/clipboard_off"),
+                                              ui::tr("settings/clipboard_both"),
+                                              ui::tr("settings/clipboard_to_vm"),
+                                              ui::tr("settings/clipboard_to_pc") };
+            v.push_back(choice(SET_CLIPBOARD, ui::tr("settings/clipboard"),
+                               ui::envNote("SHADOW_CLIPBOARD",
+                                           ui::tr("settings/clipboard_desc")),
+                               dirs,
+                               (int)(s.clipboard_mode <= 3 ? s.clipboard_mode : 1)));
+        }
+#endif
         break;
     }
 
@@ -327,6 +346,20 @@ void SettingsView::build(int r, std::vector<ui::Item> &v)
                            s.video_tcp));
         v.push_back(toggle(SET_REG_INPUT, ui::tr("settings/reg_input"),
                            ui::tr("settings/reg_input_desc"), s.udp_register_input));
+        /* NET1 - the address family. In "Connexion" because that is what it
+         * governs, and its description carries the COST rather than the
+         * mechanism: "half of every retry round spent on an address that never
+         * answers" is what a user can act on. */
+        {
+            std::vector<std::string> fams = { ui::tr("settings/net_auto"),
+                                              ui::tr("settings/net_v4"),
+                                              ui::tr("settings/net_v6") };
+            const int fi = (s.net_family == 4) ? 1 : (s.net_family == 6) ? 2 : 0;
+            v.push_back(choice(SET_NET_FAMILY, ui::tr("settings/net_family"),
+                               ui::envNote("SHADOW_FORCE_IPV4",
+                                           ui::tr("settings/net_family_desc")),
+                               fams, fi));
+        }
         break;
 
     case SEC_SESSION:
@@ -717,6 +750,24 @@ bool SettingsView::apply(const ui::Item &it)
             if (it.choice_index >= 0 && it.choice_index <= 2)
                 s.cursor_source = (uint32_t)it.choice_index;
             break;
+        /* CLIP4 - applies LIVE, with no reconnection: `applyToggles` sets
+         * SHADOW_CLIPBOARD and the session re-reads it at every poll. The one
+         * exception is leaving "off", because at "off" no channel was opened -
+         * which is what the row's description says. */
+        case SET_CLIPBOARD:
+            if (it.choice_index >= 0 && it.choice_index <= 3)
+                s.clipboard_mode = (uint32_t)it.choice_index;
+            break;
+        /* NET1 - takes effect on the NEXT connection: the family is chosen when
+         * a socket is created, and the sockets of a live session already exist.
+         * The description says so rather than leaving the user to wonder why
+         * nothing moved. */
+        case SET_NET_FAMILY: {
+            static const uint32_t FAMS[] = { 0u, 4u, 6u };
+            if (it.choice_index >= 0 && it.choice_index < 3)
+                s.net_family = FAMS[it.choice_index];
+            break;
+        }
         /* B1 - THESE TWO NOW APPLY LIVE, like the quality screen's bitrate.
          * They set the same quantity and only one of them took effect without
          * reconnecting: you changed the Wi-Fi rate mid-session, nothing moved,

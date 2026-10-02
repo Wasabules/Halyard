@@ -217,6 +217,34 @@ float hintWidth(NVGcontext *vg, const char *button, const char *label);
  * overflow. */
 float textWidth(NVGcontext *vg, const char *txt);
 
+/* === UI10 2026-10-02 — TEXT WITH LINE BREAKS IN IT ========================
+ *
+ * `nvgText` draws ONE line. It does not interpret `\n`: fontstash looks the
+ * character up in the font, finds nothing, and draws the `.notdef` box. So
+ * every message that was written across two lines came out as one line with a
+ * SQUARE where the break should be - reported from the boot screen as
+ * "Centre de donnees injoignable. □ DNS ou connexion bloquee.", and the font
+ * was the first suspect although it holds every glyph involved.
+ *
+ * Eight catalogue strings carry a `\n` (the five boot errors, the two
+ * confirmations, the devlink notice) plus the version line appended to a boot
+ * diagnostic. They are written that way deliberately - "what failed" on one
+ * line, "what to try" on the next - so the fix is to draw them properly, not
+ * to flatten them.
+ *
+ * Draws each line with the CALLER's font, size, colour and alignment, spaced by
+ * `lineh` (0 = 1.35x the current font size, the ratio the rest of the interface
+ * uses). `y` is the first line's baseline-or-middle, per the caller's
+ * NVG_ALIGN_*; with ALIGN_MIDDLE the block grows downward from it.
+ *
+ * Returns the total height drawn, so a caller can place what comes next. A
+ * string with no `\n` behaves exactly like `nvgText` and costs one `strchr`. */
+float textLines(NVGcontext *vg, float x, float y, const std::string &txt,
+                float lineh = 0.0f);
+
+/* The height `textLines` would take, drawing nothing. */
+float textLinesHeight(NVGcontext *vg, const std::string &txt, float lineh = 0.0f);
+
 /* `txt` cut to `maxw`, with an ellipsis. Cuts on a UTF-8 boundary. */
 std::string truncated(NVGcontext *vg, const std::string &txt, float maxw);
 

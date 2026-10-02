@@ -58,8 +58,23 @@ void rememberSelf(int argc, char *argv[])
 
     /* Say WHAT was refused. Without this the only symptom is "(inconnu)", and
      * the next person has to guess at the shape of a string they cannot see -
-     * which is the guess that cost this very cycle. */
+     * which is the guess that cost this very cycle.
+     *
+     * === SRV-DOC 2026-10-02 - ONLY WHERE A RELAUNCH EXISTS ==================
+     * This line used to be emitted on every platform, so a Windows session
+     * opened with
+     *     [relaunch] argv[0] unusable as a relaunch path: 'C:\...\halyard.exe'
+     * on a perfectly valid path. Nothing is wrong there: handing the machine
+     * over to another binary is an hbloader mechanism, there is no hbloader off
+     * console, and the comment above already calls the empty `g_self` "exactly
+     * right". A diagnostic that fires once per launch on a condition that
+     * cannot be fixed is noise, and noise is what makes a real line invisible -
+     * which is the failure mode this repo keeps paying for.
+     * So: a refusal is reported where it means something, and stays quiet where
+     * it does not. */
+#ifdef __SWITCH__
     rllog("[relaunch] argv[0] unusable as a relaunch path: '%s'", argv[0]);
+#endif
 }
 
 const std::string &selfPath() { return g_self; }

@@ -20,6 +20,7 @@
 #endif
 #include "../../core/services/win_compat.h"   /* WIN1 - setenv/unsetenv, absent from the Windows CRT */
 #include "activity/boot_activity.hpp"
+#include "../../core/input/kbd_hook_win.h"   /* WINKEY: the keys Windows keeps */
 #include "activity/lock_activity.hpp"
 #include "clients/borealis/ui/i18n.hpp"
 #include "autotest.hpp"
@@ -803,6 +804,24 @@ int main(int argc, char *argv[]) {
     }
     brls::Logger::info("pushActivity BootActivity OK, entering mainLoop");
 
+#if defined(_WIN32)
+    /* === WINKEY 2026-10-02 - THE WINDOWS KEY BELONGED TO WINDOWS ============
+     *
+     * The stream view already forwards the physical keyboard to the VM and maps
+     * LEFT_SUPER to evdev 125, but the shell acts on that key before any
+     * application sees it: the Start menu opened locally while the keystroke
+     * also reached the VM. A low-level hook is the only mechanism that gets in
+     * front of the shell. It swallows ONLY the keys Windows would steal, and
+     * only while the stream owns the keyboard - lose focus or open the pause
+     * menu and the keys go straight back to Windows, which is what keeps this
+     * from being able to lock anyone out of their desktop.
+     *
+     * Installed here because a WH_KEYBOARD_LL hook is dispatched to the queue
+     * of the thread that registered it, and this is the thread that runs
+     * Borealis' message loop. `SHADOW_WIN_KBD_HOOK=0` disables it. */
+    kbd_hook_win_install();
+#endif
+
     /* UX6 B3 2026-05-18 — Switch sleep/wake detection.
      * appletHookEnter() registers a FocusState callback -> when the console
      * sleeps we signal abort for a clean disconnect (= avoids the ZBC freeze and
@@ -1118,6 +1137,12 @@ int main(int argc, char *argv[]) {
     // _exit(0) skips atexit and the C++ static destructors. On Switch homebrew
     // the FFmpeg/libnx/Borealis teardown order is unstable and sporadically
     // crashes nx-hbloader. _exit makes a direct syscall.
+#if defined(_WIN32)
+    /* WINKEY: drop the hook before the process goes away. Windows would free it
+     * anyway, but a slow exit with a live hook is exactly when a swallowed key
+     * is hardest to explain. */
+    kbd_hook_win_remove();
+#endif
     _exit(0);
     return EXIT_SUCCESS;  // unreachable
 }

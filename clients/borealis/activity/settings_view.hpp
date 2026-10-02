@@ -178,6 +178,8 @@ enum SetId {
     SET_HAPTICS,
     SET_EQ,              /* S90 - equalizer sub-page */
     SET_CURSOR,          /* S113 - which cursor to draw (see settings.hpp) */
+    SET_CLIPBOARD,       /* CLIP4 - which way the clipboard travels */
+    SET_NET_FAMILY,      /* NET1 - IPv4 / IPv6 / automatic */
 
     /* S86 2026-08-29 - the LOGS themselves, and no longer just their level.
      * Setting the verbosity without being able to see what is written, or to

@@ -880,6 +880,57 @@ float textWidth(NVGcontext *vg, const char *txt)
     return b[2] - b[0];
 }
 
+/* UI10 - see paint.hpp for the square this removes. */
+static float lineHeightOf(NVGcontext *vg, float lineh)
+{
+    if (lineh > 0.0f) return lineh;
+    /* The current font size, asked of nanovg rather than passed in: a caller
+     * that has just set its size should not have to repeat it, and a caller
+     * that forgets would space the lines for a size it is not drawing at. */
+    float asc = 0.0f, desc = 0.0f, lh = 0.0f;
+    nvgTextMetrics(vg, &asc, &desc, &lh);
+    return (lh > 0.0f) ? lh : 20.0f;
+}
+
+float textLinesHeight(NVGcontext *vg, const std::string &txt, float lineh)
+{
+    const float step = lineHeightOf(vg, lineh);
+    size_t lines = 1;
+    for (char c : txt) if (c == '\n') lines++;
+    return step * (float)lines;
+}
+
+float textLines(NVGcontext *vg, float x, float y, const std::string &txt,
+                float lineh)
+{
+    const float step = lineHeightOf(vg, lineh);
+
+    /* The common case costs one scan and one nvgText: almost every string in
+     * the interface is a single line, and this helper is now on the path of
+     * several of them. */
+    if (txt.find('\n') == std::string::npos) {
+        nvgText(vg, x, y, txt.c_str(), nullptr);
+        return step;
+    }
+
+    /* Drawn with the (begin, end) overload so no substring is allocated per
+     * line - and so an EMPTY line (two consecutive `\n`, which the version
+     * suffix uses to separate itself from the diagnostic) still advances
+     * instead of being skipped. */
+    size_t start = 0;
+    float yy = y;
+    while (true) {
+        const size_t nl = txt.find('\n', start);
+        const size_t end = (nl == std::string::npos) ? txt.size() : nl;
+        if (end > start)
+            nvgText(vg, x, yy, txt.c_str() + start, txt.c_str() + end);
+        yy += step;
+        if (nl == std::string::npos) break;
+        start = nl + 1;
+    }
+    return yy - y;
+}
+
 namespace {
 
 /* Advance by ONE UTF-8 character. Cutting in the middle of a codepoint would

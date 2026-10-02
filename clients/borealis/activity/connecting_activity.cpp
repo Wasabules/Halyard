@@ -420,29 +420,71 @@ void ConnectingActivity::runConnectionFlow() {
         setStep(0, app::StepState::Done);
 
         // Step 2: poll vm/ip
+        /* === UX12 2026-10-02 - GIVING UP WHILE THE SERVER SAYS "I AM BOOTING"
+         *
+         * This loop was 30 attempts of 2 s: a flat SIXTY SECONDS, after which
+         * step 2 turned red and the user was shown an error. A cold VM takes
+         * far longer than that - the one measured on 2026-10-02 needed 285 s
+         * from here to a usable stream - and all the while the server is
+         * ANSWERING, with HTTP 470 and `{"err":"vm not on a slot"}`, which is
+         * not a failure but "still coming up". Giving up on a server that is
+         * telling us to wait is the defect; the count was never the point.
+         *
+         * So the ceiling stays as a backstop and the MEANING changes: as long
+         * as the answer is 470 we keep waiting, up to the budget. Anything else
+         * (a real HTTP error, or a reply with no address in it) is a failure
+         * worth stopping on at once, instead of being retried for a minute.
+         *
+         * The budget goes to 180 s - still short of the 285 s observed, which
+         * is why it is a toggle: SHADOW_VMIP_WAIT_S. Erring long costs nothing,
+         * because `abandon()` is polled every 100 ms and B leaves instantly;
+         * erring short costs the user a red error screen on a machine that was
+         * about to start, which is what was reported.
+         *
+         * And the progress is shown in SECONDS, not as `17/30`. A fraction of
+         * an internal retry count tells the reader nothing about how long they
+         * have waited or how long is left. */
         setStep(1, app::StepState::Running);
         VmConnectionInfo conn = {0};
         bool got_conn = false;
         long last_http = 0;
-        for (int attempt = 0; attempt < 30 && !abandon(); attempt++) {
-            long stip = 0;
-            if (launcher_get_vm_ip(launcher, token, vm_id, &conn, &stip)
-                && conn.ip && conn.port) {
-                got_conn = true;
-                break;
+        int waited_s = 0;
+        {
+            static int budget_s = -1;
+            if (budget_s < 0) {
+                const char *e = std::getenv("SHADOW_VMIP_WAIT_S");
+                budget_s = (e && std::atoi(e) > 0) ? std::atoi(e) : 180;
             }
-            last_http = stip;
-            const std::string hint = (stip == 470) ? ui::tr("connect/vm_starting") : "";
-            setStep(1, app::StepState::Running,
-                    std::to_string(attempt + 1) + "/30  " + hint);
-            vmconn_free(&conn);
-            for (int s2 = 0; s2 < 20 && !abandon(); s2++) {
-                svcSleepThread(100000000ULL);  // 100 ms grain
+            const int step_s = 2;
+            for (; waited_s < budget_s && !abandon(); waited_s += step_s) {
+                long stip = 0;
+                if (launcher_get_vm_ip(launcher, token, vm_id, &conn, &stip)
+                    && conn.ip && conn.port) {
+                    got_conn = true;
+                    break;
+                }
+                last_http = stip;
+                vmconn_free(&conn);
+
+                /* 470 = "vm not on a slot" = booting. Anything else is not
+                 * something waiting will fix. */
+                if (stip != 470 && stip != 0) break;
+
+                setStep(1, app::StepState::Running,
+                        ui::tr("connect/vm_starting") + "  " +
+                        std::to_string(waited_s + step_s) + " s / " +
+                        std::to_string(budget_s) + " s");
+                for (int s2 = 0; s2 < step_s * 10 && !abandon(); s2++) {
+                    svcSleepThread(100000000ULL);  // 100 ms grain
+                }
             }
         }
         if (abandon()) { vmconn_free(&conn); return; }
         if (!got_conn) {
-            setStep(1, app::StepState::Error, detail(last_http));
+            /* The detail says HOW LONG, because "it failed" and "it was still
+             * starting after three minutes" call for different actions. */
+            setStep(1, app::StepState::Error,
+                    detail(last_http) + "  (" + std::to_string(waited_s) + " s)");
             showError(explain(ERR_STEP_ADDRESS,
                                 last_http ? last_http : 470));
             vmconn_free(&conn);

@@ -35,6 +35,26 @@ public:
     void setPairing(const std::string &url, const std::string &code,
                     const std::string &qr_path);
     void setTimer(const std::string &t) { timer_ = t; }
+
+    /* === CLIP5 2026-10-02 - THE LOGIN CODE, ALREADY COPIED =================
+     *
+     * The device grant shows an eight-character code to retype in a browser.
+     * On console that is unavoidable: the code goes onto a phone, which is what
+     * the QR above it is for. On a PC the browser is on the SAME machine - the
+     * address beside it has been one click away since UX9 - so making the user
+     * read eight characters off one window and type them into another is a
+     * chore with nothing behind it.
+     *
+     * So `setPairing` puts the code on the clipboard and the screen says it
+     * did. Saying it matters as much as doing it: a clipboard that changed
+     * without the user asking is unsettling unless something accounts for it,
+     * and a silent copy would also leave them typing anyway, having gained
+     * nothing.
+     *
+     * Desktop only, via SHADOW_HAS_CLIPBOARD - a console has no clipboard to
+     * put it on, and `local_clipboard_available()` says so at runtime too.
+     * SHADOW_LOGIN_CODE_CLIP=0 turns it off. */
+    bool code_copied_ = false;
     void exitPairing() { pairing_ = false; }
 
     void paint(NVGcontext *vg, float x, float y, float w, float h,

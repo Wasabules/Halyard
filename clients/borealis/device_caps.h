@@ -47,6 +47,24 @@
 #  define SHADOW_HAS_DECODER_CHOICE 1
 #endif
 
+/* === A CLIPBOARD OF OUR OWN =============================================
+ *
+ * The VM shares its clipboard over `:base+14` whatever we run on, and the
+ * server grants the channel on every session. What a console has not got is the
+ * OTHER end: Horizon and the Vita have no system clipboard, so there is nothing
+ * to read from and nothing to write to. `local_clipboard.c` already answers
+ * "none here" on those targets and the channel is simply never opened - this
+ * macro is only so the SETTING does not appear on a screen where it could not
+ * do anything.
+ *
+ * Named for what it IS: a target that gains a clipboard gains the setting by
+ * answering here and implementing `local_clipboard.{c,h}`. */
+#if defined(__SWITCH__) || defined(__vita__) || defined(__psp2__)
+#  define SHADOW_HAS_CLIPBOARD 0
+#else
+#  define SHADOW_HAS_CLIPBOARD 1
+#endif
+
 /* A drawn mouse pointer driven by a real mouse. Desktop only: the console
  * builds have a touchscreen and a stick, which the gestures page covers. */
 #if defined(__SWITCH__) || defined(__vita__) || defined(__psp2__)

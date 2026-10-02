@@ -237,6 +237,17 @@ void Settings::load() {
             int v = std::atoi(val); if (v >= 0 && v <= 40) pad_deadzone = (uint32_t)v;
         } else if (std::strcmp(key, "pointeur_demo") == 0) {
             demo_pointer = (val[0] == '1' || val[0] == 't');
+        } else if (std::strcmp(key, "famille_reseau") == 0) {
+            /* NET1 - only the three values mean anything; anything else falls
+             * back to automatic, which is the behaviour that always works. */
+            int v = std::atoi(val);
+            net_family = (v == 4 || v == 6) ? (uint32_t)v : 0u;
+        } else if (std::strcmp(key, "presse_papier") == 0) {
+            /* CLIP4 - bounded like `curseur_source`, and out of range falls
+             * back to the DEFAULT rather than to 0: a typo in a hand-edited
+             * file must not quietly disable the clipboard. */
+            int v = std::atoi(val);
+            clipboard_mode = (v >= 0 && v <= 3) ? (uint32_t)v : 1u;
         } else if (std::strcmp(key, "curseur_source") == 0) {
             /* S113 - bounded: an out-of-range value in a hand-edited file must
              * not turn the cursor off silently, it falls back on the default. */
@@ -346,6 +357,8 @@ void Settings::save() const {
     std::fprintf(f, "haptique_intensite=%u\n", haptics_strength);
     std::fprintf(f, "pointeur_demo=%d\n", demo_pointer ? 1 : 0);
     std::fprintf(f, "curseur_source=%u\n", cursor_source);
+    std::fprintf(f, "presse_papier=%u\n", clipboard_mode);
+    std::fprintf(f, "famille_reseau=%u\n", net_family);
     std::fprintf(f, "ui_scale=%u\n", ui_scale);
     std::fprintf(f, "hud_refresh_ms=%u\n", hud_refresh_ms);
     std::fprintf(f, "hud_charts=%u\n", hud_charts);
@@ -704,6 +717,47 @@ void Settings::applyToggles() const
     set_number("SHADOW_REG_F5", color_444 ? 1u : 0u);
 #endif
     set_number("SHADOW_PROFILE_ID", profile_id);
+
+    /* === CLIP4 2026-10-02 - THE CLIPBOARD'S DIRECTION ===================
+     *
+     * NOT through `set_number`: that helper UNSETS the variable at 0, because
+     * for a codec or a profile 0 means "automatic". Here 0 means OFF, and
+     * removing the key would restore the default - both ways - which is the
+     * exact opposite of what the user asked for.
+     *
+     * Placed before the `dev_channel_known` return, like the log level and the
+     * sounds: a setting written after it does not apply on a first launch.
+     *
+     * `env.txt` keeps priority, as for every other key. */
+    /* === NET1 2026-10-02 - THE ADDRESS FAMILY ===========================
+     *
+     * Two variables, one setting, and the pair is written TOGETHER so they can
+     * never both be 1 - `tls_chan.c` gives IPv4 precedence anyway, but a state
+     * that cannot be reached is better than one that is merely resolved.
+     *
+     * "Automatic" UNSETS both rather than writing 0: the console's default is
+     * IPv4 and it is compiled in, so writing `SHADOW_FORCE_IPV4=0` from the
+     * screen would silently take IPv6 back on a platform whose resolver cannot
+     * be trusted with it (S108). Removing the key restores each platform's own
+     * default, which is what "automatic" means. */
+    if (!forced("SHADOW_FORCE_IPV4") && !forced("SHADOW_FORCE_IPV6")) {
+        if (net_family == 4) {
+            setenv("SHADOW_FORCE_IPV4", "1", 1);
+            unsetenv("SHADOW_FORCE_IPV6");
+        } else if (net_family == 6) {
+            unsetenv("SHADOW_FORCE_IPV4");
+            setenv("SHADOW_FORCE_IPV6", "1", 1);
+        } else {
+            unsetenv("SHADOW_FORCE_IPV4");
+            unsetenv("SHADOW_FORCE_IPV6");
+        }
+    }
+
+    if (!forced("SHADOW_CLIPBOARD")) {
+        char buf[16];
+        std::snprintf(buf, sizeof(buf), "%u", clipboard_mode <= 3 ? clipboard_mode : 1u);
+        setenv("SHADOW_CLIPBOARD", buf, 1);
+    }
 
     /* === 2026-08-27 - "FORWARD THE GAMEPAD" DID NOTHING ON CONSOLE ===
      *

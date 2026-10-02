@@ -6,6 +6,9 @@
 #include "../ui/theme.hpp"
 #include "../ui/type.hpp"
 #include "../ui/i18n.hpp"
+#include "../device_caps.h"                          /* CLIP5 - SHADOW_HAS_CLIPBOARD */
+#include "../../../core/services/local_clipboard.h"  /* CLIP5 - the login code */
+#include <cstdlib>
 #include "core/version.h"          /* SHADOW_APP_NAME */
 
 #include <chrono>
@@ -49,6 +52,28 @@ void BootView::setPairing(const std::string &url, const std::string &code,
     url_ = url; code_ = code;
     if (qr_path != qr_path_) { qr_path_ = qr_path; qr_img_ = -1; qr_attempted_ = false; }
     pairing_ = true;
+
+#if SHADOW_HAS_CLIPBOARD
+    /* CLIP5 - see boot_view.hpp. Runs on the UI thread (the caller reaches us
+     * through `brls::Threading::sync`), which is where Win32 clipboard calls
+     * belong. */
+    code_copied_ = false;
+    {
+        const char *off = std::getenv("SHADOW_LOGIN_CODE_CLIP");
+        const bool on = !off || std::atoi(off) != 0;
+        if (on && !code_.empty() && local_clipboard_available()) {
+            /* The returned token is DISCARDED on purpose. The clipboard channel
+             * is not open yet - there is no session at login - and it seeds its
+             * own change token when it opens, by which time this write is in
+             * the past. So there is nothing here for the echo guard to hold.
+             *
+             * And `code_copied_` is set from the RESULT: another application
+             * can hold the clipboard, and claiming a copy that did not happen
+             * would send the user to paste nothing. */
+            code_copied_ = local_clipboard_set(code_.c_str(), code_.size(), nullptr);
+        }
+    }
+#endif
 }
 
 void BootView::paint(NVGcontext *vg, float x, float y, float w, float h,
@@ -77,7 +102,10 @@ void BootView::paint(NVGcontext *vg, float x, float y, float w, float h,
         if (!error_.empty()) {
             nvgFontSize(vg, ui::type::BODY);
             nvgFillColor(vg, ui::theme::bad);
-            nvgText(vg, cx, sy, error_.c_str(), nullptr);
+            /* UI10 - a boot error is written on two lines on purpose ("what
+             * failed", then "what to try"), and `nvgText` drew the break as a
+             * .notdef square. See paint.hpp. */
+            ui::paint::textLines(vg, cx, sy, error_);
         } else if (!status_.empty()) {
             /* The spinner sits to the LEFT of the text, and the text stays
              * centred on the screen: centring the pair would shift the sentence
@@ -86,7 +114,7 @@ void BootView::paint(NVGcontext *vg, float x, float y, float w, float h,
                                sy, 9.0f, t);
             nvgFontSize(vg, ui::type::BODY);
             nvgFillColor(vg, ui::theme::hint);
-            nvgText(vg, cx, sy, status_.c_str(), nullptr);
+            ui::paint::textLines(vg, cx, sy, status_);
         }
         return;
     }
@@ -166,6 +194,18 @@ void BootView::paint(NVGcontext *vg, float x, float y, float w, float h,
     nvgFillColor(vg, ui::paint::accentVif);
     nvgText(vg, cx, ty, code_.c_str(), nullptr);
 
+#if SHADOW_HAS_CLIPBOARD
+    /* CLIP5 - said right under the code, in the hint colour: it accounts for a
+     * clipboard the user did not change themselves, and it tells them they can
+     * paste instead of read. Absent when the copy failed. */
+    if (code_copied_) {
+        ty += 26.0f;
+        nvgFontSize(vg, ui::type::SECONDARY);
+        nvgFillColor(vg, ui::theme::hint);
+        nvgText(vg, cx, ty, ui::tr("boot/grant_copied").c_str(), nullptr);
+    }
+#endif
+
     if (!timer_.empty()) {
         ty += 38.0f;
         nvgFontSize(vg, ui::type::SECONDARY);
@@ -175,6 +215,12 @@ void BootView::paint(NVGcontext *vg, float x, float y, float w, float h,
     if (!error_.empty()) {
         nvgFontSize(vg, ui::type::SECONDARY);
         nvgFillColor(vg, ui::theme::bad);
-        nvgText(vg, cx, y + h - 30.0f, error_.c_str(), nullptr);
+        /* UI10 - anchored to the BOTTOM, so the block is raised by what it
+         * needs beyond one line. Drawing it downward from here would push every
+         * line after the first off the screen, which is a worse defect than the
+         * square it replaces. */
+        const float lh = ui::paint::textLinesHeight(vg, error_);
+        const float one = ui::paint::textLinesHeight(vg, std::string("x"));
+        ui::paint::textLines(vg, cx, y + h - 30.0f - (lh - one), error_);
     }
 }

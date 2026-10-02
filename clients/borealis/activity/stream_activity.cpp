@@ -33,6 +33,8 @@ extern "C" {
 
 extern "C" {
 #include "../../../core/protocol/eq.h"
+#include "../../../core/protocol/session_caps.h"   /* FT4 - the SFTP grant and its URI */
+#include "../../../core/services/launch_uri.h"     /* FT4 - hand it to a file manager */
 }
 
 extern "C" {
@@ -845,6 +847,80 @@ static void buildPauseMenu(StreamView *sv)
         ctrl_gamepad_diagnostic(buf, sizeof buf);
         return std::string(buf);
     });
+    /* === FT4 2026-10-02 - THE VM'S FILES. RE-AIMED, AFTER MEASUREMENT =====
+     *
+     * This started as "open an sftp:// URI and let WinSCP answer". That cannot
+     * work, and the reason is worth keeping because it is not guessable:
+     *
+     * The credential is a 395-byte OpenSSH PEM used as a PASSWORD (the server,
+     * libssh_0.11.0, offers `password` only). It must be passed BYTE-EXACT,
+     * trailing newline included - and no single-line rewriting of it
+     * authenticates. Measured against the live server on 2026-10-02: newlines
+     * as spaces, newlines removed, newlines as a literal backslash-n, the
+     * base64 body alone, the body plus a newline - five refusals, with the
+     * 395-byte original accepted in the same run. curl calls the URI built from
+     * it malformed, and curl/libssh2 refuses the credential even as a plain
+     * argument. A GUI password box is one line, so WinSCP and FileZilla cannot
+     * carry it at all. `ft_uri.h` holds the full retraction.
+     *
+     * What is left that is TRUE: hand over a credential FILE, byte for byte,
+     * for whoever wants to script against libssh - and open the folder that
+     * holds it, which is the one click that still helps. The transfer itself
+     * belongs to `core/services/filetransfer.c`, which is the only client that
+     * authenticates, and which is ours. */
+    {
+        dbg.info(ui::tr("menu/dbg_sftp"), [] {
+            shadow_session_caps c;
+            if (!ctrl_session_caps(&c)) return ui::tr("menu/dbg_sftp_none");
+            const shadow_chan_caps &ft = c.chan[SHADOW_CHAN_IDX_FILETRANSFER];
+            if (!ft.granted) return ui::tr("menu/dbg_sftp_refused");
+            char buf[64];
+            std::snprintf(buf, sizeof buf, "%s:%u",
+                          ft.tcp ? "TCP" : "UDP", (unsigned)ft.port);
+            return std::string(buf);
+        });
+
+        /* Only where there is a file manager to open the folder with: on
+         * console `launch_uri_available()` is false, and there is no folder to
+         * show anybody. */
+        if (launch_uri_available()) {
+            dbg.action(ui::tr("menu/dbg_sftp_files"), ui::tr("menu/dbg_sftp_files_desc"), [] {
+                shadow_session_caps c;
+                const bool have = ctrl_session_caps(&c)
+                               && c.chan[SHADOW_CHAN_IDX_FILETRANSFER].granted;
+                if (!have) {
+                    salog("[FT4] no file-transfer grant on this session - nothing to open");
+                    return;
+                }
+                /* The credential is written at announcement time, and only when
+                 * SHADOW_FT_REVEAL=1 - deliberately, because it lands on disk.
+                 * So this does not create it; it says whether it is there and
+                 * opens the folder either way, which is also where the
+                 * explanation of what the credential is lives. */
+                char probe[512];
+                std::snprintf(probe, sizeof probe, "%ssftp_password.bin", SHADOW_DATA_DIR);
+                FILE *pf = std::fopen(probe, "rb");
+                if (pf) {
+                    std::fseek(pf, 0, SEEK_END);
+                    const long n = std::ftell(pf);
+                    std::fclose(pf);
+                    salog("[FT4] SFTP credential present (%ld bytes) beside sftp.txt, "
+                          "which explains what can and cannot use it", n);
+                } else {
+                    salog("[FT4] no credential on disk - set SHADOW_FT_REVEAL=1 in "
+                          "env.txt and reconnect to have it written");
+                }
+                char uri[512];
+                std::snprintf(uri, sizeof uri, "file:///%s", SHADOW_DATA_DIR);
+                /* Backslashes are not URI separators; the data directory is
+                 * spelled with them on Windows. */
+                for (char *q = uri; *q; q++) if (*q == '\\') *q = '/';
+                if (!launch_uri(uri))
+                    salog("[FT4] could not open %s", uri);
+            });
+        }
+    }
+
     /* Switch hardware <-> software without FTP: we drop or remove the marker,
      * which is read the next time the decoder starts. */
     dbg.action(ui::tr("menu/dbg_hw_toggle"), ui::tr("menu/dbg_hw_toggle_desc"), [] {

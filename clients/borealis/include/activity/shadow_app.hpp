@@ -45,6 +45,23 @@ public:
     // The VM list (filled by VmListActivity on refresh)
     std::vector<ShadowVm> vms;
 
+    /* === UI11 2026-10-02 - THE TOTAL THE SERVER REPORTED ==================
+     *
+     * `vm/count` reads "{} machine(s) sur {}": how many are listed, out of how
+     * many the account has. The second number comes from the paged reply
+     * (`page.total`) and was held in a LOCAL of the fetch - so the third call
+     * site, a plain re-render with no reply in hand, passed one argument to a
+     * two-argument format. Borealis then refused the whole string at runtime:
+     *
+     *   ERROR Invalid format "{} machine(s) sur {}" from string
+     *         "shadow/vm/count": argument not found
+     *
+     * and the status line stayed EMPTY. Kept here so every site reads the same
+     * number, and so a re-render says what the fetch said rather than
+     * inventing a total from the size of the list. 0 until a reply has
+     * arrived. */
+    size_t vms_total = 0;
+
     // The VM being connected to (set by VmListActivity, read by ConnectingActivity)
     std::string selected_vm_id;
     std::string selected_vm_alias;

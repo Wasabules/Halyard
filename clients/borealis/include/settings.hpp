@@ -243,6 +243,46 @@ public:
      * simply unusable - you cannot see what you are about to click. */
     uint32_t cursor_source = 1;   /* 0 = none, 1 = the received image, 2 = an arrow */
 
+    /* === CLIP4 2026-10-02 - WHICH WAY THE CLIPBOARD TRAVELS ==============
+     *
+     * 0 = off, 1 = both ways, 2 = this machine -> Shadow, 3 = Shadow -> this
+     * machine. The same four values as `SHADOW_CLIPBOARD`, which this writes;
+     * `ctrl_session.c` documents the wire side and why one key carries both the
+     * on/off and the direction.
+     *
+     * A direction is worth a setting and not a toggle because the two ways have
+     * different costs. "Shadow -> here" means anything copied on the remote
+     * desktop - a password out of its manager, a client's address - lands in
+     * THIS machine's clipboard, where every other application can read it.
+     * "Here -> Shadow" is the reverse exposure. Someone sharing a VM, or using
+     * one for work, has a reason to want exactly one of them.
+     *
+     * Default both ways: that is what the official client does, it is what
+     * makes copy/paste simply work, and the two one-way modes exist for people
+     * who know why they want them.
+     *
+     * Only shown where SHADOW_HAS_CLIPBOARD: a console has no clipboard to
+     * share, so the row would set something nothing reads. */
+    uint32_t clipboard_mode = 1;
+
+    /* === NET1 2026-10-02 - WHICH ADDRESS FAMILY TO DIAL ==================
+     *
+     * 0 = automatic (try both), 4 = IPv4 only, 6 = IPv6 only. Written out as
+     * `SHADOW_FORCE_IPV4` / `SHADOW_FORCE_IPV6`, which existed as environment
+     * variables and had no setting - the "a capability that exists with no
+     * setting" family again, and this one is reachable only by editing a file
+     * on an SD card.
+     *
+     * A tri-state rather than two toggles, so the contradictory "force both"
+     * cannot be produced from the screen at all. `tls_chan.c` documents what
+     * each one costs and why neither is a sane default.
+     *
+     * Automatic by default: it is the behaviour every measurement in this repo
+     * was taken under, and the two forced modes have each been observed to
+     * break a connection that worked - IPv4 from this machine (KB 2026-08-25),
+     * IPv6 on the console (S108). */
+    uint32_t net_family = 0;
+
     // Magnification of the metrics panel and the stream menus, as a
     // percentage. 100 = the reference size (that of a 1280-wide window).
     /* === THE PAUSE MENU ON A 544-LINE PANEL ==========================
