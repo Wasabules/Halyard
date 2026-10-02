@@ -131,6 +131,7 @@ static bool shadowusb_delete_device(const char *vm_host, const char *usb_token,
              host_v4, instance, usb_client_id, console_id);
 
     CURL *h = curl_easy_init();
+    shadow_curl_apply_ca(h);   /* WIN2 - see http.h */
     if (!h) return false;
 
     char auth[1024];
@@ -148,6 +149,7 @@ static bool shadowusb_delete_device(const char *vm_host, const char *usb_token,
     curl_easy_setopt(h, CURLOPT_WRITEFUNCTION, NULL);
 
     CURLcode rc = curl_easy_perform(h);
+    shadow_curl_report(h, rc, "shadowusb_delete_device");   /* DIAG1 */
     long status = 0;
     curl_easy_getinfo(h, CURLINFO_RESPONSE_CODE, &status);
     curl_slist_free_all(hdrs);

@@ -79,6 +79,53 @@ bool http_json_get_string(const char *json, const char *key,
 struct Curl_easy;
 void shadow_curl_apply_share(void *h);
 
+/* === WIN2 2026-10-02 - THE CERTIFICATE STORE, FOR A HANDLE WE DID NOT BUILD =
+ *
+ * Fourteen `curl_easy_init()` handles live OUTSIDE this file (launcher,
+ * proximus, oauth, ctrl_rest, tinag, shadowusb). They each set their own
+ * options, and every one of them sets SSL_VERIFYPEER=1 and then says nothing
+ * about WHICH authorities to verify against - so each relied on libcurl's
+ * built-in default.
+ *
+ * On a Windows build whose DLLs sit beside the executable that default is
+ * wrong, and silently: MSYS2's libcurl derives its CA path from its own DLL's
+ * directory (see SHADOW_CA_DEFAULT in http.c). Fixing `common_setopts` fixed
+ * only the five handles in this file; `vms/<id>/capabilities` and
+ * `vms/<id>/turn-servers` kept failing with CURLE_SSL_CACERT_BADFILE, reported
+ * as `capabilities: HTTP 0 (non-fatal, continuing)` because `get_with_vmid`
+ * neither logs the CURLcode nor sets a status - and then /vm/start failed the
+ * same way, which is the "the very first step failed" that was reported.
+ *
+ * So the rule has ONE home and every handle asks for it, exactly as every
+ * handle already asks for the DNS/TLS share next door. A handle that forgets is
+ * a handle that trusts whatever the host happens to hold - which is why this
+ * sits beside `shadow_curl_apply_share` rather than inside a helper only this
+ * file calls. */
+void shadow_curl_apply_ca(void *h);
+
+/* === DIAG1 2026-10-02 - SAY WHY A TRANSFER FAILED, WHEREVER IT FAILED ======
+ *
+ * The thirteen handles outside this file each call `curl_easy_perform` and
+ * then throw the `CURLcode` away. Two of them do not even set an HTTP status,
+ * so the caller sees 0 and reports it as a status - which is how
+ *
+ *     capabilities: HTTP 0 (non-fatal, continuing)
+ *
+ * came to mean "the CA bundle could not be opened" for an hour. Zero is not a
+ * status; it means the request never got an answer, and only the CURLcode says
+ * what happened instead.
+ *
+ * So: one line, after every perform, with the code, curl's own text, and the
+ * HTTP status when there is one. In the JOURNAL, not on stderr - the journal is
+ * what a user can send and what `devlink` ships; stderr is lost the moment the
+ * window closes.
+ *
+ * `what` names the call ("capabilities", "vm/start", "sse"), because a code
+ * with no subject is as unhelpful as a status of 0. It logs NOTHING on success
+ * beyond what the caller already logs: a line per successful request would bury
+ * the one that matters. */
+void shadow_curl_report(void *h, int curlcode, const char *what);
+
 
 #ifdef __cplusplus
 }

@@ -98,6 +98,7 @@ static void enable_proximus_debug(CURL *h) {
 static bool post_json_bearer(const char *url, const char *bearer, const char *body, http_response *out) {
     out->data = NULL; out->len = 0; out->status = 0;
     CURL *h = curl_easy_init();
+    shadow_curl_apply_ca(h);   /* WIN2 - see http.h */
     shadow_curl_apply_share(h);   /* DNS + session TLS partagees */
     if (!h) return false;
     enable_proximus_debug(h);
@@ -130,6 +131,7 @@ static bool post_json_bearer(const char *url, const char *bearer, const char *bo
     curl_easy_setopt(h, CURLOPT_SSL_VERIFYHOST, 2L);
 
     CURLcode rc = curl_easy_perform(h);
+    shadow_curl_report(h, rc, "post_json_bearer");   /* DIAG1 */
     if (rc == CURLE_OK) curl_easy_getinfo(h, CURLINFO_RESPONSE_CODE, &out->status);
     curl_slist_free_all(headers);
     curl_easy_cleanup(h);
@@ -155,6 +157,7 @@ static char *make_clients_url(const char *proximus_url) {
 static bool get_json_bearer(const char *url, const char *bearer, http_response *out) {
     out->data = NULL; out->len = 0; out->status = 0;
     CURL *h = curl_easy_init();
+    shadow_curl_apply_ca(h);   /* WIN2 - see http.h */
     shadow_curl_apply_share(h);   /* DNS + session TLS partagees */
     if (!h) return false;
     enable_proximus_debug(h);
@@ -177,6 +180,7 @@ static bool get_json_bearer(const char *url, const char *bearer, http_response *
     curl_easy_setopt(h, CURLOPT_SSL_VERIFYHOST, 2L);
 
     CURLcode rc = curl_easy_perform(h);
+    shadow_curl_report(h, rc, "get_json_bearer");   /* DIAG1 */
     if (rc == CURLE_OK) curl_easy_getinfo(h, CURLINFO_RESPONSE_CODE, &out->status);
     curl_slist_free_all(headers);
     curl_easy_cleanup(h);
@@ -507,6 +511,7 @@ bool proximus_dump_stream(const char *proximus_url, const char *jwt,
     sse_ctx ctx = { fopen(out_path, "w"), 0 };
 
     CURL *h = curl_easy_init();
+    shadow_curl_apply_ca(h);   /* WIN2 - see http.h */
     shadow_curl_apply_share(h);   /* DNS + session TLS partagees */
     if (!h) { free(url); if (ctx.out) fclose(ctx.out); return false; }
     enable_proximus_debug(h);
@@ -530,6 +535,7 @@ bool proximus_dump_stream(const char *proximus_url, const char *jwt,
     curl_easy_setopt(h, CURLOPT_SSL_VERIFYHOST, 2L);
 
     CURLcode rc = curl_easy_perform(h);
+    shadow_curl_report(h, rc, "proximus_dump_stream");   /* DIAG1 */
     long status = 0;
     curl_easy_getinfo(h, CURLINFO_RESPONSE_CODE, &status);
     if (http_status) *http_status = status;
@@ -622,6 +628,7 @@ static void *sse_keepalive_thread(void *arg) {
 
     fprintf(stderr, "[sse] connecting %s\n", url); fflush(stderr);
     CURL *h = curl_easy_init();
+    shadow_curl_apply_ca(h);   /* WIN2 - see http.h */
     shadow_curl_apply_share(h);   /* DNS + session TLS partagees */
     if (!h) { fprintf(stderr, "[sse] curl_easy_init FAIL\n"); free(url); k->running = false; return NULL; }
     enable_proximus_debug(h);
@@ -648,6 +655,7 @@ static void *sse_keepalive_thread(void *arg) {
     /* No global TIMEOUT - we cut through abort_flag in the callback. */
 
     CURLcode rc = curl_easy_perform(h);
+    shadow_curl_report(h, rc, "sse_keepalive_thread");   /* DIAG1 */
     long http_status = 0;
     curl_easy_getinfo(h, CURLINFO_RESPONSE_CODE, &http_status);
     fprintf(stderr, "[sse] perform exit rc=%d http_status=%ld error=%s\n",
@@ -697,6 +705,7 @@ static void *sse_keepalive_thread(void *arg) {
         fflush(stderr);
 
         CURL *h2 = curl_easy_init();
+        shadow_curl_apply_ca(h2);   /* WIN2 - see http.h */
         shadow_curl_apply_share(h2);   /* DNS + session TLS partagees */
         if (!h2) break;
         enable_proximus_debug(h2);
@@ -720,6 +729,7 @@ static void *sse_keepalive_thread(void *arg) {
         curl_easy_setopt(h2, CURLOPT_SSL_VERIFYPEER, 1L);
         curl_easy_setopt(h2, CURLOPT_SSL_VERIFYHOST, 2L);
         rc = curl_easy_perform(h2);
+        shadow_curl_report(h2, rc, "sse_keepalive_thread");   /* DIAG1 */
         http_status = 0;
         curl_easy_getinfo(h2, CURLINFO_RESPONSE_CODE, &http_status);
         fprintf(stderr, "[sse] reconnect #%u exit rc=%d http_status=%ld error=%s\n",
@@ -808,6 +818,7 @@ bool proximus_delete_client(const char *proximus_url, const char *jwt,
     http_response resp; resp.data = NULL; resp.len = 0; resp.status = 0;
     bool t = false;
     CURL *h = curl_easy_init();
+    shadow_curl_apply_ca(h);   /* WIN2 - see http.h */
     shadow_curl_apply_share(h);   /* DNS + session TLS partagees */
     if (h) {
         enable_proximus_debug(h);
@@ -835,6 +846,7 @@ bool proximus_delete_client(const char *proximus_url, const char *jwt,
         curl_easy_setopt(h, CURLOPT_WRITEFUNCTION, NULL);
         curl_easy_setopt(h, CURLOPT_WRITEDATA, NULL);
         CURLcode rc = curl_easy_perform(h);
+        shadow_curl_report(h, rc, "proximus_delete_client");   /* DIAG1 */
         if (rc == CURLE_OK) {
             curl_easy_getinfo(h, CURLINFO_RESPONSE_CODE, &resp.status);
             t = true;

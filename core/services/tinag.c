@@ -32,6 +32,7 @@ bool tinag_get_datacenter(const char *email, GapInfo *out, long *http_status) {
     char *url = NULL;
     {
         CURL *escaper = curl_easy_init();
+        shadow_curl_apply_ca(escaper);   /* WIN2 - see http.h */
         if (!escaper) return false;
         char *esc = email && *email ? curl_easy_escape(escaper, email, 0) : strdup("");
         size_t n = strlen(SHADOW_TINAG_BASE) + strlen("datacenter?email=") + (esc ? strlen(esc) : 0) + 1;

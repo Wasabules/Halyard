@@ -159,7 +159,53 @@ static void parse_vm(json_t *jvm, VmInfo *out) {
                     if (keys[0]) strcat(keys, ", ");
                     strcat(keys, key);
                 }
-                fprintf(stderr, "launcher: no VM state; keys seen: %s\n", keys);
+                /* UI12 2026-10-02 - SAY WHAT `status` IS, not just that it
+                 * was not what we expected.
+                 *
+                 * The key list has always contained `status`, so this message
+                 * read as a contradiction: the field is right there. It is the
+                 * SHAPE that does not match - neither a string nor an object
+                 * carrying `state` - and the message gave no way to tell which
+                 * of the two branches above fell through, nor what to write
+                 * instead. The type and the compact value settle it in one
+                 * line. A machine's run state is not a credential; it is
+                 * `started`, `stopped` or the like, which is exactly what the
+                 * screen means to show. */
+                json_t *jst = json_object_get(jvm, "status");
+                const char *shape = !jst ? "absent"
+                                  : json_is_string(jst)  ? "string"
+                                  : json_is_object(jst)  ? "object"
+                                  : json_is_integer(jst) ? "integer"
+                                  : json_is_real(jst)    ? "real"
+                                  : json_is_boolean(jst) ? "boolean"
+                                  : json_is_array(jst)   ? "array"
+                                  : json_is_null(jst)    ? "null" : "?";
+                char *dump = jst ? json_dumps(jst, JSON_COMPACT | JSON_ENCODE_ANY)
+                                 : NULL;
+                /* UI12 - ANSWERED the same day it was instrumented: the server
+                 * sends `"status": null`. There is no run state in this reply
+                 * at all, so leaving `out->state` NULL is correct rather than a
+                 * parse we got wrong, and the live state arrives on the SSE
+                 * stream instead (`status_changed: started`) - which is what
+                 * the connecting screen already follows.
+                 *
+                 * The line stays, at one per process, for two reasons: a
+                 * `status` that one day becomes a string or an object is worth
+                 * noticing, and the previous wording ("no VM state; keys seen:
+                 * ... status ...") read as a contradiction - the field is right
+                 * there in the list it prints. */
+                if (json_is_null(jst)) {
+                    fprintf(stderr,
+                        "launcher: the server sends `status: null` - the VM list "
+                        "carries no run state; it arrives on the SSE stream\n");
+                } else {
+                    fprintf(stderr,
+                        "launcher: `status` is %s = %.200s, neither a string nor an "
+                        "object carrying `state`, so the machine list shows no "
+                        "state; keys seen: %s\n",
+                        shape, dump ? dump : "(none)", keys);
+                }
+                free(dump);
             }
         }
     }
@@ -326,10 +372,25 @@ static struct curl_slist *append_shadow_headers(struct curl_slist *headers, cons
     return headers;
 }
 
+/* DIAG1: the last path segment of a URL, for a log label. Both helpers below
+ * are shared by half a dozen endpoints, so naming the HELPER in the failure
+ * line - "get_with_vmid FAILED" - would say nothing about WHICH call died;
+ * "capabilities FAILED" is what a reader needs. Static buffer, single-threaded
+ * use at one call per perform, and the pointer is consumed immediately. */
+static const char *url_tail(const char *url)
+{
+    if (!url) return "request";
+    const char *last = url;
+    for (const char *p = url; *p; p++)
+        if (*p == '/' && p[1]) last = p + 1;
+    return last;
+}
+
 static bool post_with_vmid(const char *url, const char *bearer, const char *vm_id,
                            const char *body, http_response *out) {
     out->data = NULL; out->len = 0; out->status = 0;
     CURL *h = curl_easy_init();
+    shadow_curl_apply_ca(h);   /* WIN2 - see http.h */
     shadow_curl_apply_share(h);   /* DNS + session TLS partagees */
     if (!h) return false;
     struct curl_slist *headers = NULL;
@@ -359,6 +420,7 @@ static bool post_with_vmid(const char *url, const char *bearer, const char *vm_i
     curl_easy_setopt(h, CURLOPT_SSL_VERIFYHOST, 2L);
 
     CURLcode rc = curl_easy_perform(h);
+    shadow_curl_report(h, rc, url_tail(url));   /* DIAG1 */
     if (rc == CURLE_OK) curl_easy_getinfo(h, CURLINFO_RESPONSE_CODE, &out->status);
     curl_slist_free_all(headers);
     curl_easy_cleanup(h);
@@ -368,6 +430,7 @@ static bool post_with_vmid(const char *url, const char *bearer, const char *vm_i
 static bool get_with_vmid(const char *url, const char *bearer, const char *vm_id, http_response *out) {
     out->data = NULL; out->len = 0; out->status = 0;
     CURL *h = curl_easy_init();
+    shadow_curl_apply_ca(h);   /* WIN2 - see http.h */
     shadow_curl_apply_share(h);   /* DNS + session TLS partagees */
     if (!h) return false;
     struct curl_slist *headers = NULL;
@@ -388,6 +451,7 @@ static bool get_with_vmid(const char *url, const char *bearer, const char *vm_id
     curl_easy_setopt(h, CURLOPT_SSL_VERIFYHOST, 2L);
 
     CURLcode rc = curl_easy_perform(h);
+    shadow_curl_report(h, rc, url_tail(url));   /* DIAG1 */
     if (rc == CURLE_OK) curl_easy_getinfo(h, CURLINFO_RESPONSE_CODE, &out->status);
     curl_slist_free_all(headers);
     curl_easy_cleanup(h);

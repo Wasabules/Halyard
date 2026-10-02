@@ -40,12 +40,42 @@ static CURLSH *g_share = NULL;
  * Encrypt chains every Shadow endpoint presents. Narrowing the store disables
  * nothing: verification stays ON, against fewer roots but the right ones.
  * `SHADOW_CA_FILE` imposes a different one. */
+/* === WIN2 2026-10-02 - WINDOWS JOINS THE CONSOLES =========================
+ *
+ * "le systeme sait, sur un bureau" was true right up to the moment the Windows
+ * build stopped borrowing MSYS2's directory layout.
+ *
+ * MSYS2's libcurl is RELOCATABLE: it does not hold an absolute path to its CA
+ * bundle, it derives one from the directory its own DLL sits in, as
+ * `<dll dir>/../etc/ssl/certs/ca-bundle.crt`. From `/ucrt64/bin` that lands on
+ * the real bundle. Copy `libcurl-4.dll` next to `halyard.exe` - which is
+ * exactly what `tools/bundle-windows-dlls.sh` does so the application starts
+ * without MSYS2 on PATH - and the same code looks for
+ * `<checkout>/etc/ssl/certs/ca-bundle.crt`, which does not exist. Every
+ * verified request then fails with CURLE_SSL_CACERT_BADFILE.
+ *
+ * Measured, 2026-10-02: the failure is invisible in the journal, which says
+ * only `http_get : ECHEC apres 0 ms (pas de decoupage)`; the reason is on
+ * stderr. And it presents to the user as "Centre de donnees injoignable", which
+ * names the network - the one thing that was working. `http_put` kept working
+ * throughout and hid the shape of it, because that one call sets
+ * SSL_VERIFYPEER=0 (a literal IP, see below) and therefore never opens the
+ * bundle at all.
+ *
+ * So the desktop now points at the SAME bundle the consoles use, shipped in
+ * `resources/`, and depends on no directory layout but its own. ISRG Root X1 is
+ * the root of the Let's Encrypt chain every Shadow endpoint presents, and the
+ * two consoles have relied on nothing else for months.
+ *
+ * SHADOW_CA_BUNDLED=0 restores curl's own default (the system store on a
+ * desktop), for a checkout run from an MSYS2 shell where it does work.
+ * SHADOW_CA_FILE still imposes any other file, on every target. */
 #if defined(__SWITCH__)
 #  define SHADOW_CA_DEFAULT "romfs:/cacert.pem"
 #elif defined(__vita__) || defined(__psp2__)
 #  define SHADOW_CA_DEFAULT "app0:resources/cacert.pem"
 #else
-#  define SHADOW_CA_DEFAULT NULL      /* le systeme sait, sur un bureau */
+#  define SHADOW_CA_DEFAULT "resources/cacert.pem"
 #endif
 
 /* === SEEING INSIDE THE HANDSHAKE =====================================
@@ -422,6 +452,61 @@ void shadow_curl_apply_share(CURL *h)
     if (h && g_share) curl_easy_setopt(h, CURLOPT_SHARE, g_share);
 }
 
+void shadow_curl_apply_ca(CURL *h)
+{
+    if (!h) return;
+    /* WIN2: the desktop is in here now too - see SHADOW_CA_DEFAULT above
+     * for the relocatable-libcurl trap this closes. */
+    const char *ca = getenv("SHADOW_CA_FILE");
+    /* A FLAG, not a pointer comparison against the literal: comparing a
+     * `const char *` with a string literal is unspecified (-Waddress), and
+     * the question being asked is "is this OUR default" - which is a fact
+     * about how `ca` was chosen, not about where it points. */
+    int ca_is_ours = 0;
+    if (!ca) {
+        const char *b = getenv("SHADOW_CA_BUNDLED");
+        if (!b || atoi(b) != 0) { ca = SHADOW_CA_DEFAULT; ca_is_ours = 1; }
+    }
+#if !defined(__SWITCH__) && !defined(__vita__) && !defined(__psp2__)
+    /* On a desktop the path is RELATIVE to the working directory, so it is
+     * checked before being imposed: a build run from somewhere else must
+     * fall back on curl's default rather than fail every request with a
+     * bundle it cannot open - which is the very defect this block exists
+     * to fix, and it would be poor form to reintroduce it pointing the
+     * other way. The consoles need no such check: romfs and app0 are
+     * mounted at fixed addresses. */
+    if (ca && ca_is_ours) {
+        FILE *probe = fopen(ca, "rb");
+        if (probe) {
+            fclose(probe);
+        } else {
+            JOURNAL_INFO_(JOURNAL_CAT_NETWORK,
+                "[WIN2] %s is not readable from this working directory - "
+                "falling back on curl's own certificate store", ca);
+            ca = NULL;
+        }
+    }
+#endif
+    if (ca) curl_easy_setopt(h, CURLOPT_CAINFO, ca);
+}
+
+void shadow_curl_report(CURL *h, int curlcode, const char *what)
+{
+    if (curlcode == CURLE_OK) return;            /* DIAG1: failures only */
+    long status = 0;
+    double total = 0.0;
+    if (h) {
+        curl_easy_getinfo(h, CURLINFO_RESPONSE_CODE, &status);
+        curl_easy_getinfo(h, CURLINFO_TOTAL_TIME, &total);
+    }
+    /* The URL is deliberately absent: these URLs carry a VM id and sometimes a
+     * token in a query string, and this line is meant to be sendable. */
+    JOURNAL_INFO_(JOURNAL_CAT_NETWORK,
+        "[DIAG1] %s FAILED after %.0f ms - curl %d (%s), HTTP %ld",
+        what ? what : "request", total * 1000.0, curlcode,
+        curl_easy_strerror((CURLcode)curlcode), status);
+}
+
 static void common_setopts(CURL *h, http_response *out) {
     shadow_curl_apply_share(h);
     curl_easy_setopt(h, CURLOPT_SOCKOPTFUNCTION, shadow_sockopt_cb);
@@ -471,12 +556,7 @@ static void common_setopts(CURL *h, http_response *out) {
      * consoles, from `SHADOW_CA_DEFAULT`, and this `#ifdef __SWITCH__` block
      * keeps only the history above. */
 #endif
-#if defined(__SWITCH__) || defined(__vita__) || defined(__psp2__)
-    {
-        const char *ca = getenv("SHADOW_CA_FILE");
-        curl_easy_setopt(h, CURLOPT_CAINFO, ca ? ca : SHADOW_CA_DEFAULT);
-    }
-#endif
+    shadow_curl_apply_ca(h);
 
     if (getenv("SHADOW_CURL_VERBOSE")) {
         /* The callback is CONSOLE-ONLY, and so is this line - it was not, and

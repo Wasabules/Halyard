@@ -40,6 +40,7 @@ static int jint(json_t *root, const char *key, int defval) {
 static char *url_encode(const char *s) {
     if (!s) return strdup("");
     CURL *h = curl_easy_init();
+    shadow_curl_apply_ca(h);   /* WIN2 - see http.h */
     shadow_curl_apply_share(h);   /* DNS + session TLS partagees */
     if (!h) return NULL;
     char *enc = curl_easy_escape(h, s, 0);

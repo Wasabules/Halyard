@@ -79,7 +79,38 @@ int tls_chan_tcp_connect_abortable(const char *host, int port, int timeout_ms,
             v4 = e ? atoi(e) : 0;
 #endif
         }
-        hints.ai_family = v4 ? AF_INET : AF_UNSPEC;
+        /* === NET1 2026-10-02 - AND THE OTHER DIRECTION ====================
+         *
+         * `SHADOW_FORCE_IPV4` has existed since S108 to reproduce the console's
+         * path on a desktop. The symmetric case had no toggle at all, and it is
+         * the one that costs time HERE.
+         *
+         * Measured on this machine, 2026-10-02, control channel on `:9011`
+         * while the VM's streamer was still coming up: five retry rounds, each
+         * trying v6 then v4, every attempt timing out - 1200 ms, 1200 ms,
+         * 1200 ms, then 5000 ms as the ladder widens. The v4 attempts alone
+         * burned 8.6 s. When the streamer finally answered, it answered over
+         * **v6 in 22 ms**. So on a network where one family works and the other
+         * is a black hole, HALF of every retry round is spent dialling an
+         * address that will never answer, and the guard timeout - not the
+         * server - sets how long the user waits.
+         *
+         * `SHADOW_FORCE_IPV6=1` drops the v4 attempts. It is consulted only
+         * when IPv4 is not already forced, so the two can never contradict:
+         * `SHADOW_FORCE_IPV4` keeps its name and its precedence, because KB.md
+         * §9 and two docs cite it (and CLAUDE.md forbids renaming a key).
+         *
+         * NEITHER is the right default. Forcing v4 from this machine PREVENTED
+         * the control channel from connecting at all (KB.md 2026-08-25, three
+         * attempts), and forcing v6 would strand any network without it. The
+         * default stays AF_UNSPEC on desktop, which tries both; the setting is
+         * for someone whose network has already told them which one works. */
+        static int v6 = -1;
+        if (v6 < 0) {
+            const char *e6 = getenv("SHADOW_FORCE_IPV6");
+            v6 = e6 ? atoi(e6) : 0;
+        }
+        hints.ai_family = v4 ? AF_INET : (v6 ? AF_INET6 : AF_UNSPEC);
     }
     hints.ai_socktype = SOCK_STREAM;
     char port_str[16];

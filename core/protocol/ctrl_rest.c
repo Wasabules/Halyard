@@ -159,6 +159,7 @@ bool ctrl_rest_unregister(const char *vm_host, const char *bearer,
     /* libcurl DELETE - http.c carries no http_delete helper, so this one
      * goes straight through curl_easy. */
     CURL *h = curl_easy_init();
+    shadow_curl_apply_ca(h);   /* WIN2 - see http.h */
     if (!h) return false;
 
     char auth[1024];
@@ -178,6 +179,7 @@ bool ctrl_rest_unregister(const char *vm_host, const char *bearer,
     curl_easy_setopt(h, CURLOPT_WRITEFUNCTION, NULL);
 
     CURLcode rc = curl_easy_perform(h);
+    shadow_curl_report(h, rc, "ctrl_rest_unregister");   /* DIAG1 */
     long status = 0;
     curl_easy_getinfo(h, CURLINFO_RESPONSE_CODE, &status);
     curl_slist_free_all(hdrs);
@@ -194,6 +196,7 @@ static bool delete_client_by_id(const char *host_v4, const char *bearer,
     char url[640];
     snprintf(url, sizeof(url), "https://%s/%d/clients/%s", host_v4, instance, client_id);
     CURL *h = curl_easy_init();
+    shadow_curl_apply_ca(h);   /* WIN2 - see http.h */
     if (!h) return false;
     char auth[1024];
     snprintf(auth, sizeof(auth), "Authorization: Bearer %s", bearer);
@@ -209,6 +212,7 @@ static bool delete_client_by_id(const char *host_v4, const char *bearer,
     curl_easy_setopt(h, CURLOPT_TIMEOUT, 10L);
     curl_easy_setopt(h, CURLOPT_WRITEFUNCTION, NULL);
     CURLcode rc = curl_easy_perform(h);
+    shadow_curl_report(h, rc, "delete_client_by_id");   /* DIAG1 */
     long status = 0;
     curl_easy_getinfo(h, CURLINFO_RESPONSE_CODE, &status);
     curl_slist_free_all(hdrs);
