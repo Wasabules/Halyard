@@ -173,6 +173,7 @@ if pkg-config --exists Qt6Core 2>/dev/null; then
     run_cpp test_qt_shortcuts test_qt_shortcuts.cpp -std=c++20 $(pkg-config --cflags --libs Qt6Core)
     run_cpp test_qt_machine_state test_qt_machine_state.cpp -std=c++20 $(pkg-config --cflags --libs Qt6Core)
     run_cpp test_qt_hud_grade test_qt_hud_grade.cpp -std=c++20 $(pkg-config --cflags --libs Qt6Core)
+    run_cpp test_qt_session_limit test_qt_session_limit.cpp -std=c++20 $(pkg-config --cflags --libs Qt6Core)
 else
     echo "== the Qt settings table / language choice: SKIPPED ==  (no Qt6Core through pkg-config)"
 fi

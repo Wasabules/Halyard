@@ -142,6 +142,10 @@ private:
      * when the settings window changes a binding. */
     void updateHeader(int index);   /* D1 */
     QString sessionTimeLeft() const;   /* CAPS2 */
+    /* LIM1 - the end-of-session warnings. */
+    void    checkSessionLimit();
+    void    showBanner(const QString &text, bool urgent);
+    QString fmtLeft(int seconds) const;
     QScreen *fullscreenTarget() const;   /* SCR1 */
     void applyShortcuts();
     QKeySequence keySequenceFor(int action) const;
@@ -243,6 +247,8 @@ private:
     QShortcut              *screenshot_shortcut_ = nullptr;
     QTimer                 *overlay_watch_    = nullptr;  /* OV10 - overlap poll */
     QLabel                 *toast_ = nullptr;
+    QLabel                 *banner_ = nullptr;   /* LIM1 - it stays */
+    int                     limit_state_ = 0;    /* LIM1 - thresholds done */
     QTimer                 *toast_timer_ = nullptr;
     bool                    app_active_ = true;
 

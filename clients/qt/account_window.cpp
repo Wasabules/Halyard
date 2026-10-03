@@ -3,6 +3,7 @@
 #include "account_window.hpp"
 
 #include "core_scope.hpp"
+#include "session_limit.hpp"
 #include "theme.hpp"
 
 #include <QDateTime>
@@ -41,16 +42,12 @@ struct Caps {
     bool    fileTransferAllowed = false, gamepadAllowed = false;
 };
 
-/* Seconds as a person counts them. Hours and minutes, never seconds: these
- * are allowances measured in tens of hours, and a raw second count is a
- * number the reader has to divide twice before it says anything. (Not an
- * example taken from a real account: these are somebody's figures.) */
+/* LIM1 - the one formatter, shared with the stream's warnings. It used to be
+ * a copy here, and two copies of "hours and minutes" is how this window and
+ * the banner end up disagreeing about the separator. */
 QString hhmm(int seconds)
 {
-    if (seconds <= 0) return QStringLiteral("-");
-    const int h = seconds / 3600, m = (seconds % 3600) / 60;
-    return h > 0 ? AccountWindow::tr("%1 h %2").arg(h).arg(m, 2, 10, QLatin1Char('0'))
-                 : AccountWindow::tr("%1 min").arg(m);
+    return seconds <= 0 ? QStringLiteral("-") : halyard::fmtHours(seconds);
 }
 
 /* An ISO 8601 instant in the reader's own locale, or the raw string when it
@@ -311,10 +308,16 @@ void AccountWindow::refresh()
             if (c.maxDuration > 0) {
                 const double frac = double(c.fairUseUsage) / double(c.maxDuration);
                 v_fair_bar_->setValue(int(qBound(0.0, frac, 1.0) * 1000));
-                v_fair_text_->setText(tr("%1 of %2 used (%3 %)")
-                                          .arg(hhmm(c.fairUseUsage),
-                                               hhmm(c.maxDuration))
-                                          .arg(frac * 100.0, 0, 'f', 1));
+                /* LIM1 - what is LEFT first. "41 h of 210 h used" makes the
+                 * reader do the subtraction; the question being asked is how
+                 * much is still there. */
+                const int left = c.maxDuration - c.fairUseUsage;
+                v_fair_text_->setText(
+                    left > 0 ? tr("%1 left of %2 this period (%3 % used)")
+                                   .arg(hhmm(left), hhmm(c.maxDuration))
+                                   .arg(frac * 100.0, 0, 'f', 1)
+                             : tr("the %1 for this period is used up")
+                                   .arg(hhmm(c.maxDuration)));
                 /* The SERVER's threshold, not ours. */
                 const bool warn = c.fairUseAlert > 0.0 && frac >= c.fairUseAlert;
                 v_fair_bar_->setStyleSheet(

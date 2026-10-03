@@ -4,14 +4,6 @@
 <context>
     <name>AccountWindow</name>
     <message>
-        <source>%1 h %2</source>
-        <translation>%1 h %2</translation>
-    </message>
-    <message>
-        <source>%1 min</source>
-        <translation>%1 min</translation>
-    </message>
-    <message>
         <source>yes</source>
         <translation>oui</translation>
     </message>
@@ -144,8 +136,12 @@
         <translation>désactivées</translation>
     </message>
     <message>
-        <source>%1 of %2 used (%3 %)</source>
-        <translation>%1 utilisées sur %2 (%3 %)</translation>
+        <source>%1 left of %2 this period (%3 % used)</source>
+        <translation>%1 restantes sur %2 cette période (%3 % utilisées)</translation>
+    </message>
+    <message>
+        <source>the %1 for this period is used up</source>
+        <translation>les %1 de cette période sont épuisées</translation>
     </message>
     <message>
         <source>the server gave no allowance</source>
@@ -795,6 +791,14 @@
         <translation>Shadow met fin à cette session.</translation>
     </message>
     <message>
+        <source>You have used %1 of your %2 monthly allowance - %3 left.</source>
+        <translation>Vous avez utilisé %1 sur %2 de quota mensuel - %3 restantes.</translation>
+    </message>
+    <message>
+        <source>Your monthly allowance of %1 is used up.</source>
+        <translation>Votre quota mensuel de %1 est épuisé.</translation>
+    </message>
+    <message>
         <source>Start over</source>
         <translation>Recommencer</translation>
     </message>
@@ -881,6 +885,43 @@
     <message>
         <source>%1 min left</source>
         <translation>%1 min restantes</translation>
+    </message>
+    <message>
+        <source>The session has reached its %1 limit. Shadow is ending it - reconnect for a new one.</source>
+        <translation>La session a atteint sa limite de %1. Shadow y met fin - reconnectez-vous pour en ouvrir une nouvelle.</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n minute(s) left in this session. Reconnecting gives you a new one.</source>
+        <translation>
+            <numerusform>%n minute restante dans cette session. Vous reconnecter en ouvre une nouvelle.</numerusform>
+            <numerusform>%n minutes restantes dans cette session. Vous reconnecter en ouvre une nouvelle.</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Session time is up.</source>
+        <translation>Temps de session écoulé.</translation>
+    </message>
+    <message>
+        <source>This session ends in %1.</source>
+        <translation>Cette session se termine dans %1.</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n second(s)</source>
+        <translation>
+            <numerusform>%n seconde</numerusform>
+            <numerusform>%n secondes</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>%1 h %2</source>
+        <translation>%1 h %2</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n minute(s)</source>
+        <translation>
+            <numerusform>%n minute</numerusform>
+            <numerusform>%n minutes</numerusform>
+        </translation>
     </message>
     <message>
         <source>No picture to capture yet.</source>

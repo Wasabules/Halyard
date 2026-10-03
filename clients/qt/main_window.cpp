@@ -15,6 +15,7 @@ extern "C" {
 #include "file_manager_window.hpp"
 #include "about_dialog.hpp"
 #include "account_window.hpp"
+#include "session_limit.hpp"
 #include "machine_card.hpp"
 #include "pairing_widgets.hpp"
 #include "shortcuts.hpp"
@@ -775,7 +776,28 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
 
     /* CAPS2 - what the account is allowed, kept for the session. */
     connect(boot_, &BootstrapWorker::capabilities, this,
-            [this](const BootstrapWorker::Caps &c) { caps_ = c; },
+            [this](const BootstrapWorker::Caps &c) {
+                caps_ = c;
+                /* === LIM1 — the PERIOD's allowance, which is the other one
+                 *
+                 * `max_duration` against `fair_use_usage`, at the SERVER's
+                 * own `fair_use_alert_threshold` rather than a number we
+                 * picked. Said once, at connect, and not repeated during the
+                 * session: it does not change while streaming, and the
+                 * session countdown is the one that does. */
+                if (halyard::fairUseAlert(c.fairUseUsage, c.maxDuration,
+                                          c.fairUseAlert)) {
+                    const int left = c.maxDuration - c.fairUseUsage;
+                    showToast(left > 0
+                        ? tr("You have used %1 of your %2 monthly allowance - "
+                             "%3 left.")
+                              .arg(halyard::fmtHours(c.fairUseUsage),
+                                   halyard::fmtHours(c.maxDuration),
+                                   halyard::fmtHours(left))
+                        : tr("Your monthly allowance of %1 is used up.")
+                              .arg(halyard::fmtHours(c.maxDuration)));
+                }
+            },
             Qt::QueuedConnection);
 
     connect(sess_, &SessionWorker::frameReady, video_,
@@ -797,6 +819,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
                 video_->setStatus((ok ? tr("session ended: ")
                                       : tr("session stopped: ")) + why);
                 session_started_.invalidate();   /* CAPS2 - stop counting */
+                if (banner_) banner_->hide();    /* LIM1 */
                 /* VID1 - say so in the middle of the screen. Without this the
                  * last decoded frame stayed on display and a session that had
                  * ended looked like one that had frozen. */
@@ -1154,6 +1177,103 @@ QString MainWindow::sessionTimeLeft() const
                  : tr("%1 min left").arg(m);
 }
 
+/* === LIM1 2026-10-03 — TELL SOMEBODY BEFORE THE SESSION ENDS ============
+ *
+ * `usage.max_session_length` is ONE SESSION's ceiling - six hours on the
+ * account measured - and when it runs out Shadow ends the session. The
+ * client knew the number (CAPS2 put it in the status line) and did nothing
+ * with it: the stream simply stopped.
+ *
+ * Note what this limit is NOT. It is not a daily or a monthly allowance:
+ * reconnecting gives a fresh six hours, subject to `usage.max_duration`,
+ * which is the period's fair use and is warned about separately at connect.
+ * A message that confused the two would be alarming for the wrong reason.
+ *
+ * Thresholds and the once-only rule live in `session_limit.hpp`, pure and
+ * tested - the edges are all "did this fire exactly once", and verifying
+ * that by watching a stream for 5 h 45 is not verifying it.
+ *
+ * A toast at every threshold, and from five minutes a BANNER that stays:
+ * a toast is gone in three seconds and the last stretch is exactly when
+ * someone may be looking at a game rather than at a notification. */
+void MainWindow::checkSessionLimit()
+{
+    if (!session_started_.isValid() || caps_.maxSessionLength <= 0) {
+        if (banner_) banner_->hide();
+        return;
+    }
+
+    const int elapsed = int(session_started_.elapsed() / 1000);
+    const halyard::LimitWarning w =
+        halyard::sessionLimitCheck(elapsed, caps_.maxSessionLength, &limit_state_);
+
+    if (w.fired) {
+        if (w.minutes == 0)
+            showToast(tr("The session has reached its %1 limit. Shadow is "
+                         "ending it - reconnect for a new one.")
+                          .arg(halyard::fmtHours(caps_.maxSessionLength)));
+        else
+            showToast(tr("%n minute(s) left in this session. Reconnecting "
+                         "gives you a new one.", "", w.minutes));
+    }
+
+    /* The banner from Warn upward, and it is re-set on every tick so the
+     * minutes count down inside it rather than freezing at the threshold. */
+    if (w.level == halyard::LimitLevel::Warn
+        || w.level == halyard::LimitLevel::Urgent) {
+        const int left = caps_.maxSessionLength - elapsed;
+        showBanner(left <= 0
+                       ? tr("Session time is up.")
+                       : tr("This session ends in %1.").arg(fmtLeft(left)),
+                   w.level == halyard::LimitLevel::Urgent);
+    } else if (banner_) {
+        banner_->hide();
+    }
+}
+
+/* LIM1 - a strip that stays, over the picture, in and out of fullscreen.
+ * Same window recipe as the toast (OV10: parented, Qt::Tool, NOT topmost)
+ * and the same gate, so it cannot outlive the stream or float over another
+ * application. */
+void MainWindow::showBanner(const QString &text, bool urgent)
+{
+    if (!overlaysAllowed()) { if (banner_) banner_->hide(); return; }
+    if (!banner_) {
+        banner_ = new QLabel(this, Qt::FramelessWindowHint | Qt::Tool |
+                                   Qt::WindowTransparentForInput);
+        banner_->setAttribute(Qt::WA_TranslucentBackground);
+        banner_->setAttribute(Qt::WA_ShowWithoutActivating);
+        banner_->setAlignment(Qt::AlignCenter);
+    }
+    const QColor c = urgent ? halyard::theme::bad(this) : halyard::theme::warn(this);
+    banner_->setStyleSheet(
+        QStringLiteral("color:#ffffff; background:rgba(%1,%2,%3,230);"
+                       "padding:7px 18px; border-radius:0px; font-weight:bold;")
+            .arg(c.red()).arg(c.green()).arg(c.blue()));
+    banner_->setText(text);
+    banner_->adjustSize();
+
+    /* Across the TOP of the picture: the bottom is where a game puts its own
+     * status, and the toast already lives there. */
+    const QRect r = videoGlobalRect();
+    if (!r.isNull()) {
+        banner_->setFixedWidth(r.width());
+        banner_->move(r.left(), r.top());
+    }
+    banner_->show();
+    banner_->raise();
+}
+
+/* LIM1 - "4 h 05" / "12 min" / "40 s". Seconds only in the last minute,
+ * because that is the one time they are the thing being watched. */
+QString MainWindow::fmtLeft(int seconds) const
+{
+    if (seconds < 60) return tr("%n second(s)", "", seconds);
+    const int h = seconds / 3600, m = (seconds % 3600) / 60;
+    return h > 0 ? tr("%1 h %2").arg(h).arg(m, 2, 10, QLatin1Char('0'))
+                 : tr("%n minute(s)", "", m);
+}
+
 void MainWindow::updateOverlayVisibility()
 {
     const bool ok = overlaysAllowed();
@@ -1166,8 +1286,10 @@ void MainWindow::updateOverlayVisibility()
     if (!overlay_watch_) {
         overlay_watch_ = new QTimer(this);
         overlay_watch_->setInterval(250);
-        connect(overlay_watch_, &QTimer::timeout, this,
-                &MainWindow::updateOverlayVisibility);
+        connect(overlay_watch_, &QTimer::timeout, this, [this] {
+            updateOverlayVisibility();
+            checkSessionLimit();   /* LIM1 - same tick, no second timer */
+        });
     }
     if (watch && !overlay_watch_->isActive())      overlay_watch_->start();
     else if (!watch && overlay_watch_->isActive()) overlay_watch_->stop();
@@ -1176,6 +1298,7 @@ void MainWindow::updateOverlayVisibility()
     if (!ok) {
         if (stream_overlay_) stream_overlay_->hide();
         if (toast_)          toast_->hide();
+        if (banner_)         banner_->hide();   /* LIM1 - same gate */
     }
     if (ok) repositionOverlays();
 }
@@ -1970,6 +2093,7 @@ void MainWindow::onBootstrapReady(const BootstrapWorker::Ready &r)
     video_->setStatus(tr("opening the stream on :%1").arg(r.portBase + 11));
     if (video_) video_->beginSession();   /* VID1 - back to the waiting panel */
     session_started_.start();             /* CAPS2 - the countdown's origin */
+    limit_state_ = 0;                     /* LIM1 - a new session, new warnings */
     setPage(PageStreaming);
 
     /* FM1 - the file manager becomes reachable. The SFTP channel is granted a

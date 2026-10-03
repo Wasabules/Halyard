@@ -31,6 +31,12 @@ receiving.
   characters.
 - **Configurable keyboard shortcuts**, with a warning when two commands share
   one.
+- **A warning before a session runs out.** Shadow ends a session after a fixed
+  time (six hours on the account this was measured against); the client now
+  says so at thirty, fifteen, five and one minute, and keeps a banner over the
+  picture for the last five. Reconnecting gives you a new session.
+- **A warning when the monthly allowance is nearly spent**, at the threshold
+  Shadow itself sets rather than one we picked.
 - **A light/dark/automatic theme**, and animations that honour the system's
   "reduce animations" setting.
 
