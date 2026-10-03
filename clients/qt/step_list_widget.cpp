@@ -183,8 +183,13 @@ StepListWidget::StepListWidget(QWidget *parent) : QWidget(parent)
         r.title = t;
 
         auto *row = new QWidget(card);
+        /* UI7 - named, so the highlight below can SELECT it. */
+        row->setObjectName(QStringLiteral("stepRow"));
         auto *rl  = new QHBoxLayout(row);
-        rl->setContentsMargins(0, 3, 0, 3);
+        /* UI7 - 8 px of left margin on EVERY row, lit or not, so the live
+         * row's 2 px bar has somewhere to sit and nothing moves sideways when
+         * a step starts. A row that shifts under the eye looks broken. */
+        rl->setContentsMargins(8, 3, 0, 3);
         rl->setSpacing(theme::SpaceRow);
 
         r.dot = new StepDot(row);
@@ -404,17 +409,31 @@ void StepListWidget::refresh(int index)
                            (r.state == State::Running ? QStringLiteral("font-weight:bold;")
                                                       : QString()));
 
-    /* UI7 - the live row, tinted, with an accent bar down its left edge. Set
-     * on the ROW and not on the label so the tint spans the dot and the detail
-     * too; a stripe behind one of three widgets reads as a highlight gone
-     * wrong. The accent is taken at 22/255 - enough to find, not enough to
-     * compete with the text on it. */
+    /* === UI7 2026-10-03 - THE HIGHLIGHT NEEDS A SELECTOR ==================
+     *
+     * The first version set `border-left: 2px solid ...` on the row widget
+     * with no selector. A selector-less stylesheet applies to the widget AND
+     * EVERY DESCENDANT, so the row, the dot, the title and the detail each
+     * drew their own left border - three stripes per step, reported as
+     * "3 bordures gauche a chaque texte". It is the same Qt trap as a
+     * selector-less `background`, and it is invisible until a rule happens to
+     * be one that looks wrong when repeated.
+     *
+     * `QWidget#stepRow` matches the row only. The tint spans the dot and the
+     * detail because it is on their PARENT, which is what was wanted - a
+     * stripe behind one of three widgets reads as a highlight gone wrong. The
+     * accent at 22/255 is enough to find and not enough to compete with the
+     * text on it. */
     if (QWidget *row = r.label->parentWidget()) {
         if (r.state == State::Running) {
-            QColor a = theme::accent(this);
+            const QColor a = theme::accent(this);
             row->setStyleSheet(
-                QStringLiteral("background: rgba(%1,%2,%3,22);"
-                               "border-left: 2px solid %4; border-radius: 4px;")
+                QStringLiteral("QWidget#stepRow {"
+                               "  background: rgba(%1,%2,%3,22);"
+                               "  border-left: 2px solid %4;"
+                               "  border-top-right-radius: 4px;"
+                               "  border-bottom-right-radius: 4px;"
+                               "}")
                     .arg(a.red()).arg(a.green()).arg(a.blue()).arg(a.name()));
         } else {
             row->setStyleSheet(QString());

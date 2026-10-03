@@ -748,6 +748,11 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
             [this](bool ok, const QString &why) {
                 video_->setStatus((ok ? tr("session ended: ")
                                       : tr("session stopped: ")) + why);
+                /* VID1 - say so in the middle of the screen. Without this the
+                 * last decoded frame stayed on display and a session that had
+                 * ended looked like one that had frozen. */
+                video_->showMessage(ok ? tr("Session ended") : tr("Session stopped"),
+                                    why);
                 session_live_ = false;
                 /* FM1 - the SFTP credential died with the session, so the file
                  * manager is now pointing at nothing: close it and grey the
@@ -1752,6 +1757,7 @@ void MainWindow::onBootstrapReady(const BootstrapWorker::Ready &r)
     steps_->setState(6, StepListWidget::State::Done,
                      QStringLiteral("%1:%2").arg(r.vmHost).arg(r.portBase));
     video_->setStatus(tr("opening the stream on :%1").arg(r.portBase + 11));
+    if (video_) video_->beginSession();   /* VID1 - back to the waiting panel */
     setPage(PageStreaming);
 
     /* FM1 - the file manager becomes reachable. The SFTP channel is granted a

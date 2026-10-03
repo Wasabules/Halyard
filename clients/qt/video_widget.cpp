@@ -13,6 +13,14 @@
 #include <QVBoxLayout>
 #include <QVideoSink>
 #include <QVideoWidget>
+#include <QElapsedTimer>
+#include <QPainter>
+#include <QStackedLayout>
+#include <QTimer>
+
+#include <cmath>
+
+#include "theme.hpp"
 #include <QWheelEvent>
 #include <QCursor>
 #include <QPixmap>
@@ -23,6 +31,111 @@ extern "C" {
 #include "core/input/shadow_input.h"
 #include "core/protocol/cursor_state.h"
 }
+
+/* === VID1 — THE WAITING PANEL ============================================
+ *
+ * Painted rather than assembled from labels, for two reasons. The spinner has
+ * to be drawn anyway, and everything here sits on a near-black field that is
+ * NOT the palette's window colour - a QLabel on it would need its own colour
+ * override, which is three stylesheets for what is four drawText calls.
+ *
+ * It paints its own background, so there is never a frame where the area is
+ * undefined; that blank frame is what the report called a black screen. */
+class VideoWidget::Placeholder : public QWidget
+{
+public:
+    explicit Placeholder(QWidget *parent) : QWidget(parent)
+    {
+        setAutoFillBackground(true);
+        spin_ = new QTimer(this);
+        spin_->setInterval(33);
+        connect(spin_, &QTimer::timeout, this, [this] {
+            phase_ = std::fmod(phase_ + 0.025, 1.0);
+            update();
+        });
+    }
+
+    void setBusy(const QString &title, const QString &detail)
+    {
+        title_ = title;
+        detail_ = detail;
+        busy_ = true;
+        since_.start();
+        if (!spin_->isActive() && halyard::theme::animationsEnabled()) spin_->start();
+        update();
+    }
+
+    void setIdle(const QString &title, const QString &detail)
+    {
+        title_ = title;
+        detail_ = detail;
+        busy_ = false;
+        spin_->stop();
+        update();
+    }
+
+    /* The line the session's own progress writes, under the title. */
+    void setDetail(const QString &detail) { detail_ = detail; update(); }
+
+protected:
+    void paintEvent(QPaintEvent *) override
+    {
+        QPainter p(this);
+        p.setRenderHint(QPainter::Antialiasing, true);
+        p.fillRect(rect(), QColor(0x10, 0x10, 0x14));
+
+        const QPointF c(width() / 2.0, height() / 2.0 - 26);
+
+        if (busy_) {
+            /* A ring and a three-quarter arc, the same gesture as the
+             * connecting screen's dots, at 22 px radius. */
+            const QRectF r(c.x() - 22, c.y() - 22, 44, 44);
+            QColor faint = halyard::theme::accent(this);
+            faint.setAlphaF(0.25f);
+            p.setPen(QPen(faint, 3));
+            p.drawArc(r, 0, 360 * 16);
+            p.setPen(QPen(halyard::theme::accent(this), 3, Qt::SolidLine, Qt::RoundCap));
+            p.drawArc(r, int(-phase_ * 360.0 * 16.0), -270 * 16);
+        } else {
+            /* Not busy: a plain dot, so the layout does not jump between the
+             * two states and nothing suggests work is still going on. */
+            p.setPen(Qt::NoPen);
+            p.setBrush(QColor(0x55, 0x58, 0x62));
+            p.drawEllipse(c, 7, 7);
+        }
+
+        QFont f = font();
+        f.setPixelSize(17);
+        f.setBold(true);
+        p.setFont(f);
+        p.setPen(QColor(0xec, 0xec, 0xf0));
+        p.drawText(QRect(0, int(c.y()) + 40, width(), 26),
+                   Qt::AlignHCenter | Qt::AlignTop, title_);
+
+        f.setPixelSize(12);
+        f.setBold(false);
+        p.setFont(f);
+        p.setPen(QColor(0x9a, 0x9d, 0xa8));
+        QString sub = detail_;
+        /* The seconds, because "is it stuck" is the only question being asked
+         * at this point and it is the one thing the panel can answer. */
+        if (busy_ && since_.isValid()) {
+            const qint64 sec = since_.elapsed() / 1000;
+            if (sec >= 2)
+                sub = sub.isEmpty() ? tr("%1 s").arg(sec)
+                                    : QStringLiteral("%1  \u00b7  %2 s").arg(sub).arg(sec);
+        }
+        p.drawText(QRect(24, int(c.y()) + 70, width() - 48, 40),
+                   Qt::AlignHCenter | Qt::AlignTop | Qt::TextWordWrap, sub);
+    }
+
+private:
+    QTimer *spin_ = nullptr;
+    QElapsedTimer since_;
+    QString title_, detail_;
+    qreal phase_ = 0.0;
+    bool busy_ = true;
+};
 
 VideoWidget::VideoWidget(QWidget *parent) : QWidget(parent)
 {
@@ -55,11 +168,23 @@ VideoWidget::VideoWidget(QWidget *parent) : QWidget(parent)
     auto *discBtn = new QPushButton(tr("Disconnect"), bar);
     for (QPushButton *b : { fsBtn_, setBtn, filBtn, discBtn }) barLay->addWidget(b);
 
+    /* VID1 - one of the two, never both. */
+    placeholder_ = new Placeholder(this);
+    auto *area = new QWidget(this);
+    stack_ = new QStackedLayout(area);
+    stack_->setContentsMargins(0, 0, 0, 0);
+    stack_->addWidget(placeholder_);
+    stack_->addWidget(video_);
+    stack_->setCurrentWidget(placeholder_);
+
     auto *lay = new QVBoxLayout(this);
     lay->setContentsMargins(0, 0, 0, 0);
     lay->setSpacing(0);
     lay->addWidget(bar, 0);
-    lay->addWidget(video_, 1);
+    lay->addWidget(area, 1);
+
+    placeholder_->setBusy(tr("Waiting for the picture"),
+                          tr("The video server is starting."));
 
     setMinimumSize(640, 360);
 
@@ -164,6 +289,15 @@ void VideoWidget::presentFrame(const QVideoFrame &frame)
     sink_->setVideoFrame(frame);
     presented_++;
 
+    /* VID1 - the first frame is what ends the waiting state. Done on the
+     * frame and not on a protocol event on purpose: a channel can be granted,
+     * announced and connected and still produce no picture, and in that case
+     * the panel staying up with its seconds ticking is the true report. */
+    if (!showing_video_) {
+        showing_video_ = true;
+        stack_->setCurrentWidget(video_);
+    }
+
     /* IN1 - the coordinate space core clamps to is the DECODED size, and the
      * server may not have honoured what we asked for, so it is learned here
      * from the frame and pushed to core. Cheap, and it follows a mid-session
@@ -180,6 +314,27 @@ void VideoWidget::setStatus(const QString &text)
     if (status_)
         status_->setText(QStringLiteral("%1   |   %2 frame(s) presented")
                              .arg(text).arg(presented_));
+    /* VID1 - the same words under the spinner while there is no picture. The
+     * bar is a strip of 12px text at the top of a 700px window; someone
+     * staring at the middle of the screen was not reading it. */
+    if (placeholder_ && !showing_video_) placeholder_->setDetail(text);
+}
+
+void VideoWidget::beginSession()
+{
+    presented_ = 0;
+    showing_video_ = false;
+    frameW_ = frameH_ = 0;
+    stack_->setCurrentWidget(placeholder_);
+    placeholder_->setBusy(tr("Waiting for the picture"),
+                          tr("The video server is starting."));
+}
+
+void VideoWidget::showMessage(const QString &title, const QString &detail)
+{
+    showing_video_ = false;
+    stack_->setCurrentWidget(placeholder_);
+    placeholder_->setIdle(title, detail);
 }
 
 /* ---------------------------------------------------------------- mapping */

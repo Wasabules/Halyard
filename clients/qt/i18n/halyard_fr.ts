@@ -569,6 +569,14 @@
         <translation>session arrêtée&#xa0;: </translation>
     </message>
     <message>
+        <source>Session ended</source>
+        <translation>Session terminée</translation>
+    </message>
+    <message>
+        <source>Session stopped</source>
+        <translation>Session interrompue</translation>
+    </message>
+    <message>
         <source>Your machines</source>
         <translation>Vos machines</translation>
     </message>
@@ -2200,6 +2208,10 @@ Audio, TEL QU&apos;ACCORDÉ&#xa0;: %12 Hz, %13 bits, codec %14
 <context>
     <name>VideoWidget</name>
     <message>
+        <source>%1 s</source>
+        <translation>%1 s</translation>
+    </message>
+    <message>
         <source>idle</source>
         <translation>inactif</translation>
     </message>
@@ -2218,6 +2230,14 @@ Audio, TEL QU&apos;ACCORDÉ&#xa0;: %12 Hz, %13 bits, codec %14
     <message>
         <source>Disconnect</source>
         <translation>Déconnecter</translation>
+    </message>
+    <message>
+        <source>Waiting for the picture</source>
+        <translation>En attente de l&apos;image</translation>
+    </message>
+    <message>
+        <source>The video server is starting.</source>
+        <translation>Le serveur vidéo démarre.</translation>
     </message>
     <message>
         <source>Leave fullscreen</source>

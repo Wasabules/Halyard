@@ -62,6 +62,26 @@ public slots:
     /* A line of text over the video, for the bootstrap steps. */
     void setStatus(const QString &text);
 
+    /* === VID1 2026-10-03 — THE BLACK RECTANGLE ============================
+     *
+     * Between "connected" and the first decoded picture there is a gap - the
+     * video server has to come up and the first keyframe has to arrive - and
+     * for that whole time the window was a black rectangle with one line of
+     * text in the bar above it. Reported as exactly that: a black screen.
+     *
+     * The honest fix is not to show the video widget at all until there is
+     * something in it. `QVideoWidget` is a NATIVE child on Windows and paints
+     * over every non-native sibling, so a message laid on top of it would be
+     * invisible - the same trap that put the first Stream menu button half
+     * under the picture. A stacked layout shows one or the other, never both,
+     * and sidesteps the question.
+     *
+     * `beginSession` goes back to the waiting panel and `presentFrame` swaps
+     * to the picture on the first frame. `showMessage` is the end of a session
+     * or a failure: same panel, no spinner. */
+    void beginSession();
+    void showMessage(const QString &title, const QString &detail);
+
     /* The overlay reflects the window's state so its label is right. */
     void setFullscreenState(bool on);
 
@@ -117,6 +137,10 @@ protected:
     void keyReleaseEvent(QKeyEvent *e) override;
 
 private:
+    class Placeholder;
+    Placeholder   *placeholder_ = nullptr;
+    class QStackedLayout *stack_ = nullptr;
+    bool           showing_video_ = false;
     bool isFullscreenKey(const QKeyEvent *e) const;
     int  fs_key_ = 0;   /* KEY1 - key|modifiers, 0 = unbound */
 
