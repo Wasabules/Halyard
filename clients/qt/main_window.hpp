@@ -71,6 +71,10 @@ public slots:
     void openFileManagerForced();
     void openAbout();
 
+    /* IN2 - true when a keystroke should go to the VM, read by the Windows
+     * system-shortcut hook through the halyard_ui_keys_blocked weak symbol. */
+    bool keysGoToVm() const;
+
 private slots:
     void onPairingNeeded(const QString &userCode, const QString &uri,
                          const QString &uriComplete, int expiresIn);

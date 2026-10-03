@@ -14,7 +14,25 @@
 
 extern "C" {
 #include "core/version.h"
+#include "core/input/kbd_hook_win.h"
 }
+
+/* === IN2 2026-10-03 — THE WINDOWS SYSTEM-SHORTCUT HOOK =====================
+ *
+ * `core/input/kbd_hook_win.c` installs a WH_KEYBOARD_LL hook that sends the keys
+ * Windows keeps for itself - Alt+Tab, the Windows key, Ctrl+Esc, Alt+Esc - to
+ * the VM and swallows them locally, but only while this weak symbol says the
+ * stream owns the keyboard. Borealis defines it from its own focus state; this
+ * is the Qt client's definition.
+ *
+ * It must be true ONLY when a key should go to the VM and not to this desktop:
+ * a session is live, the main window is the active window, we are on the
+ * streaming page, and the video surface holds the focus. Open the settings
+ * window, alt-tab away, or go back to the machine list and it is false at once -
+ * which is the escape hatch that stops the hook from locking the user out of
+ * their own desktop. Evaluated on every keystroke on the GUI thread (the hook
+ * is dispatched there), so touching Qt state here is safe. */
+static MainWindow *g_main_window = nullptr;
 
 #include <QStackedWidget>
 #include <QThread>
@@ -35,8 +53,14 @@ extern "C" {
 
 using halyard::str;
 
+extern "C" bool halyard_ui_keys_blocked(void)
+{
+    return g_main_window && g_main_window->keysGoToVm();
+}
+
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
 {
+    g_main_window = this;
     setWindowTitle(str(SHADOW_APP_NAME));
     setWindowIcon(halyard::theme::appIcon());
     resize(1280, 760);
@@ -240,11 +264,26 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
     boot_thread_->start();
     sess_thread_->start();
 
+    /* IN2 - install the system-shortcut hook on THIS thread, the one with the
+     * message loop (a WH_KEYBOARD_LL hook is dispatched to the installing
+     * thread's queue). A no-op off Windows and when SHADOW_WIN_KBD_HOOK=0; inert
+     * until `halyard_ui_keys_blocked()` says the stream owns the keyboard. */
+    kbd_hook_win_install();
+
     QMetaObject::invokeMethod(auth_, "signIn", Qt::QueuedConnection);
+}
+
+bool MainWindow::keysGoToVm() const
+{
+    return session_live_ && isActiveWindow() &&
+           stack_->currentIndex() == PageStreaming &&
+           video_ && video_->hasFocus();
 }
 
 MainWindow::~MainWindow()
 {
+    kbd_hook_win_remove();       /* IN2 - before the window and video_ go */
+    g_main_window = nullptr;
     /* Stop flags FIRST, then the loops: a worker blocked in HTTP leaves within
      * its own poll granularity, and `quit()` on a thread whose slot has not
      * returned does nothing at all. */
