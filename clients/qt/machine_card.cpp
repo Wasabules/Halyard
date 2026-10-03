@@ -35,9 +35,19 @@ MachineCard::MachineCard(const QString &id, const QString &name,
 
     auto *sub = new QHBoxLayout;
     sub->setSpacing(theme::SpaceRow);
-    pill_ = new QLabel(state.isEmpty() ? tr("unknown") : state, this);
-    pill_->setProperty("pill", QString::fromUtf8(halyard::pillClassFor(state)));
-    sub->addWidget(pill_);
+    /* UI1 - NO pill when the launcher gave no state.
+     *
+     * It does so routinely: `launcher: the server sends `status: null` - the
+     * VM list carries no run state; it arrives on the SSE stream`. A grey
+     * "unknown" chip on every single card is noise that says nothing, and
+     * worse, it reads as a claim - someone scanning the list sees a dull pill
+     * and concludes the machine is asleep. Saying nothing is the honest
+     * rendering of knowing nothing. */
+    if (!state.isEmpty()) {
+        pill_ = new QLabel(state, this);
+        pill_->setProperty("pill", QString::fromUtf8(halyard::pillClassFor(state)));
+        sub->addWidget(pill_);
+    }
     if (!datacentre.isEmpty()) {
         auto *dc = new QLabel(datacentre, this);
         dc->setProperty("dim", true);

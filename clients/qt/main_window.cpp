@@ -395,7 +395,9 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
         connect(screenshot_shortcut_, &QShortcut::activated, this,
                 &MainWindow::takeScreenshot);
 
-        applyShortcuts();
+        /* NOT applyShortcuts() here: it sets the key on five QActions that
+         * the menu block below has not created yet. Called once the menus
+         * exist, just before retranslate(). */
 
         /* OV3 - the overlays follow the APPLICATION's activity: alt-tab away
          * and they go, come back and they return. */
@@ -483,6 +485,11 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
         act_about->setMenuRole(QAction::AboutRole);
         connect(act_about, &QAction::triggered, this, &MainWindow::openAbout);
     }
+
+    /* KEY1 - after the menus, because five of the seven keys live on their
+     * QActions. Before retranslate() only for tidiness; the order of those two
+     * does not matter. */
+    applyShortcuts();
 
     retranslate();
     setPage(PagePairing);
