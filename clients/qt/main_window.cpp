@@ -6,6 +6,8 @@
 
 extern "C" {
 #include "core/services/config.h"   /* AUTH10 - SHADOW_OAUTH_CLIENT_ID */
+#include "core/services/netpath.h"  /* HUD6 - the hop split */
+#include "core/services/stats.h"
 }
 #include "session_worker.hpp"
 #include "step_list_widget.hpp"
@@ -489,6 +491,16 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
         stream_hud_->setFrameSource([this] {
             return video_ ? video_->currentFrameImage() : QImage();
         });
+
+        /* === HUD6 — the hop split, on a worker ==========================
+         *
+         * `netpath_measure` pings the router and blocks for its whole
+         * timeout; this is the GUI thread and the HUD's tick is 2 Hz. Every
+         * two minutes, like the metrics window: the answer changes with the
+         * house's wiring, not with the frame. */
+        hop_timer_ = new QTimer(this);
+        hop_timer_->setInterval(120000);
+        connect(hop_timer_, &QTimer::timeout, this, &MainWindow::probeHopSplit);
         /* OV7 - presentation and the saved block layout. */
         const int hudMs    = st.value(QStringLiteral("ui/hud_refresh_ms"), 500).toInt();
         const int hudScale = st.value(QStringLiteral("ui/hud_scale"), 100).toInt();
@@ -536,6 +548,12 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
                 [this](int sec, int ch) {
                     QSettings s2;
                     s2.setValue(QStringLiteral("ui/hud_sections"), sec);
+        /* HUD6 - the mode switch, remembered like the rest of the HUD. */
+        connect(stream_overlay_, &halyard::StreamOverlay::compactChanged, this,
+                [this](bool on) {
+                    if (stream_hud_) stream_hud_->setCompact(on);
+                    QSettings().setValue(QStringLiteral("ui/hud_compact"), on);
+                });
                     s2.setValue(QStringLiteral("ui/hud_charts"), ch);
                     stream_hud_->setMasks(sec, ch);
                     updateOverlayVisibility();
@@ -833,6 +851,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
                                       : tr("session stopped: ")) + why);
                 session_started_.invalidate();   /* CAPS2 - stop counting */
                 if (banner_) banner_->hide();    /* LIM1 */
+                if (hop_timer_) hop_timer_->stop();   /* HUD6 */
                 /* VID1 - say so in the middle of the screen. Without this the
                  * last decoded frame stayed on display and a session that had
                  * ended looked like one that had frozen. */
@@ -1209,6 +1228,25 @@ QString MainWindow::sessionTimeLeft() const
  * A toast at every threshold, and from five minutes a BANNER that stays:
  * a toast is gone in three seconds and the last stretch is exactly when
  * someone may be looking at a game rather than at a notification. */
+/* HUD6 - one probe, off the GUI thread, result posted back. */
+void MainWindow::probeHopSplit()
+{
+    if (hop_running_ || !session_live_) return;
+    hop_running_ = true;
+    session_stats_t st;
+    session_stats_get(&st);
+    const int64_t total = (int64_t)st.ctrl_rtt_us;
+    (void)QtConcurrent::run([this, total] {
+        netpath_split sp;
+        netpath_measure(total, 1200, &sp);
+        QMetaObject::invokeMethod(this, [this, sp] {
+            hop_running_ = false;
+            if (stream_hud_)
+                stream_hud_->setHopSplit(sp.local_us, sp.remote_us, sp.have_local);
+        }, Qt::QueuedConnection);
+    });
+}
+
 void MainWindow::checkSessionLimit()
 {
     if (!session_started_.isValid() || caps_.maxSessionLength <= 0) {
@@ -1217,6 +1255,10 @@ void MainWindow::checkSessionLimit()
     }
 
     const int elapsed = int(session_started_.elapsed() / 1000);
+    /* HUD6 - the stream's own quota block, from the same two figures. */
+    if (stream_hud_)
+        stream_hud_->setQuotas(caps_.maxSessionLength, elapsed,
+                               caps_.maxDuration, caps_.fairUseUsage);
     const halyard::LimitWarning w =
         halyard::sessionLimitCheck(elapsed, caps_.maxSessionLength, &limit_state_);
 
@@ -2148,6 +2190,7 @@ void MainWindow::onBootstrapReady(const BootstrapWorker::Ready &r)
     if (video_) video_->beginSession();   /* VID1 - back to the waiting panel */
     session_started_.start();             /* CAPS2 - the countdown's origin */
     limit_state_ = 0;                     /* LIM1 - a new session, new warnings */
+    if (hop_timer_) { hop_timer_->start(); probeHopSplit(); }   /* HUD6 */
     setPage(PageStreaming);
 
     /* FM1 - the file manager becomes reachable. The SFTP channel is granted a

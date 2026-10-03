@@ -2715,6 +2715,22 @@ Audio, TEL QU&apos;ACCORDÉ&#xa0;: %12 Hz, %13 bits, codec %14
         <translation>Ce mois</translation>
     </message>
     <message>
+        <source>You</source>
+        <translation>Vous</translation>
+    </message>
+    <message>
+        <source>Router</source>
+        <translation>Box</translation>
+    </message>
+    <message>
+        <source>Shadow</source>
+        <translation>Shadow</translation>
+    </message>
+    <message>
+        <source>router silent — no split</source>
+        <translation>box muette — pas de répartition</translation>
+    </message>
+    <message>
         <source>Detach this block</source>
         <translation>Détacher ce bloc</translation>
     </message>
@@ -2944,6 +2960,10 @@ Audio, TEL QU&apos;ACCORDÉ&#xa0;: %12 Hz, %13 bits, codec %14
     <message>
         <source>Clipboard sharing</source>
         <translation>Partage du presse-papiers</translation>
+    </message>
+    <message>
+        <source>Compact: one strip, not the blocks</source>
+        <translation>Compact : une bande, pas les blocs</translation>
     </message>
     <message>
         <source>4 per second (250 ms)</source>

@@ -96,6 +96,19 @@ public:
     void setQuotas(int sessionCeilingSec, int sessionElapsedSec,
                    int periodAllowanceSec, int periodUsedSec);
 
+    /* HUD6 - the latency split from NET1. Microseconds; `haveLocal` false
+     * means the router did not answer and the rail says so instead of
+     * drawing a segment it does not know. Fed from the window, which runs
+     * the probe on a worker - a ping blocks for its whole timeout and this
+     * is the GUI thread. */
+    void setHopSplit(qint64 localUs, qint64 remoteUs, bool haveLocal);
+
+    /* HUD6 - one strip instead of a column of cards. The blocks are the
+     * reference view; this is for someone who wants the four numbers and
+     * the time left, and the rest of the screen. */
+    void setCompact(bool on);
+    bool compact() const { return compact_; }
+
     /* The HUD covers this rectangle; blocks are placed inside it. */
     void placeOver(const QRect &videoGlobalRect);
 
@@ -140,6 +153,11 @@ private:
     QImage  glass_;        /* the blurred picture behind the whole HUD */
     int     qSessionCeil_ = 0, qSessionUsed_ = 0;   /* HUD4 */
     int     qPeriodCeil_ = 0,  qPeriodUsed_ = 0;
+    qint64  hopLocalUs_ = -1, hopRemoteUs_ = -1;   /* HUD6 */
+    bool    hopHaveLocal_ = false;
+    bool    compact_ = false;
+    QWidget *compactCard_ = nullptr;
+    struct { QLabel *v[4] = {}; QLabel *left = nullptr; QWidget *dot = nullptr; } cstrip_;
     QRect   glassRect_;    /* where in the video it was taken from */
 
 private:
@@ -178,6 +196,15 @@ private:
             QWidget *sessionBar = nullptr, *monthBar = nullptr;
             QWidget *sessionFill = nullptr, *monthFill = nullptr;
         } quota;
+
+        /* HUD6 - the hop rail: you -> your router -> Shadow, with the two
+         * segments drawn in proportion. NET1 measures the local hop; the
+         * rest is the session's round trip minus it. */
+        struct Rail {
+            QWidget *host = nullptr;
+            QWidget *localBar = nullptr, *remoteBar = nullptr;
+            QLabel  *localMs = nullptr, *remoteMs = nullptr, *note = nullptr;
+        } rail;
         QToolButton *detach = nullptr;
         double    ax = 0.0, ay = 0.0;
         QString   leader;               /* empty = standalone */
@@ -186,6 +213,10 @@ private:
     /* HUD4 - declared after `Blk`, which they take by reference. */
     QWidget *buildTiles(Blk &b);
     QWidget *buildQuota(Blk &b);
+    QWidget *buildRail(Blk &b);        /* HUD6 */
+    void     refreshRail(Blk &b, const HudSnap &s);
+    void     buildCompact();           /* HUD6 */
+    void     refreshCompact(const HudSnap &s);
     void     refreshTiles(Blk &b, const HudSnap &s);
     void     refreshQuota(Blk &b);
 
@@ -232,7 +263,8 @@ public:
     void setHudEditing(bool on);
 
 signals:
-    void hudMasksChanged(int sections, int charts);  /* persisted + applied */
+    void hudMasksChanged(int sections, int charts);
+    void compactChanged(bool on);   /* HUD6 */  /* persisted + applied */
     void hudRefreshChanged(int ms);
     void hudScaleChanged(int percent);
     void hudOpacityChanged(int percent);

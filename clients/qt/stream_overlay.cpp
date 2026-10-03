@@ -156,16 +156,30 @@ void StreamHud::applyStyle()
         /* HUD4 - the quota lines. */
         "QLabel#qcap { color:%6; font-size:11px; }"
         "QLabel#qval { color:%4; font-size:13px; font-weight:600; }"
-        "QWidget#qbar { background:%7; border-radius:3px; }")
+        "QWidget#qbar { background:%7; border-radius:3px; }"
+        /* HUD6 - the hop rail and the compact strip. */
+        "QLabel#hopend { color:%6; font-size:10.5px; }"
+        "QLabel#hoploc { color:%8; font-size:11.5px; font-weight:600; }"
+        "QLabel#hoprem { color:%9; font-size:11.5px; font-weight:600; }"
+        "QLabel#hopnote { color:%6; font-size:10.5px; }"
+        "QLabel#cval { color:%4; font-size:17px; font-weight:600; }"
+        "QLabel#cunit { color:%6; font-size:10.5px; }"
+        "QLabel#cleft { color:%4; font-size:13px; font-weight:600; }")
         .arg(fs)
         .arg(halyard::hud::text().name(),
              halyard::hud::surf3().name(),
              halyard::hud::text().name(),
              halyard::hud::surf2().name(),
              halyard::hud::muted().name(),
-             halyard::hud::surf3().name());
+             halyard::hud::surf3().name(),
+             halyard::hud::good().name(),
+             halyard::hud::primary().name());
     bubbleAlpha_ = alpha;
     for (const Blk &b : blocks_) if (b.card) b.card->setStyleSheet(css);
+    /* HUD6 - the compact strip is not in `blocks_`, so this loop skipped it
+     * and it rendered as dark text on a dark panel - invisible, and only a
+     * screenshot said so. */
+    if (compactCard_) compactCard_->setStyleSheet(css);
 }
 
 /* Edit mode needs input; normal mode must never take any. The flag is part of
@@ -305,6 +319,193 @@ QWidget *StreamHud::buildQuota(Blk &b)
     return host;
 }
 
+static QString hudHours(int sec)
+{
+    if (sec <= 0) return QStringLiteral("—");
+    const int h = sec / 3600, m = (sec % 3600) / 60;
+    return h > 0 ? QStringLiteral("%1 h %2").arg(h).arg(m, 2, 10, QLatin1Char('0'))
+                 : QStringLiteral("%1 min").arg(m);
+}
+
+/* === HUD6 — WHERE THE LATENCY IS, DRAWN ==============================
+ *
+ * One number cannot answer the only question asked when a stream goes soft:
+ * is it me or is it them. NET1 measures the hop to the router and derives
+ * the rest; this is that split as two bars whose LENGTHS are the two
+ * figures, so "the short green one is mine" reads without arithmetic.
+ *
+ * When the router does not answer - a corporate network, a VPN with no
+ * gateway - the rail says so in words rather than drawing a segment it does
+ * not know. A made-up local hop would be worse than no split: the whole
+ * value of the number is that it tells someone where to look. */
+QWidget *StreamHud::buildRail(Blk &b)
+{
+    auto *host = new QWidget(b.card);
+    auto *v = new QVBoxLayout(host);
+    v->setContentsMargins(0, 4, 0, 0);
+    v->setSpacing(6);
+
+    auto *bars = new QWidget(host);
+    auto *bl = new QHBoxLayout(bars);
+    bl->setContentsMargins(0, 0, 0, 0);
+    bl->setSpacing(4);
+
+    const auto seg = [&](QWidget *&bar, const QColor &c) {
+        bar = new QWidget(bars);
+        bar->setFixedHeight(5);
+        bar->setStyleSheet(QStringLiteral("background:%1; border-radius:3px;")
+                               .arg(c.name()));
+        bl->addWidget(bar, 1);
+    };
+    auto *you = new QLabel(tr("You"), bars);
+    you->setObjectName(QStringLiteral("hopend"));
+    seg(b.rail.localBar, halyard::hud::good());
+    auto *box = new QLabel(tr("Router"), bars);
+    box->setObjectName(QStringLiteral("hopend"));
+    seg(b.rail.remoteBar, halyard::hud::primary());
+    auto *far = new QLabel(tr("Shadow"), bars);
+    far->setObjectName(QStringLiteral("hopend"));
+    bl->insertWidget(0, you);
+    bl->insertWidget(2, box);
+    bl->addWidget(far);
+
+    auto *nums = new QWidget(host);
+    auto *nl = new QHBoxLayout(nums);
+    nl->setContentsMargins(0, 0, 0, 0);
+    b.rail.localMs = new QLabel(QStringLiteral("—"), nums);
+    b.rail.localMs->setObjectName(QStringLiteral("hoploc"));
+    b.rail.remoteMs = new QLabel(QStringLiteral("—"), nums);
+    b.rail.remoteMs->setObjectName(QStringLiteral("hoprem"));
+    nl->addWidget(b.rail.localMs);
+    nl->addStretch(1);
+    nl->addWidget(b.rail.remoteMs);
+
+    b.rail.note = new QLabel(host);
+    b.rail.note->setObjectName(QStringLiteral("hopnote"));
+    b.rail.note->setWordWrap(true);
+    b.rail.note->setVisible(false);
+
+    v->addWidget(bars);
+    v->addWidget(nums);
+    v->addWidget(b.rail.note);
+    b.rail.host = host;
+    return host;
+}
+
+void StreamHud::setHopSplit(qint64 localUs, qint64 remoteUs, bool haveLocal)
+{
+    hopLocalUs_ = localUs;
+    hopRemoteUs_ = remoteUs;
+    hopHaveLocal_ = haveLocal;
+}
+
+void StreamHud::refreshRail(Blk &b, const HudSnap &snap)
+{
+    if (!b.rail.host) return;
+    const auto ms = [](qint64 us) {
+        return us < 0 ? QStringLiteral("—")
+                      : QStringLiteral("%1 ms").arg(us / 1000.0, 0, 'f', 1);
+    };
+
+    if (!hopHaveLocal_) {
+        /* The total is still worth drawing: it all happened out there
+         * somewhere. The note says which part we could not measure. */
+        b.rail.localMs->setText(QStringLiteral("—"));
+        b.rail.remoteMs->setText(ms(qint64(snap.rttMs * 1000.0)));
+        /* Short enough for one line at the column's width: the first
+         * wording wrapped to two and the card clipped the second, so the
+         * explanation ended mid-sentence - which is worse than no note. */
+        b.rail.note->setText(tr("router silent — no split"));
+        b.rail.note->setVisible(true);
+        if (auto *bl = qobject_cast<QHBoxLayout *>(b.rail.host->layout()
+                                                       ->itemAt(0)->widget()->layout())) {
+            bl->setStretch(1, 1);
+            bl->setStretch(3, 1000);
+        }
+        return;
+    }
+    b.rail.note->setVisible(false);
+    b.rail.localMs->setText(ms(hopLocalUs_));
+    b.rail.remoteMs->setText(ms(hopRemoteUs_));
+
+    /* The bars are the figures. A floor of 1 so a sub-millisecond LAN still
+     * shows a segment instead of vanishing - zero is a measurement here, not
+     * an absence. */
+    const qint64 l = qMax<qint64>(1, hopLocalUs_);
+    const qint64 r = qMax<qint64>(1, hopRemoteUs_ < 0 ? 1 : hopRemoteUs_);
+    if (auto *bl = qobject_cast<QHBoxLayout *>(b.rail.host->layout()
+                                                   ->itemAt(0)->widget()->layout())) {
+        bl->setStretch(1, int(qBound<qint64>(Q_INT64_C(1), l / 100, Q_INT64_C(1000))));
+        bl->setStretch(3, int(qBound<qint64>(Q_INT64_C(1), r / 100, Q_INT64_C(1000))));
+    }
+}
+
+/* === HUD6 — THE COMPACT BAR ==========================================
+ *
+ * One strip: the four readings, and how long is left. For someone who wants
+ * the numbers and the rest of the screen. It is a separate widget rather
+ * than a block with its own mask, because it REPLACES the column - a mode,
+ * not another card to arrange. */
+void StreamHud::buildCompact()
+{
+    if (compactCard_) return;
+    compactCard_ = new QFrame(this);
+    compactCard_->setObjectName(QStringLiteral("blk"));
+    auto *l = new QHBoxLayout(compactCard_);
+    l->setContentsMargins(14, 9, 14, 9);
+    l->setSpacing(18);
+
+    cstrip_.dot = new QWidget(compactCard_);
+    cstrip_.dot->setFixedSize(8, 8);
+    cstrip_.dot->setStyleSheet(QStringLiteral("background:%1; border-radius:4px;")
+                                   .arg(halyard::hud::good().name()));
+    l->addWidget(cstrip_.dot);
+
+    static const char *kUnits[4] = { "/s", "ms", "Mb/s", "%" };
+    for (int i = 0; i < 4; i++) {
+        auto *cell = new QWidget(compactCard_);
+        auto *cl = new QHBoxLayout(cell);
+        cl->setContentsMargins(0, 0, 0, 0);
+        cl->setSpacing(4);
+        cstrip_.v[i] = new QLabel(QStringLiteral("—"), cell);
+        cstrip_.v[i]->setObjectName(QStringLiteral("cval"));
+        auto *u = new QLabel(QString::fromUtf8(kUnits[i]), cell);
+        u->setObjectName(QStringLiteral("cunit"));
+        cl->addWidget(cstrip_.v[i]);
+        cl->addWidget(u);
+        l->addWidget(cell);
+    }
+    l->addStretch(1);
+    cstrip_.left = new QLabel(QStringLiteral("—"), compactCard_);
+    cstrip_.left->setObjectName(QStringLiteral("cleft"));
+    l->addWidget(cstrip_.left);
+}
+
+void StreamHud::setCompact(bool on)
+{
+    compact_ = on;
+    if (on) { buildCompact(); applyStyle(); }
+    if (compactCard_) compactCard_->setVisible(on);
+    for (const Blk &b : blocks_) if (b.card) b.card->setVisible(!on);
+    layoutBlocks();
+    update();
+}
+
+void StreamHud::refreshCompact(const HudSnap &snap)
+{
+    if (!compactCard_ || !compact_) return;
+    const double vals[4] = { snap.fpsDecoded, snap.rttMs, snap.mbps, snap.lossPct };
+    for (int i = 0; i < 4; i++) {
+        if (!cstrip_.v[i]) continue;
+        cstrip_.v[i]->setText(QString::number(vals[i], 'f', i == 3 ? 1 : 0));
+    }
+    if (cstrip_.left) {
+        const int left = qMax(0, qSessionCeil_ - qSessionUsed_);
+        cstrip_.left->setText(qSessionCeil_ > 0 ? hudHours(left) : QString());
+    }
+    compactCard_->adjustSize();
+}
+
 void StreamHud::setQuotas(int sessionCeilingSec, int sessionElapsedSec,
                           int periodAllowanceSec, int periodUsedSec)
 {
@@ -314,13 +515,7 @@ void StreamHud::setQuotas(int sessionCeilingSec, int sessionElapsedSec,
     qPeriodUsed_  = periodUsedSec;
 }
 
-static QString hudHours(int sec)
-{
-    if (sec <= 0) return QStringLiteral("—");
-    const int h = sec / 3600, m = (sec % 3600) / 60;
-    return h > 0 ? QStringLiteral("%1 h %2").arg(h).arg(m, 2, 10, QLatin1Char('0'))
-                 : QStringLiteral("%1 min").arg(m);
-}
+
 
 void StreamHud::refreshQuota(Blk &b)
 {
@@ -465,6 +660,7 @@ void StreamHud::rebuild()
             /* HUD4 - the tiles replace this section's rows entirely. */
             b.body->addWidget(buildTiles(b));
         } else if (sec == SecLatency) {
+            b.body->addWidget(buildRail(b));
             auto *host = new QWidget(b.card);
             b.latLay = new QVBoxLayout(host);
             b.latLay->setContentsMargins(0, 0, 0, 0);
@@ -604,6 +800,11 @@ void StreamHud::stackDefaults()
 
 void StreamHud::layoutBlocks()
 {
+    /* HUD6 - the strip sits top-centre, where it covers the least. */
+    if (compactCard_ && compact_) {
+        compactCard_->adjustSize();
+        compactCard_->move((width() - compactCard_->width()) / 2, kMargin);
+    }
     for (Blk &b : blocks_) {
         if (!b.card) continue;
         b.card->adjustSize();
@@ -826,6 +1027,22 @@ void StreamHud::paintEvent(QPaintEvent *e)
     tint.setAlpha(alpha);
 
     p.setPen(Qt::NoPen);
+
+    /* HUD6 - the compact strip gets the same glass as a block. */
+    if (compact_ && compactCard_ && !compactCard_->isHidden()) {
+        const QRect r = compactCard_->geometry().adjusted(-8, -6, 8, 6);
+        QPainterPath path;
+        path.addRoundedRect(r, halyard::hud::radius(), halyard::hud::radius());
+        if (!glass_.isNull()) {
+            p.save(); p.setClipPath(path); p.drawImage(r, glass_, r); p.restore();
+        }
+        QColor t2 = halyard::hud::surf1();
+        t2.setAlpha(halyard::hud::glassAlpha(opacityPct_));
+        p.setBrush(t2);
+        p.drawPath(path);
+        p.setBrush(Qt::NoBrush);
+    }
+
     for (const Blk &b : blocks_) {
         /* `isHidden()` and not `!isVisible()`: a child reports itself
          * invisible whenever its top-level is not on screen, so the bubbles
@@ -942,11 +1159,13 @@ void StreamHud::refresh()
     rebuildGlass();   /* HUD2 - once per tick, never per paint */
     const quint64 presented = presented_ ? presented_() : 0;
     const HudSnap h = hudSample(meters_, presented);
+    refreshCompact(h);   /* HUD6 */
 
     for (Blk &b : blocks_) {
         /* HUD4 - the two new block kinds. */
         if (!b.tiles.isEmpty()) refreshTiles(b, h);
         if (b.quota.sessionText)  refreshQuota(b);
+        if (b.rail.host)          refreshRail(b, h);
 
         for (const RowW &r : b.rows) {
             const bool vis = !r.spec->visible || r.spec->visible(h);
@@ -1497,6 +1716,16 @@ QWidget *StreamOverlay::buildHudTab()
 
     auto *cols = new QHBoxLayout;
     auto *secCol = new QVBoxLayout;
+    /* HUD6 - the mode switch, above everything the mode makes irrelevant:
+     * in compact mode none of these checkboxes change what is on screen. */
+    {
+        auto *c = new QCheckBox(tr("Compact: one strip, not the blocks"), w);
+        connect(c, &QCheckBox::toggled, this,
+                [this](bool on) { emit compactChanged(on); });
+        secCol->addWidget(c);
+        secCol->addSpacing(8);
+    }
+
     auto *secHead = new QLabel(tr("Sections"), w);
     secHead->setStyleSheet(theme::css(halyard::hud::muted()));
     secCol->addWidget(secHead);

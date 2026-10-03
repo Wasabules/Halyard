@@ -127,6 +127,21 @@ int run(const QString &dir)
         out << (ok ? "  wrote " : "  FAILED ") << "hud-over-stream.png  "
             << canvas.width() << "x" << canvas.height() << "\n";
         if (!ok) bad++;
+
+        /* HUD6 - the compact mode is its own surface, not a variant: it
+         * gets its own render or nobody looks at it. */
+        hud->setCompact(true);
+        QMetaObject::invokeMethod(hud, "refresh", Qt::DirectConnection);
+        QCoreApplication::processEvents();
+        QImage canvas2 = frame;
+        {
+            QPainter p2(&canvas2);
+            p2.drawPixmap(0, 0, hud->grab());
+        }
+        const bool ok2 = canvas2.save(dir + QStringLiteral("/hud-compact.png"), "PNG");
+        out << (ok2 ? "  wrote " : "  FAILED ") << "hud-compact.png\n";
+        if (!ok2) bad++;
+
         delete hud;
     }
 

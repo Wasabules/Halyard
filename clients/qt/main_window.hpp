@@ -143,6 +143,7 @@ private:
     void updateHeader(int index);   /* D1 */
     QString sessionTimeLeft() const;   /* CAPS2 */
     /* LIM1 - the end-of-session warnings. */
+    void    probeHopSplit();   /* HUD6 */
     void    checkSessionLimit();
     void    showBanner(const QString &text, bool urgent);
     QString fmtLeft(int seconds) const;
@@ -249,6 +250,8 @@ private:
     QLabel                 *toast_ = nullptr;
     QLabel                 *banner_ = nullptr;   /* LIM1 - it stays */
     QTimer                 *banner_pulse_ = nullptr;   /* HUD2 */
+    QTimer                 *hop_timer_ = nullptr;      /* HUD6 */
+    bool                    hop_running_ = false;
     double                  banner_phase_ = 0.0;
     int                     limit_state_ = 0;    /* LIM1 - thresholds done */
     QTimer                 *toast_timer_ = nullptr;
