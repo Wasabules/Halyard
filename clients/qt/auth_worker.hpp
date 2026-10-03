@@ -70,7 +70,10 @@ signals:
     void stage(int index);
 
     /* The data centre, resolved first because everything needs its URL. */
-    void datacentre(const QString &name, const QString &launcherUrl);
+    /* ACC1 - `apiVersion` was parsed by tinag.c and read by nobody. It is
+     * one line in an About box and it makes a bug report usable. */
+    void datacentre(const QString &name, const QString &launcherUrl,
+                    const QString &apiVersion);
 
     /* A browser visit is needed. `userCode` is what the person types,
      * `verificationUri` where, and `verificationUriComplete` the one-click

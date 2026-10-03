@@ -109,9 +109,15 @@ static char *make_url(const char *base, const char *path) {
 // vms list
 // ============================================================================
 
+/* Defined further down with the capabilities parser; declared here because
+ * `parse_vm` needs it and moving it would separate it from its own comment. */
+static char *json_array_join(json_t *arr);
+
 void vminfo_free(VmInfo *v) {
     if (!v) return;
     free(v->id); free(v->alias); free(v->name); free(v->state); free(v->raw_json);
+    /* VMK1 - the five keys the parser gained. */
+    free(v->hwconfig); free(v->datacenter); free(v->provider); free(v->tags);
     memset(v, 0, sizeof(*v));
 }
 
@@ -127,9 +133,32 @@ static void parse_vm(json_t *jvm, VmInfo *out) {
     out->id    = jstrdup(jvm, "id");
     out->alias = jstrdup(jvm, "alias");
     out->name  = jstrdup(jvm, "name");
+
+    /* VMK1 - kept as a field of its own as well as used as the fallback. It
+     * was only ever the fallback, so a machine WITH a name could never show
+     * its hardware tier - which is the more interesting of the two when an
+     * account has several. */
+    out->hwconfig   = jstrdup(jvm, "hwconfig");
+    out->datacenter = jstrdup(jvm, "datacenter");
+    out->provider   = jstrdup(jvm, "provider");
+    out->tags       = json_array_join(json_object_get(jvm, "tags"));
+    {
+        json_t *m = json_object_get(jvm, "maintenance");
+        /* The server has sent this as a bool and as an object with a flag
+         * inside; both are honoured, and anything else reads as false. A
+         * maintenance flag wrongly ON would hide a usable machine, so the
+         * doubt resolves toward "available". */
+        if (m && json_is_true(m)) out->maintenance = true;
+        else if (m && json_is_object(m)) {
+            json_t *en = json_object_get(m, "enabled");
+            if (!en) en = json_object_get(m, "active");
+            out->maintenance = (en && json_is_true(en));
+        }
+    }
+
     if (!out->name || out->name[0] == '\0') {
         free(out->name);
-        out->name = jstrdup(jvm, "hwconfig");  // fallback Shadow ("power", "boost", ...)
+        out->name = out->hwconfig ? strdup(out->hwconfig) : NULL;
     }
     json_t *jstate = json_object_get(jvm, "state");
     if (jstate && json_is_string(jstate)) {

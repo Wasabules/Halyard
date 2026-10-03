@@ -37,6 +37,7 @@
 #include <QKeySequence>
 #include <QElapsedTimer>
 #include <QRect>
+#include <QVariantList>
 #include <QVector>
 
 #include "bootstrap_worker.hpp"
@@ -61,6 +62,7 @@ class StepListWidget;
 class SignInSteps;
 class SettingsWindow;
 class MetricsWindow;
+class AccountWindow;
 class FileManagerWindow;
 class QShortcut;
 class QMoveEvent;
@@ -99,14 +101,18 @@ private slots:
     void onPairingNeeded(const QString &userCode, const QString &uri,
                          const QString &uriComplete, int expiresIn);
     void onSignedIn(const QString &bearer, const QString &launcherUrl);
-    void onMachinesFetched(const QStringList &ids, const QStringList &names,
-                           const QStringList &states);
+    /* VMK1 - one row per machine, each a QVariantMap of the /vms fields.
+     * A queued signal needs a registered type and a QVariantList is one
+     * already; a struct would have wanted Q_DECLARE_METATYPE and a
+     * registration for six strings. */
+    void onMachinesFetched(const QVariantList &rows);
     void onMachinesFailed(int http);   /* D5 */
     void onPairingProgress(int secondsLeft);
     void onSignInFailed(const QString &why);
     /* UI2 - run the sign-in sequence again after it failed or expired. */
     void restartSignIn();
     /* AUTH9 - forget the stored refresh token and pair again. */
+    void openAccount();   /* ACC1 */
     void signOut();
     void onBootstrapReady(const BootstrapWorker::Ready &r);
     void connectTo(const QString &id);
@@ -182,6 +188,8 @@ private:
     QPushButton *machines_error_retry_ = nullptr;
     QVector<QWidget *> machine_skeletons_;
     QString      datacentre_;        /* UI6 - shown on every card */
+    QString      launcher_api_version_;   /* ACC1 - from TINAG */
+    AccountWindow *account_ = nullptr;    /* ACC1 */
     BootstrapWorker::Caps caps_;     /* CAPS2 - what the account may do */
     QElapsedTimer session_started_;  /* CAPS2 - the session countdown */
     QString      last_machine_id_;   /* UI3 - what Retry retries */
@@ -199,6 +207,7 @@ private:
     QAction *act_hide_cursor_= nullptr;
     QAction *act_disconnect_ = nullptr;
     QAction *act_sign_out_   = nullptr;
+    QAction *act_account_    = nullptr;   /* ACC1 */
     QAction *act_stream_metrics_ = nullptr;
 
     QStringList machine_ids_;

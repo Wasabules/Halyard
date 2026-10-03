@@ -816,6 +816,7 @@ if (SHADOW_BUILD_QT AND PLATFORM_DESKTOP)
         clients/qt/machine_card.cpp         clients/qt/machine_card.hpp
         clients/qt/pairing_widgets.cpp      clients/qt/pairing_widgets.hpp
         clients/qt/probe.cpp                clients/qt/probe.hpp
+        clients/qt/account_window.cpp       clients/qt/account_window.hpp
         clients/qt/qt_input_map.hpp
         clients/qt/rate_meter.hpp
     )

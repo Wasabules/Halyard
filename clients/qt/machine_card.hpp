@@ -42,8 +42,15 @@ class MachineCard : public QFrame
     Q_OBJECT
 
 public:
-    MachineCard(const QString &id, const QString &name, const QString &state,
-                const QString &datacentre, QWidget *parent = nullptr);
+    /* VMK1 - what the server says about THIS machine. `datacentre` is now the
+     * machine's own (`/vms.datacenter`) and not the account-wide name from
+     * TINAG, which the first version painted onto every card. */
+    struct Info {
+        QString id, name, state, datacentre, hwconfig, tags;
+        bool    maintenance = false;
+    };
+
+    MachineCard(const Info &info, QWidget *parent = nullptr);
 
     /* === UI6 2026-10-03 - WHAT THE CARD IS FOR ============================
      *
@@ -62,6 +69,7 @@ public:
     /* UI5 - fire the same action the button does, for the container's Enter. */
     void    activate();
     void    setBusy(bool busy);     /* a session is running: nothing to connect to */
+    bool    underMaintenance() const { return maintenance_; }
 
 signals:
     void connectRequested(const QString &id);
@@ -80,6 +88,7 @@ protected:
 
 private:
     QString      id_;
+    bool         maintenance_ = false;
     QLabel      *pill_ = nullptr;
     QLabel      *last_used_ = nullptr;
     class QGraphicsDropShadowEffect *shadow_ = nullptr;

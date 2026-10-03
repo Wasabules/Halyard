@@ -5,11 +5,36 @@
 #include <stdbool.h>
 #include <stddef.h>
 
+/* === VMK1 2026-10-03 - THE KEYS /vms SENDS AND WE DROPPED ================
+ *
+ * The server's reply carries ten keys (census in
+ * `clients/borealis/ui/VM_LIST_PORT.md`: id, name, hwconfig, datacenter,
+ * maintenance, tags, provider, status, siberia_disabled,
+ * graphic_driver_reinstall) and this struct carried four of them. The rest
+ * went into `raw_json` and were never looked at.
+ *
+ * Three of the dropped ones belong on a machine card and nowhere else:
+ *
+ *  - `maintenance` is the one that costs something to miss. A machine under
+ *    maintenance accepts a connect and fails seven steps later; a card that
+ *    says so stops the attempt before it starts.
+ *  - `datacenter` is PER MACHINE. The Qt client was painting the
+ *    account-wide name from TINAG onto every card, which is right only while
+ *    an account has its machines in one place.
+ *  - `hwconfig` is the hardware tier ("power", "boost", "Neo"). It was being
+ *    used as a fallback for an empty `name` and so could never be shown as
+ *    what it is.
+ */
 typedef struct {
     char *id;          // identifiant interne (UUID)
     char *alias;       // user-customised name (may be NULL)
     char *name;        // model / plan name (may be NULL)
     char *state;       // "running" / "stopped" / etc. (may be NULL)
+    char *hwconfig;    // VMK1: the hardware tier, e.g. "Neo" (may be NULL)
+    char *datacenter;  // VMK1: THIS machine's data centre (may be NULL)
+    char *provider;    // VMK1: may be NULL
+    char *tags;        // VMK1: joined "a,b" (may be NULL)
+    bool  maintenance; // VMK1: the server says this machine is unavailable
     char *raw_json;    // copy of the raw JSON, useful for debugging
 } VmInfo;
 

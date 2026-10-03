@@ -36,7 +36,7 @@ void AuthWorker::signIn()
         emit failed(tr("the data centre gave no launcher URL"));
         return;
     }
-    emit datacentre(str(gap->name), launcherUrl);
+    emit datacentre(str(gap->name), launcherUrl, str(gap->launcher_api_version));
 
     /* --- 2. the OIDC endpoints ------------------------------------------- */
     emit stage(StageEndpoints);

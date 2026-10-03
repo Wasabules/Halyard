@@ -10,6 +10,7 @@
 #include "metrics_window.hpp"
 #include "file_manager_window.hpp"
 #include "about_dialog.hpp"
+#include "account_window.hpp"
 #include "machine_card.hpp"
 #include "pairing_widgets.hpp"
 #include "shortcuts.hpp"
@@ -53,6 +54,7 @@ static MainWindow *g_main_window = nullptr;
 #include <QLineEdit>
 #include <QScrollArea>
 #include <QDateTime>
+#include <QVariantMap>
 #include <algorithm>
 #include <QFrame>
 #include <QPushButton>
@@ -663,6 +665,11 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
          * menu on macOS, where a Help menu entry called "About" is wrong. On
          * Windows and Linux the role is ignored and it stays here, so one line
          * is correct on all three. */
+        /* ACC1 - what this account is entitled to. Next to Sign out, because
+         * both are about the account rather than about a machine. */
+        act_account_ = view_menu_->addAction(QString());
+        connect(act_account_, &QAction::triggered, this, &MainWindow::openAccount);
+
         /* AUTH9 - sign out. In View and not in Help: it acts on the account,
          * which is what this menu is about, and it is destructive enough to
          * want a separator above it. */
@@ -705,7 +712,8 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
     /* Every one QUEUED: all three emit from their own thread, and `frameReady`
      * from core's DECODE thread. */
     connect(auth_, &AuthWorker::datacentre, this,
-            [this](const QString &name, const QString &) {
+            [this](const QString &name, const QString &, const QString &apiVer) {
+                launcher_api_version_ = apiVer;
                 /* UI6 - kept, because the cards show it: it is per account, so
                  * one value for the whole list. */
                 datacentre_ = name;
@@ -838,6 +846,7 @@ void MainWindow::retranslate()
     machines_filter_->setPlaceholderText(tr("Filter..."));
     retry_btn_->setText(tr("Start over"));
     pair_tagline_->setText(tr("Your Shadow cloud PC, on anything you own."));
+    act_account_->setText(tr("&Account..."));
     act_sign_out_->setText(tr("Sign &out"));
     view_menu_->setTitle(tr("&View"));
     act_settings_->setText(tr("&Settings"));
@@ -1520,6 +1529,23 @@ void MainWindow::onSignInFailed(const QString &why)
  * session running against credentials the application has just thrown away -
  * it would keep working until the next token refresh and then fail somewhere
  * unrelated, which is the worst of both. */
+/* ACC1 - the account window, built once and kept: it holds a scroll position
+ * and a refresh in flight, and rebuilding it on every open would throw both
+ * away. Fed the session each time, because the machine it asks about is
+ * whichever one is current. */
+void MainWindow::openAccount()
+{
+    if (!account_) account_ = new AccountWindow(this);
+    account_->setSession(launcher_url_, bearer_,
+                         last_machine_id_.isEmpty()
+                             ? machine_ids_.value(0)
+                             : last_machine_id_,
+                         datacentre_, launcher_api_version_);
+    account_->show();
+    account_->raise();
+    account_->activateWindow();
+}
+
 void MainWindow::signOut()
 {
     const QMessageBox::StandardButton a = QMessageBox::question(
@@ -1599,19 +1625,30 @@ void MainWindow::listMachines()
     (void)QtConcurrent::run([this, base, tok] {
         halyard::ScopedVmPage page;
         long http = 0;
-        QStringList ids, names, states;
+        /* VMK1 - one list of rows rather than three parallel QStringLists.
+         * Three was already one too many when the state joined the name; six
+         * fields in six lists is how an off-by-one puts a machine's
+         * maintenance flag on its neighbour. */
+        QVariantList rows;
         bool fetched = false;
         if (launcher_list_vms(base.constData(), tok.constData(), 0, 50,
                               page.out(), &http)) {
             fetched = true;
             for (int i = 0; i < page->count; i++) {
                 const VmInfo &v = page->items[i];
-                ids << str(v.id);
                 QString label = str(v.alias);
                 if (label.isEmpty()) label = str(v.name);
                 if (label.isEmpty()) label = str(v.id);
-                names  << label;
-                states << str(v.state);
+
+                QVariantMap m;
+                m[QStringLiteral("id")]    = str(v.id);
+                m[QStringLiteral("name")]  = label;
+                m[QStringLiteral("state")] = str(v.state);
+                m[QStringLiteral("dc")]    = str(v.datacenter);
+                m[QStringLiteral("hw")]    = str(v.hwconfig);
+                m[QStringLiteral("tags")]  = str(v.tags);
+                m[QStringLiteral("maint")] = v.maintenance;
+                rows << m;
             }
         }
         if (!fetched) {
@@ -1622,19 +1659,21 @@ void MainWindow::listMachines()
                                       Q_ARG(int, int(http)));
             return;
         }
-        /* UI1 - the three fields separately: the card gives each its own place,
-         * so gluing them into one string here would only have to be undone. */
         QMetaObject::invokeMethod(this, "onMachinesFetched", Qt::QueuedConnection,
-                                  Q_ARG(QStringList, ids),
-                                  Q_ARG(QStringList, names),
-                                  Q_ARG(QStringList, states));
+                                  Q_ARG(QVariantList, rows));
     });
 }
 
-void MainWindow::onMachinesFetched(const QStringList &ids, const QStringList &names,
-                                   const QStringList &states)
+void MainWindow::onMachinesFetched(const QVariantList &rows)
 {
     clearMachineCards();
+
+    QStringList ids, names;
+    for (const QVariant &r : rows) {
+        const QVariantMap m = r.toMap();
+        ids   << m.value(QStringLiteral("id")).toString();
+        names << m.value(QStringLiteral("name")).toString();
+    }
 
     /* === UI6 — MOST RECENTLY USED FIRST =================================
      *
@@ -1661,11 +1700,24 @@ void MainWindow::onMachinesFetched(const QStringList &ids, const QStringList &na
     machine_names_.clear();
     for (int k = 0; k < order.size(); k++) {
         const int i = order.at(k);
+        const QVariantMap m = rows.at(i).toMap();
         machine_ids_   << ids.at(i);
         machine_names_ << names.value(i);
 
-        auto *card = new MachineCard(ids.at(i), names.value(i), states.value(i),
-                                     datacentre_, machines_host_);
+        MachineCard::Info info;
+        info.id    = ids.at(i);
+        info.name  = names.value(i);
+        info.state = m.value(QStringLiteral("state")).toString();
+        /* VMK1 - the machine's OWN data centre when the server gave one; the
+         * account-wide name from TINAG only as a fallback, which is what the
+         * first version used unconditionally. */
+        info.datacentre = m.value(QStringLiteral("dc")).toString();
+        if (info.datacentre.isEmpty()) info.datacentre = datacentre_;
+        info.hwconfig    = m.value(QStringLiteral("hw")).toString();
+        info.tags        = m.value(QStringLiteral("tags")).toString();
+        info.maintenance = m.value(QStringLiteral("maint")).toBool();
+
+        auto *card = new MachineCard(info, machines_host_);
         card->setLastUsed(used[i]);
         connect(card, &MachineCard::connectRequested, this, &MainWindow::connectTo);
         /* Before the trailing stretch, so the cards stay at the top. */
@@ -1810,6 +1862,14 @@ void MainWindow::connectTo(const QString &id)
 {
     const int row = machine_ids_.indexOf(id);
     if (row < 0) return;
+    /* VMK1 - the card disables its own button, but `connectTo` is also
+     * reached by Enter and by a double-click, and a guard at the one place
+     * every path goes through beats three guards at the paths. */
+    if (row < machine_cards_.size() && machine_cards_.at(row)->underMaintenance()) {
+        statusBar()->showMessage(
+            tr("Shadow reports this machine as under maintenance."), 6000);
+        return;
+    }
     last_machine_id_ = id;   /* UI3 - what Retry retries */
 
     /* UI6 - the local record the list is ordered by. Written on the ATTEMPT

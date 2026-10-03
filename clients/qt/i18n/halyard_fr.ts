@@ -2,6 +2,200 @@
 <!DOCTYPE TS>
 <TS version="2.1" language="fr" sourcelanguage="en">
 <context>
+    <name>AccountWindow</name>
+    <message>
+        <source>%1 h %2</source>
+        <translation>%1 h %2</translation>
+    </message>
+    <message>
+        <source>%1 min</source>
+        <translation>%1 min</translation>
+    </message>
+    <message>
+        <source>yes</source>
+        <translation>oui</translation>
+    </message>
+    <message>
+        <source>no</source>
+        <translation>non</translation>
+    </message>
+    <message>
+        <source>Account</source>
+        <translation>Compte</translation>
+    </message>
+    <message>
+        <source>Subscription</source>
+        <translation>Abonnement</translation>
+    </message>
+    <message>
+        <source>Plan</source>
+        <translation>Offre</translation>
+    </message>
+    <message>
+        <source>Status</source>
+        <translation>État</translation>
+    </message>
+    <message>
+        <source>Active since</source>
+        <translation>Actif depuis</translation>
+    </message>
+    <message>
+        <source>Last payment</source>
+        <translation>Dernier paiement</translation>
+    </message>
+    <message>
+        <source>On hold</source>
+        <translation>Suspendu</translation>
+    </message>
+    <message>
+        <source>Sessions</source>
+        <translation>Sessions</translation>
+    </message>
+    <message>
+        <source>Maximum session length</source>
+        <translation>Durée maximale d&apos;une session</translation>
+    </message>
+    <message>
+        <source>Hard stop</source>
+        <translation>Arrêt imposé</translation>
+    </message>
+    <message>
+        <source>Time slots</source>
+        <translation>Plages horaires</translation>
+    </message>
+    <message>
+        <source>Fair use</source>
+        <translation>Usage raisonnable</translation>
+    </message>
+    <message>
+        <source>What this account may do</source>
+        <translation>Ce que ce compte peut faire</translation>
+    </message>
+    <message>
+        <source>Channels</source>
+        <translation>Canaux</translation>
+    </message>
+    <message>
+        <source>Screens</source>
+        <translation>Écrans</translation>
+    </message>
+    <message>
+        <source>Maximum resolution</source>
+        <translation>Résolution maximale</translation>
+    </message>
+    <message>
+        <source>Maximum frame rate</source>
+        <translation>Fréquence d&apos;images maximale</translation>
+    </message>
+    <message>
+        <source>Video codecs</source>
+        <translation>Codecs vidéo</translation>
+    </message>
+    <message>
+        <source>Chroma</source>
+        <translation>Chroma</translation>
+    </message>
+    <message>
+        <source>Audio codecs</source>
+        <translation>Codecs audio</translation>
+    </message>
+    <message>
+        <source>Service</source>
+        <translation>Service</translation>
+    </message>
+    <message>
+        <source>Data centre</source>
+        <translation>Data centre</translation>
+    </message>
+    <message>
+        <source>Launcher API</source>
+        <translation>API du launcher</translation>
+    </message>
+    <message>
+        <source>This client</source>
+        <translation>Ce client</translation>
+    </message>
+    <message>
+        <source>Refresh</source>
+        <translation>Actualiser</translation>
+    </message>
+    <message>
+        <source>Sign in to see what this account is entitled to.</source>
+        <translation>Connectez-vous pour voir ce à quoi ce compte a droit.</translation>
+    </message>
+    <message>
+        <source>asking Shadow...</source>
+        <translation>interrogation de Shadow...</translation>
+    </message>
+    <message>
+        <source>%1 (%2)</source>
+        <translation>%1 (%2)</translation>
+    </message>
+    <message>
+        <source>none</source>
+        <translation>aucun</translation>
+    </message>
+    <message>
+        <source>enabled (%1)</source>
+        <translation>activées (%1)</translation>
+    </message>
+    <message>
+        <source>disabled</source>
+        <translation>désactivées</translation>
+    </message>
+    <message>
+        <source>%1 of %2 used (%3 %)</source>
+        <translation>%1 utilisées sur %2 (%3 %)</translation>
+    </message>
+    <message>
+        <source>the server gave no allowance</source>
+        <translation>le serveur n&apos;a donné aucun quota</translation>
+    </message>
+    <message>
+        <source>renews on %1</source>
+        <translation>renouvellement le %1</translation>
+    </message>
+    <message>
+        <source>clipboard</source>
+        <translation>presse-papiers</translation>
+    </message>
+    <message>
+        <source>file transfer</source>
+        <translation>transfert de fichiers</translation>
+    </message>
+    <message>
+        <source>gamepad</source>
+        <translation>manette</translation>
+    </message>
+    <message>
+        <source>microphone</source>
+        <translation>microphone</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n allowed (this client uses one)</source>
+        <translation>
+            <numerusform>%n autorisé (ce client n&apos;en utilise qu&apos;un)</numerusform>
+            <numerusform>%n autorisés (ce client n&apos;en utilise qu&apos;un)</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>%1 Hz</source>
+        <translation>%1 Hz</translation>
+    </message>
+    <message>
+        <source>the subscription could not be read (HTTP %1)</source>
+        <translation>l&apos;abonnement n&apos;a pas pu être lu (HTTP %1)</translation>
+    </message>
+    <message>
+        <source>the machine&apos;s entitlements could not be read (HTTP %1)</source>
+        <translation>les droits de la machine n&apos;ont pas pu être lus (HTTP %1)</translation>
+    </message>
+    <message>
+        <source>no machine yet, so only the subscription is shown</source>
+        <translation>aucune machine pour l&apos;instant, seul l&apos;abonnement est affiché</translation>
+    </message>
+</context>
+<context>
     <name>AuthWorker</name>
     <message>
         <source>resolving the data centre</source>
@@ -523,8 +717,16 @@
 <context>
     <name>MachineCard</name>
     <message>
+        <source>maintenance</source>
+        <translation>maintenance</translation>
+    </message>
+    <message>
         <source>Connect</source>
         <translation>Se connecter</translation>
+    </message>
+    <message>
+        <source>Shadow reports this machine as under maintenance. Connecting would fail partway through the bootstrap.</source>
+        <translation>Shadow signale cette machine en maintenance. La connexion échouerait en cours d&apos;amorçage.</translation>
     </message>
     <message>
         <source>used today</source>
@@ -591,6 +793,10 @@
     <message>
         <source>Your Shadow cloud PC, on anything you own.</source>
         <translation>Votre PC cloud Shadow, sur tout ce que vous possédez.</translation>
+    </message>
+    <message>
+        <source>&amp;Account...</source>
+        <translation>&amp;Compte...</translation>
     </message>
     <message>
         <source>Sign &amp;out</source>
@@ -818,6 +1024,10 @@ Vous devrez vous reconnecter via un navigateur au prochain démarrage. Rien n&ap
     <message>
         <source>the machine list could not be fetched</source>
         <translation>la liste des machines n&apos;a pas pu être récupérée</translation>
+    </message>
+    <message>
+        <source>Shadow reports this machine as under maintenance.</source>
+        <translation>Shadow signale cette machine en maintenance.</translation>
     </message>
     <message>
         <source>Already streaming</source>

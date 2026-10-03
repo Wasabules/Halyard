@@ -86,6 +86,7 @@ using ScopedVmConn         = Scoped<VmConnectionInfo, vmconn_free>;
 using ScopedSessionToken   = Scoped<LauncherSessionToken, launcher_token_free>;
 using ScopedProxCreds      = Scoped<ProximusCredentials, proximus_credentials_free>;
 using ScopedVmCaps         = Scoped<VmCapabilities, vmcaps_free>;
+using ScopedSubscription   = Scoped<Subscription, subscription_free>;   /* ACC1 */
 using ScopedTurnServers    = Scoped<TurnServers, turn_servers_free>;
 using ScopedProxLauncher   = Scoped<ProximusLauncherSession, proximus_launcher_session_free>;
 using ScopedProxMain       = Scoped<ProximusMainSession, proximus_main_session_free>;

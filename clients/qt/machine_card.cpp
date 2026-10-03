@@ -18,11 +18,12 @@
 
 namespace theme = halyard::theme;
 
-MachineCard::MachineCard(const QString &id, const QString &name,
-                         const QString &state, const QString &datacentre,
-                         QWidget *parent)
-    : QFrame(parent), id_(id)
+MachineCard::MachineCard(const Info &info, QWidget *parent)
+    : QFrame(parent), id_(info.id), maintenance_(info.maintenance)
 {
+    const QString &name = info.name;
+    const QString &state = info.state;
+    const QString &datacentre = info.datacentre;
     setProperty("card", true);
     setProperty("cardHover", true);
     /* UI5 - focusable, and reachable by Tab as well as by the arrows. */
@@ -38,7 +39,7 @@ MachineCard::MachineCard(const QString &id, const QString &name,
     auto *texts = new QVBoxLayout;
     texts->setSpacing(theme::SpaceTight);
 
-    auto *title = new QLabel(name.isEmpty() ? id : name, this);
+    auto *title = new QLabel(name.isEmpty() ? info.id : name, this);
     title->setProperty("h2", true);
     texts->addWidget(title);
 
@@ -57,12 +58,31 @@ MachineCard::MachineCard(const QString &id, const QString &name,
         pill_->setProperty("pill", QString::fromUtf8(halyard::pillClassFor(state)));
         sub->addWidget(pill_);
     }
-    /* UI6 - where it runs. Dim, after the state: it only matters when there is
-     * more than one, and then it matters a lot (latency). */
+    /* === VMK1 — MAINTENANCE FIRST ========================================
+      *
+      * The server tells us a machine is unavailable and the first version
+      * never asked. Connecting to one succeeds through the launcher and then
+      * fails at step 5 or 6, which reads as our bug rather than as the
+      * machine being down. A pill, before everything else, and Connect is
+      * disabled below. */
+    if (info.maintenance) {
+        auto *mt = new QLabel(tr("maintenance"), this);
+        mt->setProperty("pill", QStringLiteral("busy"));
+        sub->addWidget(mt);
+    }
+
+    /* UI6/VMK1 - where it runs, and on what. The data centre is the
+     * machine's own now; the hardware tier used to be invisible because the
+     * parser only used it as a fallback for an empty name. */
     if (!datacentre.isEmpty()) {
         auto *dc = new QLabel(datacentre, this);
         dc->setProperty("dim", true);
         sub->addWidget(dc);
+    }
+    if (!info.hwconfig.isEmpty() && info.hwconfig != name) {
+        auto *hw = new QLabel(info.hwconfig, this);
+        hw->setProperty("dim", true);
+        sub->addWidget(hw);
     }
 
     /* UI6 - the local record of the last connection, filled by setLastUsed.
@@ -77,6 +97,12 @@ MachineCard::MachineCard(const QString &id, const QString &name,
 
     connect_ = new QPushButton(tr("Connect"), this);
     connect_->setProperty("accent", true);
+    if (info.maintenance) {
+        connect_->setEnabled(false);
+        connect_->setToolTip(tr("Shadow reports this machine as under "
+                                "maintenance. Connecting would fail partway "
+                                "through the bootstrap."));
+    }
     QObject::connect(connect_, &QPushButton::clicked, this,
                      [this] { emit connectRequested(id_); });
 
@@ -133,7 +159,10 @@ void MachineCard::leaveEvent(QEvent *e)
 
 void MachineCard::setBusy(bool busy)
 {
-    connect_->setEnabled(!busy);
+    /* VMK1 - a machine under maintenance stays unavailable whatever the
+     * session state: `setBusy(false)` at the end of a session would otherwise
+     * quietly hand back a button that must not be pressed. */
+    connect_->setEnabled(!busy && !maintenance_);
 }
 
 void MachineCard::activate()
