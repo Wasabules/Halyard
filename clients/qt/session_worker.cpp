@@ -11,7 +11,10 @@ extern "C" {
 #include "core/session/ctrl_session_glue.h"
 #include "core/protocol/ctrl_session.h"
 #include "core/protocol/session_caps.h"
+#include "core/services/proximus.h"   /* S51/QT - deleting our clients */
 }
+
+#include <cstdlib>
 
 /* The depth of the frame pool. Three is the Borealis client's own queue depth
  * for the same reason: in steady state decoding keeps up and the pool sits at
@@ -176,6 +179,49 @@ void SessionWorker::runSession(const BootstrapWorker::Ready &r)
             if (m) proximus_sse_stop(m);
         }
     } sse{r.sseLauncher, r.sseMain};
+
+    /* === S51/QT 2026-10-03 — AND DELETE THE TWO CLIENTS ===================
+     *
+     * `proximus.h`: the official client deletes its client registrations at
+     * the end of a session, and "without it the clients pile up on the VM".
+     * K14 wrote the call in 2026-08 and wired it only into the headless test
+     * binary; Borealis caught up (S51); this client was still leaving a pair
+     * behind on every single session.
+     *
+     * The order is the official client's: MAIN first, then launcher. Each
+     * with its OWN jwt - they are different tokens and the server checks.
+     *
+     * A guard beside the SSE one, and for the same reason: this function has
+     * several exits and a cleanup written at one of them is a cleanup that
+     * runs on one of them. Failures are ignored on purpose - we are closing,
+     * and a VM that has already gone does not need telling. It blocks for up
+     * to a couple of seconds (measured ~2 s of a ~3 s close on console),
+     * which is acceptable HERE because this is the session thread; it would
+     * not be on the GUI one.
+     *
+     * `SHADOW_DELETE_CLIENT=0` restores the old behaviour, same name as the
+     * Borealis toggle so one setting covers both clients. */
+    struct ClientGuard {
+        BootstrapWorker::Ready r;
+        ~ClientGuard() {
+            const char *e = getenv("SHADOW_DELETE_CLIENT");
+            if (e && atoi(e) == 0) return;
+            if (r.proximusUrl.isEmpty()) return;
+            const QByteArray url = r.proximusUrl.toUtf8();
+            long st = 0;
+            if (!r.mainClientId.isEmpty() && !r.mainJwt.isEmpty()) {
+                const QByteArray j = r.mainJwt.toUtf8(), id = r.mainClientId.toUtf8();
+                (void)proximus_delete_client(url, j, id, &st);
+                qInfo("[S51] main client deleted (HTTP %ld)", st);
+            }
+            if (!r.launcherClientId.isEmpty() && !r.launcherJwt.isEmpty()) {
+                const QByteArray j = r.launcherJwt.toUtf8(),
+                                 id = r.launcherClientId.toUtf8();
+                (void)proximus_delete_client(url, j, id, &st);
+                qInfo("[S51] launcher client deleted (HTTP %ld)", st);
+            }
+        }
+    } clients{r};
 
     if (running_.exchange(true)) {
         emit finished(false, QStringLiteral("a session is already running"));

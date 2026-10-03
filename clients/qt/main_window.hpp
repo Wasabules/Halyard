@@ -36,6 +36,7 @@
 #include <QMainWindow>
 #include <QKeySequence>
 #include <QElapsedTimer>
+#include <QHash>
 #include <QRect>
 #include <QVariantList>
 #include <QVector>
@@ -187,6 +188,9 @@ private:
     QVector<QWidget *> machine_skeletons_;
     QString      datacentre_;        /* UI6 - shown on every card */
     QString      launcher_api_version_;   /* ACC1 - from TINAG */
+    /* SSE1 - the run state the event stream reported, by machine id.
+     * The only source there is: /vms answers `status: null`. */
+    QHash<QString, QString> vm_state_;
     AccountWindow *account_ = nullptr;    /* ACC1 */
     BootstrapWorker::Caps caps_;     /* CAPS2 - what the account may do */
     QElapsedTimer session_started_;  /* CAPS2 - the session countdown */

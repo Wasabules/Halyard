@@ -461,6 +461,36 @@ bool oauth_load_refresh(char **out) {
     return true;
 }
 
+/* See oauth.h (AUTH10). */
+bool oauth_revoke_token(const OidcDiscovery *d, const char *client_id,
+                        const char *token) {
+    if (!d || !d->revocation_endpoint || !token || !*token) return false;
+
+    char *enc_token  = url_encode(token);
+    char *enc_client = url_encode(client_id ? client_id : "");
+    if (!enc_token || !enc_client) { free(enc_token); free(enc_client); return false; }
+
+    char body[4096];
+    const int n = snprintf(body, sizeof(body),
+                           "token=%s&token_type_hint=refresh_token&client_id=%s",
+                           enc_token, enc_client);
+    free(enc_token); free(enc_client);
+    /* A refresh token is long and the buffer is generous, but a truncated
+     * revocation would ask the server to revoke a DIFFERENT token - which it
+     * would answer 200 to, per RFC 7009. Silence is the one answer this call
+     * must not accept, so truncation is a failure. */
+    if (n <= 0 || n >= (int)sizeof(body)) return false;
+
+    http_response resp;
+    const bool t = http_post_form(d->revocation_endpoint, body, &resp);
+    const bool ok = t && resp.status >= 200 && resp.status < 300;
+    if (!ok)
+        fprintf(stderr, "the session could not be revoked server-side "
+                        "(HTTP %ld)\n", resp.status);
+    http_free(&resp);
+    return ok;
+}
+
 /* See oauth.h (AUTH9). */
 bool oauth_forget_refresh(void) {
     FILE *f = fopen(SHADOW_TOKEN_PATH, "r+b");

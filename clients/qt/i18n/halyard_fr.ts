@@ -787,6 +787,14 @@
         <translation>Filtrer...</translation>
     </message>
     <message>
+        <source>The machine has crashed (blue screen). Shadow is restarting it.</source>
+        <translation>La machine a planté (écran bleu). Shadow la redémarre.</translation>
+    </message>
+    <message>
+        <source>Shadow is ending this session.</source>
+        <translation>Shadow met fin à cette session.</translation>
+    </message>
+    <message>
         <source>Start over</source>
         <translation>Recommencer</translation>
     </message>

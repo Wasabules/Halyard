@@ -70,6 +70,29 @@ public:
          * exists to prevent. */
         proximus_sse_keepalive *sseLauncher = nullptr;
         proximus_sse_keepalive *sseMain     = nullptr;
+
+        /* === S51/QT 2026-10-03 — WHAT A CLEAN CLOSE NEEDS =================
+         *
+         * The official client does `DELETE /N/clients/<id>` for each of the
+         * two clients it registered, and `proximus.h` says plainly what
+         * happens without it: "the clients pile up on the VM". K14 wrote the
+         * call, wired it into the headless test binary and never into a GUI;
+         * the Borealis client fixed that for itself (S51) and this one was
+         * still leaking a pair of registrations on every session.
+         *
+         * It is not only tidiness. K14's own hypothesis, still the best
+         * candidate for the audio channel that dies one session in three: a
+         * newcomer facing already-registered ghost clients is treated as
+         * secondary.
+         *
+         * The two ids and the two JWTs have to survive the bootstrap for the
+         * teardown to use them, which is exactly why the first version could
+         * not do it - `ProximusLauncherSession` was checked for success and
+         * dropped on the floor. They are CREDENTIALS: kept for the session,
+         * never logged, never shown. */
+        QString proximusUrl;
+        QString launcherClientId, mainClientId;
+        QString launcherJwt, mainJwt;   /* credentials */
     };
 
     /* === CAPS2 2026-10-03 — WHAT THE ACCOUNT IS ALLOWED ====================
@@ -101,12 +124,31 @@ public:
 
     void requestStop();
 
+    /* SSE1 - the C callback the keepalive calls. Static because the C side
+     * takes a plain function pointer; `user` is the worker. */
+    static void onSseLine(const char *json, int len, void *user);
+
 public slots:
     void start(const QString &launcherUrl, const QString &bearer,
                const QString &vmId);
 
 signals:
     void capabilities(const BootstrapWorker::Caps &c);
+
+    /* === SSE1 2026-10-03 — WHAT THE VM SAYS ==============================
+     *
+     * Emitted for every event parsed off either stream. QUEUED by the
+     * receiver, always: `proximus_sse_set_sink` runs its callback on the
+     * keepalive's own thread, inside curl's write handler, and anything that
+     * blocks there stalls the stream the server uses to decide we are still
+     * present.
+     *
+     * Expect silence. The RE of a 235-second session counted ONE event in it
+     * (`shadow-manager.encoding_is_ready`, at bootstrap) and refuted the idea
+     * that the stream drives anything mid-session. This exists so that `bsod`
+     * and `get-out` are not thrown away the day they do arrive, and so that
+     * the quiet is a measurement rather than an assumption. */
+    void vmEvent(const QString &kind, const QString &sub, const QString &detail);
 
     /* `index` is 0..6 and matches the seven step names the UI shows, so the
      * two clients report the same vocabulary. `detail` carries the HTTP code or

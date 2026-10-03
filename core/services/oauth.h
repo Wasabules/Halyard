@@ -114,6 +114,34 @@ bool oauth_load_refresh(char **refresh_out);   // allocated, to be freed
  * was none to begin with, because that is the state the caller asked for. */
 bool oauth_forget_refresh(void);
 
+/* === AUTH10 2026-10-03 — SIGNING OUT MUST REACH THE SERVER ================
+ *
+ * `oauth_forget_refresh` deletes the token from this machine, which is what
+ * someone sitting at it can see and all the application was doing. The token
+ * itself stayed VALID at Shadow: anybody holding a copy - a backup, an old
+ * SD card, a log that should never have had it - could keep refreshing it
+ * indefinitely, and "sign out" had told them nothing.
+ *
+ * The discovery document has carried `revocation_endpoint` since the first
+ * version of this file and nothing in the repository ever read it.
+ *
+ * RFC 7009: POST token=<the token>&token_type_hint=refresh_token, and the
+ * server answers 200 for a token it revoked AND for one it never knew - the
+ * two are deliberately indistinguishable, so a true return means "the server
+ * was told", never "the token existed".
+ *
+ * Revoking the REFRESH token is what matters: an access token expires on its
+ * own within the hour, and the refresh token is the one that lives for
+ * months. Pass the refresh token.
+ *
+ * Returns false when the endpoint is missing (an authorisation server is not
+ * required to offer one), the network failed, or the server refused. The
+ * caller should still forget the token locally either way - a sign-out that
+ * left the credential on disk because the network was down would be the
+ * worse failure of the two. */
+bool oauth_revoke_token(const OidcDiscovery *d, const char *client_id,
+                        const char *token);
+
 // UX3 B5 2026-05-18: checks whether expiry < now + threshold_sec (= a refresh
 // is advised). Returns false when the state is empty or expires_at is not
 // set.

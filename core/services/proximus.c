@@ -569,6 +569,9 @@ struct proximus_sse_keepalive {
     volatile int abort_flag;
     bool       running;
     volatile int acquisition_ready;  /* set to 1 when an event is received */
+    /* SSE1 - set by proximus_sse_set_sink; read on the keepalive thread. */
+    proximus_sse_sink sink;
+    void *sink_user;
 };
 
 /* Public getter - used by smoke_test to wait on the event */
@@ -611,6 +614,16 @@ static size_t sse_keepalive_writer(void *ptr, size_t size, size_t nmemb,
             fprintf(stderr, "[sse] %.*s\n", (int)line_len, p);
             fflush(stderr);
             /* Detects the critical events. */
+            /* SSE1 - hand the payload to whoever registered, before the
+             * substring sniffing below. `p` points at "data:", so the JSON
+             * starts after it plus any single space the server inserts. */
+            if (k->sink) {
+                const char *j = p + 5;
+                size_t jl = line_len > 5 ? line_len - 5 : 0;
+                while (jl && (*j == ' ' || *j == '	')) { j++; jl--; }
+                if (jl) k->sink(j, (int)jl, k->sink_user);
+            }
+
             if (memmem(p, line_len, "acquisition_is_ready", 20)) {
                 k->acquisition_ready = 1;
                 fprintf(stderr, "[sse] *** acquisition_is_ready DETECTED ***\n");
@@ -769,6 +782,13 @@ proximus_sse_keepalive *proximus_sse_start_ex(const char *proximus_url,
         return NULL;
     }
     return k;
+}
+
+void proximus_sse_set_sink(struct proximus_sse_keepalive *k,
+                           proximus_sse_sink cb, void *user) {
+    if (!k) return;
+    k->sink = cb;
+    k->sink_user = user;
 }
 
 void proximus_sse_stop(proximus_sse_keepalive *k) {

@@ -137,6 +137,13 @@ cmake --build build_qt --target halyard_lupdate   # extract into clients/qt/i18n
 | `ft_worker.{hpp,cpp}`, `file_manager_window.{hpp,cpp}` | the SFTP worker thread and the two-pane file manager |
 | `qt_input_map.hpp` | Qt key -> evdev scancode, physical not character (IN1) |
 | `core_scope.hpp`, `plane_copy.hpp` | RAII over core's `_free()` functions; the stride-aware plane copy |
+| `stream_overlay.{hpp,cpp}`, `overlay_paint`, `hud_model`, `hud_grade.hpp` | the in-stream overlay, its sparklines, what the HUD shows and how a reading becomes a colour |
+| `machine_card.{hpp,cpp}`, `machine_state.hpp` | one card per machine; the server's state words mapped to a pill |
+| `pairing_widgets.{hpp,cpp}` | the sign-in QR, the code in cells, the validity bar |
+| `account_window.{hpp,cpp}` | the plan, the fair-use standing, what the account may do |
+| `shortcuts.hpp` | the seven keyboard commands in one table, with collision detection |
+| `probe.{hpp,cpp}` | `--probe`, the headless mode that answers a question and exits |
+| `rate_meter.hpp` | counters to live rates, without the 1.8e19/s a reset used to produce |
 
 ## File transfer
 
@@ -175,11 +182,47 @@ button, always mouse-reachable - gives Fullscreen / Settings / File transfer /
 Disconnect, and F11 toggles fullscreen locally (IN3); both are guaranteed ways
 out of a fullscreen stream even with the hook swallowing Alt+Tab.
 
+## Headless: `--probe`
+
+```bash
+halyard-qt --probe caps [--vm <id>] [--out report.json]
+```
+
+Signs in with the saved session, asks about the account and exits. No window,
+so it runs from a script. **It starts no VM**: `/vms/{id}/capabilities`
+answers for a machine that is asleep, and starting one would spend the
+account's hours to learn nothing more.
+
+It exists because `halyard-cli` is not built on Windows, which would have left
+the platform asking a question unable to run the answer. It earned its keep the
+first time it ran: that one call found `max_monitor_count` (the display ceiling
+the server enforces) and the whole `usage` block (the session countdown the
+official client shows), both in a reply the client had been fetching for months
+and reading four values out of.
+
+The report is machine metadata and can carry a machine identifier. No token
+passes through it.
+
 ## What is deliberately NOT here yet
 
-No microphone forwarding: KB §3.37 has the mic channel (`+32`) identified but
-its format UNPROVEN - the official client opens the socket and sends no bytes -
-so implementing it would be shipping unmeasured protocol, which the house rules
-forbid. No keyboard-shortcut editor (the overlay and F11 cover the needed
-actions). The framework-latency measurement still stands: end-to-end latency of
-this path against what the Borealis client does today.
+**No microphone forwarding**: KB §3.37 has the mic channel (`+32`) identified
+but its format UNPROVEN - the official client opens the socket and sends no
+bytes - so implementing it would be shipping unmeasured protocol, which the
+house rules forbid.
+
+**One screen.** DISP1 established that the protocol is per-display (an
+`outputId` on each DisplayConfig, a ceiling the server enforces, a second
+screen being a second channel registration) and that this account's machine
+allows two. What is missing is the protobuf FIELD NUMBER of `outputId`,
+inferred at f6 from the generated class layout and not read: the binary
+carries no `.proto` descriptor. Asking for a second screen on a guess would be
+exactly the unmeasured protocol the mic is being held back for.
+
+**The SSE stream is read but quiet.** SSE1 parses the taxonomy and surfaces
+`bsod` and `get-out`; expect nothing else. The RE measured one event in a
+235-second session and refuted the idea that the stream drives anything
+mid-session, so the machine cards still have no live run state - `/vms`
+answers `status: null` and that remains the whole story.
+
+The framework-latency measurement still stands: end-to-end latency of this path
+against what the Borealis client does today.

@@ -4,6 +4,10 @@
 
 #include "core_scope.hpp"
 
+extern "C" {
+#include "core/services/sse_event.h"   /* SSE1 */
+}
+
 #include <QThread>
 
 using halyard::str;
@@ -24,6 +28,23 @@ BootstrapWorker::BootstrapWorker(QObject *parent) : QObject(parent)
 }
 
 void BootstrapWorker::requestStop() { stop_ = true; }
+
+/* SSE1 - the keepalive thread's entry point. Nothing here may block and
+ * nothing may touch a widget; `emit` across threads is fine because every
+ * connection to `vmEvent` is queued. */
+void BootstrapWorker::onSseLine(const char *json, int len, void *user)
+{
+    auto *self = static_cast<BootstrapWorker *>(user);
+    if (!self) return;
+
+    sse_event ev;
+    if (!sse_event_parse(json, len, &ev)) return;   /* comments, keepalives */
+    if (ev.type != SSE_TYPE_EVENT) return;          /* session/main frames */
+
+    emit self->vmEvent(QString::fromUtf8(ev.event_name),
+                       QString::fromUtf8(ev.sub),
+                       QString::fromUtf8(ev.detail));
+}
 
 void BootstrapWorker::start(const QString &launcherUrl, const QString &bearer,
                             const QString &vmId)
@@ -165,6 +186,13 @@ void BootstrapWorker::start(const QString &launcherUrl, const QString &bearer,
     emit stepRunning(5, QString());
     proximus_sse_keepalive *sseL = proximus_sse_start(prox, creds->launcher_jwt);
     proximus_sse_keepalive *sseM = proximus_sse_start(prox, creds->main_jwt);
+
+    /* SSE1 - read the streams instead of only holding them open. The sink is
+     * a free function with `this` as its user pointer, and it does one thing:
+     * parse, then emit. The emit is safe from another thread BECAUSE the
+     * receiver connects queued - see the signal's comment. */
+    if (sseL) proximus_sse_set_sink(sseL, &BootstrapWorker::onSseLine, this);
+    if (sseM) proximus_sse_set_sink(sseM, &BootstrapWorker::onSseLine, this);
     if (!sseL || !sseM) {
         if (sseL) proximus_sse_stop(sseL);
         if (sseM) proximus_sse_stop(sseM);
@@ -187,5 +215,13 @@ void BootstrapWorker::start(const QString &launcherUrl, const QString &bearer,
     r.bearer         = bearer;
     r.sseLauncher    = sseL;   /* the receiver stops them - see the header */
     r.sseMain        = sseM;
+    /* S51/QT - everything the teardown needs. `pl->id` in particular was
+     * checked for existence and then discarded, which is what made deleting
+     * the launcher client impossible rather than merely forgotten. */
+    r.proximusUrl      = proximusUrl;
+    r.launcherClientId = str(pl->id);
+    r.mainClientId     = str(pm->id);
+    r.launcherJwt      = str(creds->launcher_jwt);
+    r.mainJwt          = str(creds->main_jwt);
     emit ready(r);
 }

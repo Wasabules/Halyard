@@ -3,6 +3,10 @@
 
 #include "auth_worker.hpp"
 #include "core_scope.hpp"
+
+extern "C" {
+#include "core/services/config.h"   /* AUTH10 - SHADOW_OAUTH_CLIENT_ID */
+}
 #include "session_worker.hpp"
 #include "step_list_widget.hpp"
 #include "video_widget.hpp"
@@ -735,6 +739,40 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
     }, Qt::QueuedConnection);
     connect(boot_, &BootstrapWorker::ready, this,
             &MainWindow::onBootstrapReady, Qt::QueuedConnection);
+    /* === SSE1 — THE VM'S OWN EVENTS ======================================
+     *
+     * QUEUED, and the queue is the point: the sink runs on the keepalive's
+     * curl thread and this lambda touches widgets.
+     *
+     * Only two events get a toast. `bsod` and `get-out` are things that
+     * happen TO the person - the VM crashed, the server is ending the
+     * session - and a stream that goes black with no explanation is the
+     * worst version of either. The rest goes to the log, because the RE says
+     * to expect roughly one event per session and a toast for every one of
+     * them would be a notification for "the encoder is ready". */
+    connect(boot_, &BootstrapWorker::vmEvent, this,
+            [this](const QString &kind, const QString &sub, const QString &detail) {
+                qInfo("[SSE1] %s%s%s%s%s", qPrintable(kind),
+                      sub.isEmpty() ? "" : ".", qPrintable(sub),
+                      detail.isEmpty() ? "" : " = ", qPrintable(detail));
+
+                if (kind == QStringLiteral("bsod")) {
+                    showToast(tr("The machine has crashed (blue screen). "
+                                 "Shadow is restarting it."));
+                } else if (kind == QStringLiteral("get-out")) {
+                    showToast(tr("Shadow is ending this session."));
+                } else if (kind == QStringLiteral("status-changed")
+                           || kind == QStringLiteral("status_changed")) {
+                    /* The machine's run state, which `/vms` never gives
+                     * (`status: null`). Kept for the card to use on the next
+                     * listing rather than repainted now: the stream only
+                     * exists while a session does, and by then the list is
+                     * not on screen. */
+                    if (!detail.isEmpty() && !last_machine_id_.isEmpty())
+                        vm_state_[last_machine_id_] = detail;
+                }
+            }, Qt::QueuedConnection);
+
     /* CAPS2 - what the account is allowed, kept for the session. */
     connect(boot_, &BootstrapWorker::capabilities, this,
             [this](const BootstrapWorker::Caps &c) { caps_ = c; },
@@ -1540,6 +1578,38 @@ void MainWindow::signOut()
 
     if (session_live_ && sess_) sess_->requestStop();
 
+    /* === AUTH10 2026-10-03 — TELL THE SERVER, THEN FORGET =================
+     *
+     * Deleting the token locally is what the person at this machine can see;
+     * the token itself stayed valid at Shadow for months. Anybody holding a
+     * copy - a backup, an old card, a log that should not have had it -
+     * could keep refreshing it, and "sign out" had said nothing to anyone.
+     *
+     * Revoke FIRST: once the file is gone there is nothing left to revoke
+     * with. On a worker because it is an HTTP round trip and this is the GUI
+     * thread, and NOT waited on: the local forget must happen whether or not
+     * the network is up, since a sign-out that left the credential on disk
+     * because Wi-Fi was down is the worse of the two failures.
+     *
+     * The token is read, used and dropped inside the worker. It is never
+     * logged, and `oauth_revoke_token` does not print it either. */
+    {
+        char *rt = nullptr;
+        if (oauth_load_refresh(&rt) && rt && *rt) {
+            const QByteArray tok(rt);
+            (void)QtConcurrent::run([tok] {
+                halyard::ScopedDiscovery d;
+                long http = 0;
+                if (oauth_discover(d.out(), &http))
+                    (void)oauth_revoke_token(d.out(), SHADOW_OAUTH_CLIENT_ID,
+                                             tok.constData());
+            });
+        }
+        /* Zeroed rather than merely freed: it is a credential, and this is a
+         * heap buffer that would otherwise sit in freed memory. */
+        if (rt) { memset(rt, 0, strlen(rt)); free(rt); }
+    }
+
     const bool ok = oauth_forget_refresh();
     bearer_.clear();
     launcher_url_.clear();
@@ -1690,6 +1760,12 @@ void MainWindow::onMachinesFetched(const QVariantList &rows)
         info.id    = ids.at(i);
         info.name  = names.value(i);
         info.state = m.value(QStringLiteral("state")).toString();
+        /* SSE1 - `/vms` sends `status: null`, so the only run state we ever
+         * see is the one the event stream reported during a session. Used
+         * only as a fallback: a value the server just gave beats one we
+         * remembered. */
+        if (info.state.isEmpty())
+            info.state = vm_state_.value(ids.at(i));
         /* VMK1 - the machine's OWN data centre when the server gave one; the
          * account-wide name from TINAG only as a fallback, which is what the
          * first version used unconditionally. */

@@ -96,6 +96,29 @@ proximus_sse_keepalive *proximus_sse_start_ex(const char *proximus_url,
                                                 const char *jwt,
                                                 const char *suffix);
 
+/* === SSE1 2026-10-03 — A SINK, SO SOMEBODY CAN READ THE STREAM ===========
+ *
+ * The keepalive exists because the control port does not open without it,
+ * and that is all it did: each `data:` line went to stderr and nowhere else.
+ * `bsod` and `get-out` are in the taxonomy and would have gone to stderr too.
+ *
+ * A REGISTERED CALLBACK and not a link-time symbol, for the same reason the
+ * decoded picture leaves by `ctrl_session_glue_set_frame_sink`: this is a
+ * bottom-layer service and it must not know what a client is.
+ *
+ * THE CALLBACK RUNS ON THE KEEPALIVE'S OWN THREAD, inside curl's write
+ * handler. Two consequences the caller does not get to ignore: it must not
+ * block (the stream stalls behind it, and with it the thing the server uses
+ * to decide we are still here), and it must not touch a UI directly - post,
+ * do not paint. `json` is NOT NUL-terminated; use `len`, and copy anything
+ * that must outlive the call.
+ *
+ * Set it before `proximus_sse_start` returns its handle to another thread,
+ * or accept that the first frames arrive with no sink. */
+typedef void (*proximus_sse_sink)(const char *json, int len, void *user);
+void proximus_sse_set_sink(proximus_sse_keepalive *k,
+                           proximus_sse_sink cb, void *user);
+
 void proximus_sse_stop(proximus_sse_keepalive *k);
 
 /* K14 - GET <proximus_url>/clients: returns the raw JSON (to be freed). */

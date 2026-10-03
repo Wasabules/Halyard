@@ -184,6 +184,15 @@ if pkg-config --exists libqrencode 2>/dev/null; then
 else
     echo "== the QR module grid: SKIPPED ==  (no libqrencode through pkg-config)"
 fi
+# SSE1: the VM event stream's taxonomy. Pure (one JSON string in, a struct
+# out) so the one captured event and the two worth surfacing - bsod, get-out -
+# are pinned without a VM.
+if pkg-config --exists jansson 2>/dev/null; then
+    run test_sse_event test_sse_event.c ../core/services/sse_event.c $(pkg-config --cflags --libs jansson)
+else
+    echo "== the SSE taxonomy: SKIPPED ==  (no jansson through pkg-config)"
+fi
+
 # CAPS2: the /vms/{id}/capabilities reply. Its parser was inline in the HTTP
 # function until the body was printed for the first time and turned out to
 # carry the session ceiling and the monitor count; pulling it out is what made
