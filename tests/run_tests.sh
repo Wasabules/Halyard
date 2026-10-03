@@ -184,6 +184,17 @@ if pkg-config --exists libqrencode 2>/dev/null; then
 else
     echo "== the QR module grid: SKIPPED ==  (no libqrencode through pkg-config)"
 fi
+# CAPS2: the /vms/{id}/capabilities reply. Its parser was inline in the HTTP
+# function until the body was printed for the first time and turned out to
+# carry the session ceiling and the monitor count; pulling it out is what made
+# the shape testable without an account. Needs jansson + libcurl (launcher.c
+# pulls http.c, which pulls the journal and the clock).
+if pkg-config --exists jansson libcurl 2>/dev/null; then
+    run test_caps_parse test_caps_parse.c         ../core/services/launcher.c ../core/services/http.c         ../core/services/journal.c ../core/services/time_sync.c         ../core/services/sockets_compat.c ../core/services/atomic_file.c         $(if [ "$(uname -o 2>/dev/null)" = "Msys" ]; then echo "../core/services/win_env.c -lws2_32"; fi)         $(pkg-config --cflags --libs jansson libcurl)
+else
+    echo "== the /capabilities parser: SKIPPED ==  (no jansson/libcurl through pkg-config)"
+fi
+
 # NET1: the latency split (me -> router -> Shadow). Only the arithmetic is
 # reachable offline - a ping needs a network, and a suite that pings would fail
 # on a build machine rather than on a defect.

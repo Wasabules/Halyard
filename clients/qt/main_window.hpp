@@ -35,6 +35,7 @@
 
 #include <QMainWindow>
 #include <QKeySequence>
+#include <QElapsedTimer>
 #include <QRect>
 #include <QVector>
 
@@ -134,6 +135,7 @@ private:
      * when the settings window changes a binding. */
     void updateHeroVisibility();
     void updateHeader(int index);   /* D1 */
+    QString sessionTimeLeft() const;   /* CAPS2 */
     QScreen *fullscreenTarget() const;   /* SCR1 */
     void applyShortcuts();
     QKeySequence keySequenceFor(int action) const;
@@ -180,6 +182,8 @@ private:
     QPushButton *machines_error_retry_ = nullptr;
     QVector<QWidget *> machine_skeletons_;
     QString      datacentre_;        /* UI6 - shown on every card */
+    BootstrapWorker::Caps caps_;     /* CAPS2 - what the account may do */
+    QElapsedTimer session_started_;  /* CAPS2 - the session countdown */
     QString      last_machine_id_;   /* UI3 - what Retry retries */
     QRect        normal_geometry_;   /* SCR1 - where to return from another screen */
     /* QT5 - kept so retranslate() can re-label them. */

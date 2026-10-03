@@ -82,15 +82,57 @@ bool launcher_proximus_credentials(const char *launcher_base, const char *bearer
 // We call it purely to match the browser bootstrap; the result is mostly
 // informative (logged) - the server-side QoS scoring may track the absence of
 // this call as a "legacy client" signal.
+/* === CAPS2 2026-10-03 - WHAT THIS REPLY ACTUALLY CARRIES ==================
+ *
+ * We read four values out of this body for months and kept the rest in
+ * `raw_json` without ever printing it. Printed once (`halyard-qt --probe
+ * caps`), it answered two questions the protocol work had open:
+ *
+ *  - `streaming.channels.video.max_monitor_count` IS the per-client display
+ *    ceiling the server enforces. ShadowStreamer 6.3.1 refuses an outputId
+ *    past a number it keeps at `client+0x238` and says "VM does not support
+ *    more than %d display(s)"; this is where that number comes from (DISP1).
+ *    Measured 2 on a Neo.
+ *
+ *  - the whole `usage` block, which is the "5h55m restantes" the official
+ *    client shows. It is NOT a remaining time pushed by the server - there is
+ *    no runtime endpoint at all - it is `max_session_length` counted down
+ *    locally from the start of the session. 21600 s on this account, and the
+ *    official client's "5h55m" at five minutes in matches exactly.
+ *
+ * The fair-use figures are the ACCOUNT's, not the machine's, and they are
+ * personal: a monthly allowance, how much of it is spent, and when it renews.
+ * They are parsed because the client has a legitimate use for them (telling
+ * someone where they stand) and for no other reason; nothing here is logged.
+ */
+typedef struct {
+    // Seconds. 0 = the server did not say.
+    int    max_session_length;   // one session's ceiling - the countdown
+    int    max_duration;         // the period's allowance (fair use)
+    int    fair_use_usage;       // spent so far in the period
+    double fair_use_alert_threshold;  // ex 0.8 = warn at 80 %
+    char  *fair_use_renew_date;  // ISO 8601, when `fair_use_usage` resets
+    char  *end_of_streaming_session;  // ISO 8601 or NULL - a hard stop
+    bool   time_slots_enabled;
+    char  *time_slots_timezone;
+} VmUsage;
+
 typedef struct {
     char *raw_json;       // copy of the parsed body, for debugging
     bool  video_allowed;
     int   max_frame_rate; // ex 240
     int   max_width;
     int   max_height;
+    int   max_monitor_count;  // CAPS2/DISP1 - the display ceiling. 0 = unsaid
     char *video_codecs;   // joined "h264,h265,av1"
+    char *video_chroma;   // joined "444,420" - which subsamplings are allowed
     bool  audio_allowed;
     char *audio_codecs;   // joined "opus,flac"
+    bool  micro_allowed;  // the channels the account may open at all
+    bool  clipboard_allowed;
+    bool  filetransfer_allowed;
+    bool  gamepad_allowed;
+    VmUsage usage;
 } VmCapabilities;
 
 void vmcaps_free(VmCapabilities *c);
@@ -98,6 +140,12 @@ void vmcaps_free(VmCapabilities *c);
 bool launcher_get_capabilities(const char *launcher_base, const char *bearer,
                                 const char *vm_id, VmCapabilities *out,
                                 long *http_status);
+
+/* CAPS2 - the parser alone, for a body already in hand. Separate so the
+ * offline suite can exercise the shape of this reply without an account, a
+ * network or a machine; `tests/test_caps_parse.c` does. `out` must be zeroed
+ * by the caller. False only when `body` is not JSON. */
+bool launcher_parse_capabilities(const char *body, VmCapabilities *out);
 
 // GET <launcher_api_url>shadow/turn-servers (X-Vm-Id header)
 // Browser HAR reply: {"iceServers":[{"urls":"turn:host:443?transport=tcp",

@@ -20,6 +20,7 @@ static constexpr int kVmIpStepSeconds   = 2;
 BootstrapWorker::BootstrapWorker(QObject *parent) : QObject(parent)
 {
     qRegisterMetaType<BootstrapWorker::Ready>();
+    qRegisterMetaType<BootstrapWorker::Caps>();   /* CAPS2 */
 }
 
 void BootstrapWorker::requestStop() { stop_ = true; }
@@ -43,6 +44,26 @@ void BootstrapWorker::start(const QString &launcherUrl, const QString &bearer,
                                   .arg(caps->max_width).arg(caps->max_height)
                                   .arg(caps->max_frame_rate)
                                   .arg(str(caps->video_codecs)));
+
+            /* CAPS2 - copied out while the struct is alive. */
+            Caps c;
+            c.maxSessionLength = caps->usage.max_session_length;
+            c.maxDuration      = caps->usage.max_duration;
+            c.fairUseUsage     = caps->usage.fair_use_usage;
+            c.fairUseAlert     = caps->usage.fair_use_alert_threshold;
+            c.fairUseRenew     = str(caps->usage.fair_use_renew_date);
+            c.maxMonitors      = caps->max_monitor_count;
+            c.maxWidth         = caps->max_width;
+            c.maxHeight        = caps->max_height;
+            c.maxFps           = caps->max_frame_rate;
+            c.videoCodecs      = str(caps->video_codecs);
+            c.videoChroma      = str(caps->video_chroma);
+            c.audioCodecs      = str(caps->audio_codecs);
+            c.microAllowed        = caps->micro_allowed;
+            c.clipboardAllowed    = caps->clipboard_allowed;
+            c.fileTransferAllowed = caps->filetransfer_allowed;
+            c.gamepadAllowed      = caps->gamepad_allowed;
+            emit capabilities(c);
         } else {
             emit stepDone(-1, tr("capabilities: HTTP %1, continuing").arg(http));
         }

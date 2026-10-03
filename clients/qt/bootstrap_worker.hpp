@@ -72,6 +72,31 @@ public:
         proximus_sse_keepalive *sseMain     = nullptr;
     };
 
+    /* === CAPS2 2026-10-03 — WHAT THE ACCOUNT IS ALLOWED ====================
+     *
+     * `/vms/{id}/capabilities` was fetched, summarised into one step line and
+     * dropped. Printed whole for the first time (`--probe caps`) it turned
+     * out to carry the two things the client most visibly lacked: the
+     * per-session time ceiling the official client counts down from, and the
+     * number of monitors the VM allows.
+     *
+     * Passed as a plain struct rather than the core one: `VmCapabilities`
+     * owns heap strings freed by `vmcaps_free`, and a queued signal copies
+     * its argument - which would hand the GUI thread pointers the worker is
+     * about to free. */
+    struct Caps {
+        int     maxSessionLength = 0;   /* seconds, 0 = unsaid */
+        int     maxDuration = 0;        /* the period's allowance */
+        int     fairUseUsage = 0;       /* spent so far */
+        double  fairUseAlert = 0.0;
+        QString fairUseRenew;
+        int     maxMonitors = 0;
+        int     maxWidth = 0, maxHeight = 0, maxFps = 0;
+        QString videoCodecs, videoChroma, audioCodecs;
+        bool    microAllowed = false, clipboardAllowed = false;
+        bool    fileTransferAllowed = false, gamepadAllowed = false;
+    };
+
     explicit BootstrapWorker(QObject *parent = nullptr);
 
     void requestStop();
@@ -81,6 +106,8 @@ public slots:
                const QString &vmId);
 
 signals:
+    void capabilities(const BootstrapWorker::Caps &c);
+
     /* `index` is 0..6 and matches the seven step names the UI shows, so the
      * two clients report the same vocabulary. `detail` carries the HTTP code or
      * the address, whichever the step produced. */
@@ -96,3 +123,4 @@ private:
 };
 
 Q_DECLARE_METATYPE(BootstrapWorker::Ready)
+Q_DECLARE_METATYPE(BootstrapWorker::Caps)

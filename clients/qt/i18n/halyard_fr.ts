@@ -657,6 +657,18 @@
         <translation>Plein écran — F11 pour quitter, %1 pour le menu.</translation>
     </message>
     <message>
+        <source>session time is up</source>
+        <translation>temps de session écoulé</translation>
+    </message>
+    <message>
+        <source>%1h%2m left</source>
+        <translation>%1h%2m restantes</translation>
+    </message>
+    <message>
+        <source>%1 min left</source>
+        <translation>%1 min restantes</translation>
+    </message>
+    <message>
         <source>No picture to capture yet.</source>
         <translation>Aucune image à capturer pour l&apos;instant.</translation>
     </message>

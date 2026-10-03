@@ -740,17 +740,30 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
     }, Qt::QueuedConnection);
     connect(boot_, &BootstrapWorker::ready, this,
             &MainWindow::onBootstrapReady, Qt::QueuedConnection);
+    /* CAPS2 - what the account is allowed, kept for the session. */
+    connect(boot_, &BootstrapWorker::capabilities, this,
+            [this](const BootstrapWorker::Caps &c) { caps_ = c; },
+            Qt::QueuedConnection);
 
     connect(sess_, &SessionWorker::frameReady, video_,
             &VideoWidget::presentFrame, Qt::QueuedConnection);
     connect(sess_, &SessionWorker::progress, this,
             [this](const QString &s, const QString &d) {
-                video_->setStatus(s + QStringLiteral(" - ") + d);
+                /* CAPS2 - the session countdown rides along with the status,
+                 * which is the one line that is already refreshed while a
+                 * stream runs. A timer of its own would repaint the bar for
+                 * a minute hand. */
+                const QString left = sessionTimeLeft();
+                video_->setStatus(left.isEmpty()
+                                      ? s + QStringLiteral(" - ") + d
+                                      : s + QStringLiteral(" - ") + d
+                                            + QStringLiteral("   |   ") + left);
             }, Qt::QueuedConnection);
     connect(sess_, &SessionWorker::finished, this,
             [this](bool ok, const QString &why) {
                 video_->setStatus((ok ? tr("session ended: ")
                                       : tr("session stopped: ")) + why);
+                session_started_.invalidate();   /* CAPS2 - stop counting */
                 /* VID1 - say so in the middle of the screen. Without this the
                  * last decoded frame stayed on display and a session that had
                  * ended looked like one that had frozen. */
@@ -1083,6 +1096,29 @@ bool MainWindow::overlaysAllowed() const
     return session_live_ && app_active_ && !isMinimized()
         && stack_ && stack_->currentIndex() == PageStreaming
         && !ownWindowOverVideo();
+}
+
+/* === CAPS2 2026-10-03 — "5h55m restantes" ================================
+ *
+ * The official client shows a session countdown; nothing in the protocol
+ * pushes one. `usage.max_session_length` from `/vms/{id}/capabilities` is the
+ * ceiling (21600 s on the account measured), and the figure is that minus the
+ * time since the session started - counted HERE, locally, because there is no
+ * runtime endpoint and no SSE event carrying it.
+ *
+ * Empty when the server did not give a ceiling: a countdown invented from a
+ * default would be the exact mistake the Borealis client refused to make
+ * ("a figure one believes official and that is not is worse than no figure"),
+ * and the difference is that this one IS official. */
+QString MainWindow::sessionTimeLeft() const
+{
+    if (caps_.maxSessionLength <= 0 || !session_started_.isValid())
+        return QString();
+    const qint64 left = caps_.maxSessionLength - session_started_.elapsed() / 1000;
+    if (left <= 0) return tr("session time is up");
+    const qint64 h = left / 3600, m = (left % 3600) / 60;
+    return h > 0 ? tr("%1h%2m left").arg(h).arg(m, 2, 10, QLatin1Char('0'))
+                 : tr("%1 min left").arg(m);
 }
 
 void MainWindow::updateOverlayVisibility()
@@ -1813,6 +1849,7 @@ void MainWindow::onBootstrapReady(const BootstrapWorker::Ready &r)
                      QStringLiteral("%1:%2").arg(r.vmHost).arg(r.portBase));
     video_->setStatus(tr("opening the stream on :%1").arg(r.portBase + 11));
     if (video_) video_->beginSession();   /* VID1 - back to the waiting panel */
+    session_started_.start();             /* CAPS2 - the countdown's origin */
     setPage(PageStreaming);
 
     /* FM1 - the file manager becomes reachable. The SFTP channel is granted a

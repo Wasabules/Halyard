@@ -16,6 +16,7 @@
 
 #include "i18n.hpp"
 #include "main_window.hpp"
+#include "probe.hpp"
 #include "settings_store.hpp"
 #include "theme.hpp"
 
@@ -124,6 +125,31 @@ int main(int argc, char **argv)
         const QStringList a = QApplication::arguments();
         const int at = a.indexOf(QStringLiteral("--lang"));
         halyard::i18n::init(at >= 0 && at + 1 < a.size() ? a.at(at + 1) : QString());
+    }
+
+    /* === PROBE1 — headless, before any widget ============================
+     *
+     * `--probe <name> [--vm <id>] [--out <path>]` answers a question about
+     * the account and exits. No window is created, so it runs from a script
+     * and on a machine with no display; `QApplication` is already up, which
+     * is all the probe needs (Qt's networking and JSON, not a GUI).
+     *
+     * Placed AFTER the environment and settings are loaded, so a probe sees
+     * the same `SHADOW_*` the real client would - and before the window, so
+     * nothing is drawn on the way. */
+    {
+        const QStringList a = QApplication::arguments();
+        const int at = a.indexOf(QStringLiteral("--probe"));
+        if (at >= 0) {
+            const auto argAfter = [&a](const QString &flag) {
+                const int i = a.indexOf(flag);
+                return (i >= 0 && i + 1 < a.size()) ? a.at(i + 1) : QString();
+            };
+            return halyard::probe::run(
+                at + 1 < a.size() ? a.at(at + 1) : QStringLiteral("caps"),
+                argAfter(QStringLiteral("--vm")),
+                argAfter(QStringLiteral("--out")));
+        }
     }
 
     MainWindow win;

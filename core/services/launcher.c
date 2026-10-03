@@ -724,7 +724,10 @@ bool launcher_auth_login(const char *launcher_base, const char *bearer,
 
 void vmcaps_free(VmCapabilities *c) {
     if (!c) return;
-    free(c->raw_json); free(c->video_codecs); free(c->audio_codecs);
+    free(c->raw_json); free(c->video_codecs); free(c->video_chroma);
+    free(c->audio_codecs);
+    free(c->usage.fair_use_renew_date); free(c->usage.end_of_streaming_session);
+    free(c->usage.time_slots_timezone);
     memset(c, 0, sizeof(*c));
 }
 
@@ -751,6 +754,105 @@ static char *json_array_join(json_t *arr) {
         s[pos] = 0;
     }
     return s;
+}
+
+/* === CAPS2 2026-10-03 - THE PARSER, SEPARATE FROM THE FETCH ===============
+ *
+ * Pulled out of `launcher_get_capabilities` so the offline suite can reach
+ * it. Everything interesting about this reply is in the SHAPE of the JSON -
+ * a `usage` block, per-channel permissions, a monitor count three levels
+ * down - and until this was separable the only way to exercise it was to
+ * have an account, a network and a machine.
+ *
+ * `body` is the raw reply. `out` must be zeroed by the caller; this function
+ * fills what it finds and leaves the rest alone, so a server that stops
+ * sending a key leaves a zero rather than a stale value.
+ *
+ * Returns false only when the body is not JSON at all. A body that parses but
+ * carries nothing we know is a SUCCESS with an empty struct: that is a server
+ * that changed, not a client that failed, and the difference matters to the
+ * caller deciding whether to retry.
+ */
+bool launcher_parse_capabilities(const char *body, VmCapabilities *out) {
+    if (!body || !out) return false;
+    json_error_t err;
+    json_t *root = json_loads(body, 0, &err);
+    if (!root) return false;
+
+    json_t *streaming = json_object_get(root, "streaming");
+    if (streaming) {
+        json_t *channels = json_object_get(streaming, "channels");
+        if (channels) {
+            json_t *video = json_object_get(channels, "video");
+            if (video) {
+                json_t *allowed = json_object_get(video, "allowed");
+                out->video_allowed = (allowed && json_is_true(allowed));
+                json_t *fr = json_object_get(video, "frame_rate");
+                if (fr && json_is_integer(fr)) out->max_frame_rate = (int)json_integer_value(fr);
+                json_t *res = json_object_get(video, "max_resolution");
+                if (res) {
+                    json_t *w = json_object_get(res, "width");
+                    json_t *h = json_object_get(res, "height");
+                    if (w && json_is_integer(w)) out->max_width = (int)json_integer_value(w);
+                    if (h && json_is_integer(h)) out->max_height = (int)json_integer_value(h);
+                }
+                out->video_codecs = json_array_join(json_object_get(video, "codec"));
+                /* CAPS2 - the three keys this parser used to walk past. */
+                out->video_chroma = json_array_join(json_object_get(video, "chroma"));
+                json_t *mc = json_object_get(video, "max_monitor_count");
+                if (mc && json_is_integer(mc))
+                    out->max_monitor_count = (int)json_integer_value(mc);
+            }
+            json_t *audio = json_object_get(channels, "audio");
+            if (audio) {
+                json_t *allowed = json_object_get(audio, "allowed");
+                out->audio_allowed = (allowed && json_is_true(allowed));
+                out->audio_codecs = json_array_join(json_object_get(audio, "codec"));
+            }
+            /* CAPS2 - which channels the ACCOUNT may open at all. Distinct
+             * from whether the VM grants them later: a channel refused here
+             * will never be announced, and a client that knows can grey the
+             * menu entry instead of letting someone discover it by failing. */
+            #define CHAN_ALLOWED(field, key)                                                   do {                                                                               json_t *ch = json_object_get(channels, key);                                   if (ch) {                                                                          json_t *al = json_object_get(ch, "allowed");                                   out->field = (al && json_is_true(al));                                     }                                                                          } while (0)
+            CHAN_ALLOWED(micro_allowed,        "micro");
+            CHAN_ALLOWED(clipboard_allowed,    "clipboard");
+            CHAN_ALLOWED(filetransfer_allowed, "filetransfer");
+            CHAN_ALLOWED(gamepad_allowed,      "gamepad");
+            #undef CHAN_ALLOWED
+        }
+    }
+
+    /* === CAPS2 - the usage block, which is the session countdown ==========
+     *
+     * `max_session_length` is the per-session ceiling the official client
+     * counts down from ("5h55m restantes" at five minutes into a 21600 s
+     * allowance). The server pushes no remaining time at any point, so this
+     * is the only place the figure can come from. */
+    json_t *usage = json_object_get(root, "usage");
+    if (usage) {
+        json_t *v;
+        if ((v = json_object_get(usage, "max_session_length")) && json_is_integer(v))
+            out->usage.max_session_length = (int)json_integer_value(v);
+        if ((v = json_object_get(usage, "max_duration")) && json_is_integer(v))
+            out->usage.max_duration = (int)json_integer_value(v);
+        if ((v = json_object_get(usage, "fair_use_usage")) && json_is_integer(v))
+            out->usage.fair_use_usage = (int)json_integer_value(v);
+        if ((v = json_object_get(usage, "fair_use_alert_threshold")) && json_is_number(v))
+            out->usage.fair_use_alert_threshold = json_number_value(v);
+        if ((v = json_object_get(usage, "fair_use_renew_date")) && json_is_string(v))
+            out->usage.fair_use_renew_date = strdup(json_string_value(v));
+        /* Null in every sample so far; kept because a hard stop is exactly
+         * the kind of field that is null until the day it is not. */
+        if ((v = json_object_get(usage, "end_of_streaming_session")) && json_is_string(v))
+            out->usage.end_of_streaming_session = strdup(json_string_value(v));
+        if ((v = json_object_get(usage, "time_slots_enabled")))
+            out->usage.time_slots_enabled = json_is_true(v);
+        if ((v = json_object_get(usage, "time_slots_timezone")) && json_is_string(v))
+            out->usage.time_slots_timezone = strdup(json_string_value(v));
+    }
+
+    json_decref(root);
+    return true;
 }
 
 bool launcher_get_capabilities(const char *launcher_base, const char *bearer,
@@ -803,39 +905,13 @@ bool launcher_get_capabilities(const char *launcher_base, const char *bearer,
                       "[DISP1] /vms/*/capabilities body: %.1500s", out->raw_json);
     }
 
-    json_error_t err;
-    json_t *root = json_loads(resp.data, 0, &err);
+    /* Parsed from OUR copy, so the response can be released first: the
+     * original freed `resp` between `json_loads` and the walk, and pulling
+     * the parser out would otherwise have left that free with nowhere to go
+     * (it was briefly dropped, which is a leak on every call). */
     http_free(&resp);
-    if (!root) return out->raw_json != NULL;
-
-    json_t *streaming = json_object_get(root, "streaming");
-    if (streaming) {
-        json_t *channels = json_object_get(streaming, "channels");
-        if (channels) {
-            json_t *video = json_object_get(channels, "video");
-            if (video) {
-                json_t *allowed = json_object_get(video, "allowed");
-                out->video_allowed = (allowed && json_is_true(allowed));
-                json_t *fr = json_object_get(video, "frame_rate");
-                if (fr && json_is_integer(fr)) out->max_frame_rate = (int)json_integer_value(fr);
-                json_t *res = json_object_get(video, "max_resolution");
-                if (res) {
-                    json_t *w = json_object_get(res, "width");
-                    json_t *h = json_object_get(res, "height");
-                    if (w && json_is_integer(w)) out->max_width = (int)json_integer_value(w);
-                    if (h && json_is_integer(h)) out->max_height = (int)json_integer_value(h);
-                }
-                out->video_codecs = json_array_join(json_object_get(video, "codec"));
-            }
-            json_t *audio = json_object_get(channels, "audio");
-            if (audio) {
-                json_t *allowed = json_object_get(audio, "allowed");
-                out->audio_allowed = (allowed && json_is_true(allowed));
-                out->audio_codecs = json_array_join(json_object_get(audio, "codec"));
-            }
-        }
-    }
-    json_decref(root);
+    if (!launcher_parse_capabilities(out->raw_json, out))
+        return out->raw_json != NULL;
     return true;
 }
 
