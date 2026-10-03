@@ -97,6 +97,23 @@ bool oauth_reencrypt_refresh(void);
 bool oauth_unseal_refresh(void);
 bool oauth_load_refresh(char **refresh_out);   // allocated, to be freed
 
+/* AUTH9 2026-10-03 - sign out: drop the stored refresh token.
+ *
+ * There was no way out. The token is written at every successful sign-in and
+ * rotated at every refresh, so once a machine had been paired it stayed paired
+ * for ever as far as the application was concerned - changing account meant
+ * knowing where the file lived and deleting it by hand.
+ *
+ * The bytes are OVERWRITTEN before the file is unlinked. Not a secure-erase
+ * claim (an SD card's wear levelling may well keep the old block, and a
+ * journalling filesystem certainly can), but it costs one write and it defeats
+ * the case that actually happens: the file being undeleted, or read out of
+ * free space, on a card that was handed to someone else.
+ *
+ * Returns true when there is no token left afterwards - including when there
+ * was none to begin with, because that is the state the caller asked for. */
+bool oauth_forget_refresh(void);
+
 // UX3 B5 2026-05-18: checks whether expiry < now + threshold_sec (= a refresh
 // is advised). Returns false when the state is empty or expires_at is not
 // set.

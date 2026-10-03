@@ -1841,12 +1841,15 @@ static void session_ft_selftest(const ctrl_session_params *p,
                                 const uint8_t *reply, size_t reply_len,
                                 const ann_reply_t *ar)
 {
-    static int g_ft_selftest = -1;
-    if (g_ft_selftest < 0) {
-        const char *e = getenv("SHADOW_FT_SELFTEST");
-        g_ft_selftest = e ? atoi(e) : 0;
-    }
-    if (!g_ft_selftest) return;
+    /* FT2 2026-10-03 - read at every call, NOT cached in a static.
+     *
+     * The cache made this a one-shot per process: a user who ticked the box in
+     * the settings window after a first session kept the 0 that had been read
+     * before, so the self-test could only ever be enabled by restarting the
+     * whole application. That is the house rule about per-session state in
+     * function statics, and a getenv once per session costs nothing. */
+    const char *e = getenv("SHADOW_FT_SELFTEST");
+    if (!e || atoi(e) == 0) return;
 
     char secret[1024]; size_t sn = 0;
     if (shadow_ft_secret_from_reply(reply, reply_len, secret, sizeof secret, &sn)) {

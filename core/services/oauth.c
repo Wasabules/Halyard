@@ -461,6 +461,40 @@ bool oauth_load_refresh(char **out) {
     return true;
 }
 
+/* See oauth.h (AUTH9). */
+bool oauth_forget_refresh(void) {
+    FILE *f = fopen(SHADOW_TOKEN_PATH, "r+b");
+    if (f) {
+        /* Overwrite in place, then unlink. The length is read back rather than
+         * assumed: the three formats have three different sizes and a short
+         * write would leave the tail of the old token on the card. */
+        long n = 0;
+        if (fseek(f, 0, SEEK_END) == 0) n = ftell(f);
+        if (n > 0 && fseek(f, 0, SEEK_SET) == 0) {
+            unsigned char zero[256];
+            memset(zero, 0, sizeof zero);
+            while (n > 0) {
+                size_t chunk = (size_t)(n < (long)sizeof zero ? n : (long)sizeof zero);
+                if (fwrite(zero, 1, chunk, f) != chunk) break;
+                n -= (long)chunk;
+            }
+            fflush(f);
+        }
+        fclose(f);
+    }
+    /* `remove` failing because the file was never there is the state asked
+     * for, so it is not an error; anything else is. */
+    if (remove(SHADOW_TOKEN_PATH) != 0 && errno != ENOENT) {
+        /* stderr like the rest of this file: oauth.c deliberately does not
+         * pull in the journal, which would make a bottom-layer service depend
+         * on another one for a line printed twice a year. */
+        fprintf(stderr, "the stored session could not be removed (%s)\n",
+                strerror(errno));
+        return false;
+    }
+    return true;
+}
+
 /* See oauth.h. */
 bool oauth_reencrypt_refresh(void) {
     char *tok = NULL;
