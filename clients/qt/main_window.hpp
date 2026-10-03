@@ -248,6 +248,8 @@ private:
     QTimer                 *overlay_watch_    = nullptr;  /* OV10 - overlap poll */
     QLabel                 *toast_ = nullptr;
     QLabel                 *banner_ = nullptr;   /* LIM1 - it stays */
+    QTimer                 *banner_pulse_ = nullptr;   /* HUD2 */
+    double                  banner_phase_ = 0.0;
     int                     limit_state_ = 0;    /* LIM1 - thresholds done */
     QTimer                 *toast_timer_ = nullptr;
     bool                    app_active_ = true;

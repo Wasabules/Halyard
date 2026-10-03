@@ -1,6 +1,8 @@
 /* stream_overlay - see the header for the two-window design and why. */
 #include "stream_overlay.hpp"
 
+#include "hud_theme.hpp"
+
 #include "theme.hpp"
 
 #include <QCheckBox>
@@ -22,6 +24,8 @@
 #include <QMouseEvent>
 #include <QToolButton>
 #include <QPainter>
+#include <QPainterPath>
+#include <QLinearGradient>
 #include <QSlider>
 #include <QTimer>
 #include <QVBoxLayout>
@@ -127,9 +131,19 @@ void StreamHud::applyStyle()
      * placeholder present, so %2 took the alpha and every label rendered at
      * 185 px. The alpha is not a placeholder at all - it is the bubble's, and
      * the bubble is painted, not styled. */
+    /* HUD2 - flat: the card itself stays transparent (the bubble behind it
+     * is what is painted), and the ink comes from the HUD's own fixed dark
+     * palette rather than the system one - a HUD that turned light because
+     * the desktop is light would be unreadable over a dark game. */
     const QString css = QStringLiteral(
         "QFrame#blk { background:transparent; }"
-        "QLabel { color:#e8e8e8; font-size:%1px; }").arg(fs);
+        "QLabel { color:%2; font-size:%1px; }"
+        "QToolButton { border:none; background:%3; border-radius:8px;"
+        "              color:%4; }")
+        .arg(fs)
+        .arg(halyard::hud::text().name(),
+             halyard::hud::surf3().name(),
+             halyard::hud::text().name());
     bubbleAlpha_ = alpha;
     for (const Blk &b : blocks_) if (b.card) b.card->setStyleSheet(css);
 }
@@ -173,7 +187,13 @@ void StreamHud::rebuild()
         hl->setContentsMargins(0, 0, 0, 0);
         hl->setSpacing(6);
         auto *t = new QLabel(title, head);
-        t->setStyleSheet(QStringLiteral("color:#9fb4c8; font-weight:bold;"));
+        /* HUD2 - the section name is the quietest thing in the block:
+         * small, letter-spaced, muted. The numbers are what the eye should
+         * land on. */
+        t->setStyleSheet(QStringLiteral(
+            "color:%1; font-weight:600; font-size:10px;"
+            "letter-spacing:1px; text-transform:uppercase;")
+            .arg(halyard::hud::muted().name()));
         /* OV10 - a VISIBLE way out of a group. Right-click worked but nobody
          * can discover it; this button appears in edit mode on a block that is
          * part of a group, and nowhere else. */
@@ -468,6 +488,31 @@ bool StreamHud::eventFilter(QObject *o, QEvent *e)
 
 /* In edit mode the window paints a faint wash and a hint, so it is obvious the
  * HUD is grabbing the mouse and how to get out of it. */
+/* HUD2 - crop the picture under the HUD, shrink it hard, blow it back up.
+ *
+ * A downscale-upscale pair with smooth filtering IS a blur, and a cheap one:
+ * no convolution to write, no QGraphicsBlurEffect (which would force the
+ * whole widget onto the slow composited path for every repaint). 1/10 is the
+ * point where the result stops showing the picture's detail and still
+ * follows its colour, which is the whole job - the panel has to belong to
+ * the scene behind it. */
+void StreamHud::rebuildGlass()
+{
+    glass_ = QImage();
+    if (!frameSource_) return;
+    const QImage frame = frameSource_();
+    if (frame.isNull() || width() <= 0 || height() <= 0) return;
+
+    /* This window covers the video rectangle exactly (placeOver), so the
+     * mapping is a plain scale - no offset to get wrong. */
+    const QImage crop = frame.scaled(size(), Qt::IgnoreAspectRatio,
+                                     Qt::FastTransformation);
+    const QSize tiny(qMax(1, width() / 10), qMax(1, height() / 10));
+    glass_ = crop.scaled(tiny, Qt::IgnoreAspectRatio, Qt::SmoothTransformation)
+                 .scaled(size(), Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+    glassRect_ = rect();
+}
+
 void StreamHud::paintEvent(QPaintEvent *e)
 {
     QWidget::paintEvent(e);
@@ -492,11 +537,46 @@ void StreamHud::paintEvent(QPaintEvent *e)
      * inflated a little; because a snap now aligns blocks edge to edge, the
      * inflated rectangles OVERLAP and a joined set still reads as one panel,
      * while blocks that are merely linked but apart look like what they are. */
+    /* HUD2 - glass, then tint, then the lip.
+     *
+     * The blurred picture goes down first, clipped to the bubble, so the
+     * panel carries the colour of what is behind it; the tint on top is what
+     * makes the text readable whatever that colour is (hud_theme::glassAlpha
+     * explains why it is 0.76 and not the usual 0.5). The 1 px light line
+     * along the top edge is the only thing that says "glass" - a gradient
+     * over the whole surface would be the wash this design is avoiding. */
+    const int alpha = halyard::hud::glassAlpha(opacityPct_);
+    QColor tint = halyard::hud::surf1();
+    tint.setAlpha(alpha);
+
     p.setPen(Qt::NoPen);
-    p.setBrush(QColor(12, 12, 14, bubbleAlpha_));
     for (const Blk &b : blocks_) {
         if (!b.card || !b.card->isVisible()) continue;
-        p.drawRoundedRect(b.card->geometry().adjusted(-6, -5, 6, 5), 9, 9);
+        const QRect r = b.card->geometry().adjusted(-8, -6, 8, 6);
+        const int rad = halyard::hud::radius();
+
+        QPainterPath path;
+        path.addRoundedRect(r, rad, rad);
+
+        if (!glass_.isNull()) {
+            p.save();
+            p.setClipPath(path);
+            p.drawImage(r, glass_, r);
+            p.restore();
+        }
+        p.setBrush(tint);
+        p.drawPath(path);
+
+        /* The lip: brightest in the middle, gone at the corners, so it reads
+         * as a highlight and not as a border. */
+        QLinearGradient lip(r.left(), 0, r.right(), 0);
+        lip.setColorAt(0.0,  QColor(255, 255, 255, 0));
+        lip.setColorAt(0.3,  QColor(255, 255, 255, 46));
+        lip.setColorAt(0.7,  QColor(255, 255, 255, 46));
+        lip.setColorAt(1.0,  QColor(255, 255, 255, 0));
+        p.setBrush(lip);
+        p.drawRect(QRect(r.left() + rad, r.top(), r.width() - 2 * rad, 1));
+        p.setBrush(Qt::NoBrush);
     }
 
     if (!editing_) return;
@@ -506,11 +586,12 @@ void StreamHud::paintEvent(QPaintEvent *e)
     for (const Blk &b : blocks_) {
         if (!b.card || !b.card->isVisible()) continue;
         const bool grouped = !b.leader.isEmpty() || isLeader(b.id);
-        p.setPen(QPen(QColor(0x7f, 0xb0, 0xff, grouped ? 220 : 130),
-                      grouped ? 2 : 1));
+        QColor oc = halyard::hud::primary();
+        oc.setAlpha(grouped ? 230 : 130);
+        p.setPen(QPen(oc, grouped ? 2 : 1));
         p.drawRoundedRect(b.card->geometry().adjusted(-6, -5, 9, 9), 9, 9);
     }
-    p.setPen(QColor(0xff, 0xff, 0xff, 215));
+    p.setPen(halyard::hud::text());
     p.drawText(rect().adjusted(0, 12, 0, 0), Qt::AlignHCenter | Qt::AlignTop,
                tr("Drag a block to move it · drop it against another to join "
                   "them · pull it away (or use ✕) to detach"));
@@ -574,6 +655,7 @@ void StreamHud::hideEvent(QHideEvent *e)
 
 void StreamHud::refresh()
 {
+    rebuildGlass();   /* HUD2 - once per tick, never per paint */
     const quint64 presented = presented_ ? presented_() : 0;
     const HudSnap h = hudSample(meters_, presented);
 
@@ -586,12 +668,20 @@ void StreamHud::refresh()
             const Grade g = r.spec->grade ? r.spec->grade(h) : Grade::Neutral;
             QColor c;
             switch (g) {
-            case Grade::Good: c = theme::good(this); break;
-            case Grade::Warn: c = theme::warn(this); break;
-            case Grade::Bad:  c = theme::bad(this);  break;
+            /* HUD2 - the HUD's own fixed palette. `theme::good` and friends
+             * follow the SYSTEM palette, so on a light desktop they come out
+             * dark - invisible over a dark game, which is where this text
+             * lives. */
+            case Grade::Good: c = halyard::hud::good(); break;
+            case Grade::Warn: c = halyard::hud::warn(); break;
+            case Grade::Bad:  c = halyard::hud::bad();  break;
             default:          c = QColor(0xe8, 0xe8, 0xe8); break;
             }
-            r.value->setStyleSheet(QStringLiteral("color:%1;").arg(c.name()));
+            /* HUD2 - the grade colours come from the HUD's fixed palette:
+             * theme::good/warn/bad follow the SYSTEM palette and would go
+             * dark on a light desktop, which over a dark game is invisible. */
+            r.value->setStyleSheet(QStringLiteral(
+                "color:%1; font-weight:600;").arg(c.name()));
         }
         if (b.chart.spec) {
             const double v = b.chart.spec->value(h);
@@ -643,8 +733,56 @@ StreamOverlay::StreamOverlay(QWidget *parent)
     /* A rounded dark card so it reads as an overlay, not a window. */
     auto *card = new QWidget(this);
     card->setObjectName(QStringLiteral("card"));
+    /* === HUD2 — THE OVERLAY MENU, FLAT AND FILLED ======================
+     *
+     * One sheet for the whole panel, and no borders anywhere: a control is
+     * visible because its fill is a step lighter than the sheet, which is a
+     * step lighter than the glass. The active tab is a FILLED chip with dark
+     * ink rather than an underline, so it reads at a glance over a moving
+     * picture.
+     *
+     * Dark ink on every coloured fill, never white: white on this accent is
+     * about 2.5:1 (hud_theme.hpp, and tests/test_qt_hud_theme.cpp holds every
+     * pair to 4.5:1). */
     card->setStyleSheet(QStringLiteral(
-        "#card { background:rgba(22,22,26,238); border-radius:12px; }"));
+        "#card { background:%1; border-radius:%7px; }"
+        "QWidget { color:%2; }"
+        "QLabel { color:%2; }"
+        "QGroupBox { border:none; background:%3; border-radius:12px;"
+        "            margin-top:14px; padding:12px 12px 10px 12px; }"
+        "QGroupBox::title { subcontrol-origin:margin; left:12px; padding:0 2px;"
+        "                   color:%4; font-size:10px; font-weight:600; }"
+        "QTabWidget::pane { border:none; background:transparent; }"
+        "QTabBar::tab { background:transparent; color:%4; padding:9px 16px;"
+        "               margin-right:3px; border:none;"
+        "               border-top-left-radius:9px; border-top-right-radius:9px; }"
+        "QTabBar::tab:hover { background:%3; color:%2; }"
+        "QTabBar::tab:selected { background:%5; color:%6; font-weight:600; }"
+        "QComboBox, QSpinBox, QDoubleSpinBox, QLineEdit {"
+        "   background:%3; border:none; border-radius:7px; padding:7px 9px;"
+        "   min-height:22px; color:%2; selection-background-color:%5; }"
+        "QComboBox:hover, QSpinBox:hover, QDoubleSpinBox:hover { background:%8; }"
+        "QComboBox::drop-down { border:none; width:18px; }"
+        "QPushButton { background:%3; border:none; border-radius:8px;"
+        "              padding:9px 16px; min-height:20px; color:%2; }"
+        "QPushButton:hover { background:%8; }"
+        "QPushButton:pressed { background:%5; color:%6; }"
+        "QCheckBox { spacing:9px; }"
+        "QCheckBox::indicator { width:17px; height:17px; border-radius:5px;"
+        "                       border:none; background:%3; }"
+        "QCheckBox::indicator:checked { background:%5; }"
+        "QSlider::groove:horizontal { height:5px; border-radius:3px; background:%3; }"
+        "QSlider::sub-page:horizontal { background:%5; border-radius:3px; }"
+        "QSlider::handle:horizontal { background:%5; width:15px; height:15px;"
+        "                             margin:-5px 0; border-radius:8px; }")
+        .arg(halyard::hud::surf1().name(),
+             halyard::hud::text().name(),
+             halyard::hud::surf2().name(),
+             halyard::hud::muted().name(),
+             halyard::hud::primary().name(),
+             halyard::hud::inkOn(halyard::hud::primary()).name())
+        .arg(halyard::hud::radius())
+        .arg(halyard::hud::surf3().name()));
     auto *outer = new QVBoxLayout(this);
     outer->setContentsMargins(0, 0, 0, 0);
     outer->addWidget(card);
@@ -758,7 +896,7 @@ QWidget *StreamOverlay::buildSoundTab()
         QT_TR_NOOP("Freq (Hz)"), QT_TR_NOOP("Q"), QT_TR_NOOP("Gain (dB)") };
     for (int c = 0; c < 5; c++) {
         auto *h = new QLabel(tr(colKeys[c]), gEq_);
-        h->setStyleSheet(theme::css(theme::muted(gEq_)));
+        h->setStyleSheet(theme::css(halyard::hud::muted()));
         grid->addWidget(h, 0, c);
     }
     const float defFreq[5] = { 80, 250, 1000, 4000, 12000 };
@@ -882,7 +1020,7 @@ QWidget *StreamOverlay::buildVideoTab()
     auto *note = new QLabel(tr("Most video settings are read when a session "
                                "starts, so they apply the next time you connect."), w);
     note->setWordWrap(true);
-    note->setStyleSheet(theme::css(theme::muted(w)));
+    note->setStyleSheet(theme::css(halyard::hud::muted()));
     form->addRow(note);
     return w;
 }
@@ -1062,7 +1200,7 @@ QWidget *StreamOverlay::buildHudTab()
     auto *cols = new QHBoxLayout;
     auto *secCol = new QVBoxLayout;
     auto *secHead = new QLabel(tr("Sections"), w);
-    secHead->setStyleSheet(theme::css(theme::muted(w)));
+    secHead->setStyleSheet(theme::css(halyard::hud::muted()));
     secCol->addWidget(secHead);
     for (int i = 0; i < 7; i++) {
         secBox_[i] = new QCheckBox(
@@ -1074,7 +1212,7 @@ QWidget *StreamOverlay::buildHudTab()
 
     auto *chCol = new QVBoxLayout;
     auto *chHead = new QLabel(tr("Charts"), w);
-    chHead->setStyleSheet(theme::css(theme::muted(w)));
+    chHead->setStyleSheet(theme::css(halyard::hud::muted()));
     chCol->addWidget(chHead);
     for (int i = 0; i < 8; i++) {
         chartBox_[i] = new QCheckBox(
@@ -1143,7 +1281,7 @@ QWidget *StreamOverlay::buildHudTab()
                                "drag one onto another to join them into a panel, "
                                "and right-click a block to detach it."), w);
     note->setWordWrap(true);
-    note->setStyleSheet(theme::css(theme::muted(w)));
+    note->setStyleSheet(theme::css(halyard::hud::muted()));
     root->addWidget(note);
     root->addStretch(1);
     return w;

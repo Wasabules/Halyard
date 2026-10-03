@@ -174,6 +174,11 @@ if pkg-config --exists Qt6Core 2>/dev/null; then
     run_cpp test_qt_machine_state test_qt_machine_state.cpp -std=c++20 $(pkg-config --cflags --libs Qt6Core)
     run_cpp test_qt_hud_grade test_qt_hud_grade.cpp -std=c++20 $(pkg-config --cflags --libs Qt6Core)
     run_cpp test_qt_session_limit test_qt_session_limit.cpp -std=c++20 $(pkg-config --cflags --libs Qt6Core)
+fi
+# HUD2: the HUD's own palette, held to WCAG by computing the ratios rather
+# than trusting the hexes. Needs Qt6Gui for QColor.
+if pkg-config --exists Qt6Gui 2>/dev/null; then
+    run_cpp test_qt_hud_theme test_qt_hud_theme.cpp -std=c++20 $(pkg-config --cflags --libs Qt6Gui)
 else
     echo "== the Qt settings table / language choice: SKIPPED ==  (no Qt6Core through pkg-config)"
 fi

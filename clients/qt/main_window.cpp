@@ -15,6 +15,7 @@ extern "C" {
 #include "file_manager_window.hpp"
 #include "about_dialog.hpp"
 #include "account_window.hpp"
+#include "hud_theme.hpp"
 #include "session_limit.hpp"
 #include "machine_card.hpp"
 #include "pairing_widgets.hpp"
@@ -52,6 +53,8 @@ static MainWindow *g_main_window = nullptr;
 #include <QThread>
 #include <QLabel>
 #include <QApplication>
+
+#include <cmath>
 #include <QGraphicsOpacityEffect>
 #include <QPropertyAnimation>
 #include <QEasingCurve>
@@ -480,6 +483,11 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
          * screen. Read through a callback so the HUD never holds the widget. */
         stream_hud_->setPresentedCounter([this] {
             return video_ ? video_->framesPresented() : 0;
+        });
+        /* HUD2 - the glass needs the picture it is sitting on. The HUD knows
+         * nothing about a VideoWidget; it asks for a QImage. */
+        stream_hud_->setFrameSource([this] {
+            return video_ ? video_->currentFrameImage() : QImage();
         });
         /* OV7 - presentation and the saved block layout. */
         const int hudMs    = st.value(QStringLiteral("ui/hud_refresh_ms"), 500).toInt();
@@ -1228,6 +1236,7 @@ void MainWindow::checkSessionLimit()
                    w.level == halyard::LimitLevel::Urgent);
     } else if (banner_) {
         banner_->hide();
+        if (banner_pulse_) banner_pulse_->stop();
     }
 }
 
@@ -1245,11 +1254,46 @@ void MainWindow::showBanner(const QString &text, bool urgent)
         banner_->setAttribute(Qt::WA_ShowWithoutActivating);
         banner_->setAlignment(Qt::AlignCenter);
     }
-    const QColor c = urgent ? halyard::theme::bad(this) : halyard::theme::warn(this);
+    /* HUD2 - a filled band with DARK ink on it. White on amber is about
+     * 2.5:1 and was what the first version did; the paired ink from
+     * hud_theme is 9:1 or better, and the test holds it there. Opaque, not
+     * glass: a warning is not something to read through. */
+    const QColor c = urgent ? halyard::hud::bad() : halyard::hud::warn();
     banner_->setStyleSheet(
-        QStringLiteral("color:#ffffff; background:rgba(%1,%2,%3,230);"
-                       "padding:7px 18px; border-radius:0px; font-weight:bold;")
-            .arg(c.red()).arg(c.green()).arg(c.blue()));
+        QStringLiteral("color:%1; background:%2;"
+                       "padding:9px 20px; font-weight:600; font-size:13px;")
+            .arg(halyard::hud::inkOn(c).name(), c.name()));
+
+    /* LIM1/HUD2 - the last minute BREATHES between two reds. Not a blink:
+     * the point is to catch the eye of someone looking at a game, not to
+     * harass them, and a hard flash is also the kind of motion that is
+     * actively unpleasant for some people - which is why the whole thing is
+     * behind the same reduced-motion gate as every other animation. */
+    if (urgent && halyard::theme::animationsEnabled()) {
+        if (!banner_pulse_) {
+            banner_pulse_ = new QTimer(this);
+            banner_pulse_->setInterval(90);
+            connect(banner_pulse_, &QTimer::timeout, this, [this] {
+                banner_phase_ += 0.09;
+                const double k = 0.5 + 0.5 * std::sin(banner_phase_);
+                const QColor a = halyard::hud::bad();
+                const QColor b = a.lighter(118);
+                const QColor mix = QColor::fromRgbF(
+                    a.redF()   + (b.redF()   - a.redF())   * k,
+                    a.greenF() + (b.greenF() - a.greenF()) * k,
+                    a.blueF()  + (b.blueF()  - a.blueF())  * k);
+                banner_->setStyleSheet(
+                    QStringLiteral("color:%1; background:%2;"
+                                   "padding:9px 20px; font-weight:600;"
+                                   "font-size:13px;")
+                        .arg(halyard::hud::inkOn(halyard::hud::bad()).name(),
+                             mix.name()));
+            });
+        }
+        if (!banner_pulse_->isActive()) banner_pulse_->start();
+    } else if (banner_pulse_) {
+        banner_pulse_->stop();
+    }
     banner_->setText(text);
     banner_->adjustSize();
 
@@ -1299,6 +1343,7 @@ void MainWindow::updateOverlayVisibility()
         if (stream_overlay_) stream_overlay_->hide();
         if (toast_)          toast_->hide();
         if (banner_)         banner_->hide();   /* LIM1 - same gate */
+        if (banner_pulse_)   banner_pulse_->stop();   /* HUD2 */
     }
     if (ok) repositionOverlays();
 }
@@ -1404,9 +1449,13 @@ void MainWindow::showToast(const QString &text)
                                   Qt::WindowTransparentForInput);
         toast_->setAttribute(Qt::WA_TranslucentBackground);
         toast_->setAttribute(Qt::WA_ShowWithoutActivating);
+        /* HUD2 - the same sheet as the HUD, so the two read as one system. */
         toast_->setStyleSheet(QStringLiteral(
-            "color:#f2f2f2; background:rgba(20,20,24,225);"
-            "padding:9px 14px; border-radius:9px;"));
+            "color:%1; background:%2;"
+            "padding:11px 18px; border-radius:%3px; font-size:13px;")
+            .arg(halyard::hud::text().name(),
+                 halyard::hud::surf3().name())
+            .arg(halyard::hud::radius()));
         toast_timer_ = new QTimer(this);
         toast_timer_->setSingleShot(true);
         connect(toast_timer_, &QTimer::timeout, this,

@@ -76,6 +76,20 @@ public:
 
     void setPresentedCounter(std::function<quint64()> fn) { presented_ = std::move(fn); }
 
+    /* === HUD2 2026-10-03 — GLASS OVER OUR OWN PICTURE ====================
+     *
+     * `backdrop-filter` does not exist in Qt Widgets, and the Windows
+     * acrylic attributes blur the DESKTOP rather than the video widget
+     * underneath this tool window - so neither gives glass over the stream.
+     * The blur is computed from the decoded frame, which is the only thing
+     * that actually IS behind the HUD.
+     *
+     * A registered source rather than a pointer to the video widget: this
+     * class must not know what a VideoWidget is, for the same reason core
+     * hands its frames over by a sink. Returns a null QImage when there is
+     * no picture yet, and the HUD then falls back to a flat fill. */
+    void setFrameSource(std::function<QImage()> fn) { frameSource_ = std::move(fn); }
+
     /* The HUD covers this rectangle; blocks are placed inside it. */
     void placeOver(const QRect &videoGlobalRect);
 
@@ -107,6 +121,17 @@ protected:
 
 private slots:
     void refresh();
+
+private:
+    /* HUD2 - recompute the blurred backdrop. Called on the refresh tick, not
+     * on every paint: measured at 0.29 ms for one block and 0.77 ms for a
+     * column of them (2560x1440 source, crop + 1/10 downscale + upscale), so
+     * twice a second is ~1.5 ms of CPU per second. Per paint it would run on
+     * every mouse move during a drag. */
+    void rebuildGlass();
+    std::function<QImage()> frameSource_;
+    QImage  glass_;        /* the blurred picture behind the whole HUD */
+    QRect   glassRect_;    /* where in the video it was taken from */
 
 private:
     struct RowW  { const HudRow *spec = nullptr; QWidget *host = nullptr;
