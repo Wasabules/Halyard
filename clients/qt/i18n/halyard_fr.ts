@@ -950,6 +950,18 @@ Vous devrez vous reconnecter via un navigateur au prochain démarrage. Rien n&ap
         <translation>RTT moy / p90 / gigue</translation>
     </message>
     <message>
+        <source>Path (you / router / Shadow)</source>
+        <translation>Chemin (vous / box / Shadow)</translation>
+    </message>
+    <message>
+        <source>Path measured</source>
+        <translation>Chemin mesuré</translation>
+    </message>
+    <message>
+        <source>Re-run the test</source>
+        <translation>Relancer le test</translation>
+    </message>
+    <message>
         <source>Video</source>
         <translation>Vidéo</translation>
     </message>
@@ -1062,12 +1074,39 @@ Vous devrez vous reconnecter via un navigateur au prochain démarrage. Rien n&ap
         <translation>Session</translation>
     </message>
     <message>
+        <source>measuring...</source>
+        <translation>mesure en cours...</translation>
+    </message>
+    <message>
+        <source>%1 ms total - the router did not answer, so the split is unavailable</source>
+        <translation>%1 ms au total - la box n&apos;a pas répondu, la répartition est indisponible</translation>
+    </message>
+    <message>
+        <source>you → %1 ms → router → ? → Shadow (the local hop measured longer than the whole round trip)</source>
+        <translation>vous → %1 ms → box → ? → Shadow (le saut local mesuré est plus long que l&apos;aller-retour complet)</translation>
+    </message>
+    <message>
+        <source>you → %1 ms → router (%2) → %3 ms → Shadow</source>
+        <translation>vous → %1 ms → box (%2) → %3 ms → Shadow</translation>
+    </message>
+    <message>
+        <source>just now</source>
+        <translation>à l&apos;instant</translation>
+    </message>
+    <message>
         <source>%1 s without a frame</source>
         <translation>%1 s sans image</translation>
     </message>
     <message>
         <source>live</source>
         <translation>en direct</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n second(s) ago</source>
+        <translation>
+            <numerusform>il y a %n seconde</numerusform>
+            <numerusform>il y a %n secondes</numerusform>
+        </translation>
     </message>
     <message>
         <source>n/a on this platform</source>
@@ -2042,6 +2081,22 @@ Audio, TEL QU&apos;ACCORDÉ&#xa0;: %12 Hz, %13 bits, codec %14
     <message>
         <source>Applies on the next session - the output is opened when a stream starts. A device that is unplugged later falls back to the system default rather than going silent.</source>
         <translation>S&apos;applique à la prochaine session - la sortie est ouverte au démarrage d&apos;un flux. Un périphérique débranché ensuite retombe sur le défaut du système plutôt que de devenir muet.</translation>
+    </message>
+    <message>
+        <source>Display</source>
+        <translation>Affichage</translation>
+    </message>
+    <message>
+        <source>The screen the window is on</source>
+        <translation>L&apos;écran où se trouve la fenêtre</translation>
+    </message>
+    <message>
+        <source>Fullscreen on</source>
+        <translation>Plein écran sur</translation>
+    </message>
+    <message>
+        <source>Takes effect at the next fullscreen. A screen that is later unplugged stops matching and the window falls back to the one it is on.</source>
+        <translation>Prend effet au prochain plein écran. Un écran débranché ensuite ne correspond plus et la fenêtre retombe sur celui où elle se trouve.</translation>
     </message>
     <message>
         <source>Appearance</source>

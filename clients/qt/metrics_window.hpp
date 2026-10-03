@@ -26,6 +26,7 @@
  */
 #pragma once
 
+#include <QElapsedTimer>
 #include <QWidget>
 
 #include "rate_meter.hpp"
@@ -48,6 +49,9 @@ protected:
 
 private slots:
     void refresh();
+    /* NET1 - run the gateway probe. Off the GUI thread: a ping blocks for its
+     * whole timeout, and a frozen window is a worse report than no split. */
+    void probeNetworkPath();
 
 private:
     void build();          /* (re)creates the whole UI; also the retranslate path */
@@ -55,6 +59,17 @@ private:
     void refreshGrant();
 
     QTimer *timer_ = nullptr;
+    /* === NET1 2026-10-03 — WHERE THE LATENCY IS ==========================
+     *
+     * One number cannot answer the only question asked when a stream goes
+     * soft: is it me or is it them. The split is measured on a timer far
+     * slower than the metrics refresh - the answer changes with the house's
+     * wiring, not with the frame - and the button is there because the one
+     * moment someone wants it fresh is right after they moved the laptop. */
+    QLabel  *v_path_ = nullptr, *v_path_age_ = nullptr;
+    QTimer  *path_timer_ = nullptr;
+    QElapsedTimer path_age_;
+    bool     path_running_ = false;
 
     /* ---- the live tab's value labels, set in build(), filled in refresh ---- */
     /* Performance */

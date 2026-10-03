@@ -1,6 +1,9 @@
 /* MetricsWindow - see the header: a live HUD tab + the grant snapshot tab. */
 #include "metrics_window.hpp"
 
+#include <QtConcurrent>
+#include <QPushButton>
+
 #include "theme.hpp"
 
 #include <QCoreApplication>
@@ -16,6 +19,7 @@
 #include <QVBoxLayout>
 
 extern "C" {
+#include "core/services/netpath.h"
 #include "core/services/stats.h"
 #include "core/protocol/latency.h"
 #include "core/protocol/session_caps.h"
@@ -137,6 +141,18 @@ void MetricsWindow::build()
     v_rtt_        = addRow(f, tr("Control RTT"), live_body_);
     v_rtt_spread_ = addRow(f, tr("RTT avg / p90 / jitter"), live_body_);
 
+    /* NET1 - the path, as the official client draws it: this machine, the
+     * router, then everything else lumped together. Only the local hop is
+     * measured; the rest is the session's round trip minus it, which is not a
+     * traceroute and does not claim to be. */
+    v_path_ = addRow(f, tr("Path (you / router / Shadow)"), live_body_);
+    v_path_age_ = addRow(f, tr("Path measured"), live_body_);
+    {
+        auto *btn = new QPushButton(tr("Re-run the test"), live_body_);
+        connect(btn, &QPushButton::clicked, this, &MetricsWindow::probeNetworkPath);
+        f->addRow(QString(), btn);
+    }
+
     f = group(tr("Video"));
     v_res_     = addRow(f, tr("Resolution"), live_body_);
     v_codec_   = addRow(f, tr("Codec"), live_body_);
@@ -211,6 +227,18 @@ void MetricsWindow::changeEvent(QEvent *e)
 
 void MetricsWindow::showEvent(QShowEvent *e)
 {
+    /* NET1 - measure on open, then every two minutes. Not on the metrics
+     * tick: a ping a second would be a packet storm aimed at the user's own
+     * router to answer a question whose answer changes with the wiring. */
+    if (!path_timer_) {
+        path_timer_ = new QTimer(this);
+        path_timer_->setInterval(120000);
+        connect(path_timer_, &QTimer::timeout, this,
+                &MetricsWindow::probeNetworkPath);
+    }
+    path_timer_->start();
+    probeNetworkPath();
+
     QWidget::showEvent(e);
     refresh();
     timer_->start();
@@ -218,6 +246,8 @@ void MetricsWindow::showEvent(QShowEvent *e)
 
 void MetricsWindow::hideEvent(QHideEvent *e)
 {
+    if (path_timer_) path_timer_->stop();
+
     timer_->stop();
     QWidget::hideEvent(e);
 }
@@ -229,6 +259,59 @@ void MetricsWindow::refresh()
 }
 
 /* ======================================================== the live tab === */
+
+/* NET1 - the probe, on a worker, with its result posted back.
+ *
+ * `QtConcurrent::run` and not a QThread: this is one blocking call with no
+ * state, which is exactly the shape that pool is for. The guard is not
+ * paranoia - the timer and the button can both fire, and two pings in flight
+ * would race to write the same labels. */
+void MetricsWindow::probeNetworkPath()
+{
+    if (path_running_) return;
+    path_running_ = true;
+    v_path_age_->setText(tr("measuring..."));
+
+    const int64_t total = []() -> int64_t {
+        session_stats_t st;
+        session_stats_get(&st);
+        return (int64_t)st.ctrl_rtt_us;
+    }();
+
+    (void)QtConcurrent::run([this, total] {
+        netpath_split sp;
+        netpath_measure(total, 1200, &sp);
+        /* Queued: the lambda runs on a pool thread and these are widgets. */
+        QMetaObject::invokeMethod(this, [this, sp] {
+            path_running_ = false;
+            path_age_.start();
+
+            auto ms = [](int64_t us) {
+                return us < 0 ? QStringLiteral("?")
+                              : QStringLiteral("%1").arg(us / 1000.0, 0, 'f', 1);
+            };
+            if (!sp.have_local) {
+                /* Said plainly rather than shown as a dash: a gateway that
+                 * drops ICMP is the common case on a corporate network, and
+                 * "unknown" with no reason reads as a bug in us. */
+                v_path_->setText(tr("%1 ms total - the router did not answer, "
+                                    "so the split is unavailable")
+                                     .arg(ms(sp.total_us)));
+            } else if (!sp.ordered) {
+                v_path_->setText(tr("you \u2192 %1 ms \u2192 router \u2192 ? \u2192 Shadow "
+                                    "(the local hop measured longer than the "
+                                    "whole round trip)")
+                                     .arg(ms(sp.local_us)));
+            } else {
+                v_path_->setText(tr("you \u2192 %1 ms \u2192 router (%2) \u2192 %3 ms \u2192 Shadow")
+                                     .arg(ms(sp.local_us),
+                                          QString::fromUtf8(sp.gateway),
+                                          ms(sp.remote_us)));
+            }
+            v_path_age_->setText(tr("just now"));
+        }, Qt::QueuedConnection);
+    });
+}
 
 void MetricsWindow::refreshLive()
 {
@@ -257,6 +340,15 @@ void MetricsWindow::refreshLive()
     v_freeze_->setText(s.rtp_video_stuck_secs > 0
                            ? tr("%1 s without a frame").arg(s.rtp_video_stuck_secs)
                            : tr("live"));
+
+    /* NET1 - how old the split is. Shown because a two-minute-old reading of
+     * a network that has since changed is worse than none, and the official
+     * client says it too ("Mesure il y a 2 minutes"). */
+    if (v_path_age_ && path_age_.isValid() && !path_running_) {
+        const qint64 sec = path_age_.elapsed() / 1000;
+        v_path_age_->setText(sec < 10 ? tr("just now")
+                                      : tr("%n second(s) ago", "", int(sec)));
+    }
 
     /* Network */
     v_bitrate_->setText(QStringLiteral("%1 Mb/s")

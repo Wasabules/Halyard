@@ -45,6 +45,7 @@ class QThread;
 class QLabel;
 class QFrame;
 class QLineEdit;
+class QScreen;
 class QScrollArea;
 class QVBoxLayout;
 class MachineCard;
@@ -133,6 +134,7 @@ private:
      * when the settings window changes a binding. */
     void updateHeroVisibility();
     void updateHeader(int index);   /* D1 */
+    QScreen *fullscreenTarget() const;   /* SCR1 */
     void applyShortcuts();
     QKeySequence keySequenceFor(int action) const;
     QRect videoGlobalRect() const;
@@ -179,6 +181,7 @@ private:
     QVector<QWidget *> machine_skeletons_;
     QString      datacentre_;        /* UI6 - shown on every card */
     QString      last_machine_id_;   /* UI3 - what Retry retries */
+    QRect        normal_geometry_;   /* SCR1 - where to return from another screen */
     /* QT5 - kept so retranslate() can re-label them. */
     QLabel  *machines_title_ = nullptr;
     QMenu   *view_menu_      = nullptr;

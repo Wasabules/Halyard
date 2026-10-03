@@ -42,6 +42,7 @@ extern "C" {
 static MainWindow *g_main_window = nullptr;
 
 #include <QStackedWidget>
+#include <QScreen>
 #include <QThread>
 #include <QLabel>
 #include <QApplication>
@@ -900,6 +901,38 @@ void MainWindow::openFileManager()
     file_manager_->activateWindow();
 }
 
+/* === SCR1 2026-10-03 — WHICH SCREEN ======================================
+ *
+ * `showFullScreen()` fills whatever screen the window currently sits on, and
+ * nothing else was ever said about screens anywhere in this client. On one
+ * monitor that is correct and invisible. On two it is wrong in the one way
+ * that matters: the stream goes fullscreen where the window happened to be,
+ * which after opening the settings on the other monitor is not where the
+ * person is looking - and once it is fullscreen there is no way to move it,
+ * because the window has no frame to drag.
+ *
+ * The preference is stored as the screen's NAME and not as its index. An
+ * index is a position in a list that the system reorders when a monitor is
+ * unplugged, so the choice would silently become a different screen; a name
+ * that no longer exists simply does not match, and we fall back to the
+ * window's own screen, which is the behaviour someone who changed their setup
+ * would expect anyway.
+ *
+ * "Auto" (an empty setting) is the default and means exactly what it used to
+ * do, so nobody with one monitor sees a change. */
+QScreen *MainWindow::fullscreenTarget() const
+{
+    const QString want = QSettings().value(QStringLiteral("ui/fullscreen_screen"))
+                             .toString();
+    if (!want.isEmpty())
+        for (QScreen *sc : QGuiApplication::screens())
+            if (sc->name() == want) return sc;
+
+    /* The window's own screen; `screen()` can be null very early, before the
+     * window has been shown on anything. */
+    return screen() ? screen() : QGuiApplication::primaryScreen();
+}
+
 void MainWindow::toggleFullscreen()
 {
     /* IN3 - whole-window fullscreen. The menu bar goes with it; the stream's
@@ -915,8 +948,28 @@ void MainWindow::toggleFullscreen()
     statusBar()->setVisible(!goFull);
     if (video_) video_->setChromeVisible(!goFull);
 
-    if (goFull) showFullScreen();
-    else        showNormal();
+    if (goFull) {
+        /* SCR1 - move BEFORE going fullscreen. `setScreen` on an already
+         * fullscreen window is honoured inconsistently across platforms;
+         * placing the normal window inside the target's geometry first lets
+         * the usual "fullscreen on the screen I am on" rule do the work, which
+         * is the path every platform agrees about. */
+        QScreen *target = fullscreenTarget();
+        if (target && screen() != target) {
+            normal_geometry_ = geometry();   /* so showNormal can come back */
+            const QRect g = target->availableGeometry();
+            move(g.center() - QPoint(width() / 2, height() / 2));
+        }
+        showFullScreen();
+    } else {
+        showNormal();
+        /* Put the window back where it was before we moved it to another
+         * screen, or it reappears centred on a monitor it never came from. */
+        if (normal_geometry_.isValid()) {
+            setGeometry(normal_geometry_);
+            normal_geometry_ = QRect();
+        }
+    }
     if (video_) {
         video_->setFullscreenState(goFull);
         video_->setFocus(Qt::OtherFocusReason);

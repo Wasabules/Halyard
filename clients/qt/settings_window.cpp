@@ -5,6 +5,7 @@
 #include "shortcuts.hpp"
 
 #include <QApplication>
+#include <QScreen>
 
 /* === KEY1 — THE SHORTCUT LABELS, FOR lupdate ==============================
  *
@@ -599,6 +600,42 @@ QWidget *SettingsWindow::buildGeneralPage(QWidget *parent)
                "default rather than going silent."), page));
     }
 #endif
+
+    /* === SCR1 — WHICH SCREEN THE STREAM FILLS =========================== *
+     *
+     * Listed by the system's own name plus the resolution, because a name
+     * alone ("\\\\.\\DISPLAY2", "HDMI-A-1") identifies nothing to a person -
+     * and the resolution is usually what they would use to tell two monitors
+     * apart. Stored as the NAME: an index is a position in a list the system
+     * reorders when a monitor is unplugged, which would silently retarget the
+     * setting at a different screen. */
+    if (QGuiApplication::screens().size() > 1) {
+        section(tr("Display"));
+        auto *form = new QFormLayout;
+        form->setHorizontalSpacing(theme::SpaceGroup);
+        auto *box = new QComboBox(page);
+        box->addItem(tr("The screen the window is on"), QString());
+        for (QScreen *sc : QGuiApplication::screens()) {
+            const QRect g = sc->geometry();
+            box->addItem(QStringLiteral("%1 - %2x%3")
+                             .arg(sc->name()).arg(g.width()).arg(g.height()),
+                         sc->name());
+        }
+        const QString cur = QSettings()
+            .value(QStringLiteral("ui/fullscreen_screen")).toString();
+        const int at = box->findData(cur);
+        box->setCurrentIndex(at >= 0 ? at : 0);
+        connect(box, &QComboBox::currentIndexChanged, this, [box](int i) {
+            QSettings().setValue(QStringLiteral("ui/fullscreen_screen"),
+                                 box->itemData(i).toString());
+        });
+        form->addRow(tr("Fullscreen on"), box);
+        col->addLayout(form);
+        col->addWidget(mutedLabel(
+            tr("Takes effect at the next fullscreen. A screen that is later "
+               "unplugged stops matching and the window falls back to the one "
+               "it is on."), page));
+    }
 
     /* === D2 — THE THEME ================================================= *
      *

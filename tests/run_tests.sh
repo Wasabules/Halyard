@@ -184,6 +184,10 @@ if pkg-config --exists libqrencode 2>/dev/null; then
 else
     echo "== the QR module grid: SKIPPED ==  (no libqrencode through pkg-config)"
 fi
+# NET1: the latency split (me -> router -> Shadow). Only the arithmetic is
+# reachable offline - a ping needs a network, and a suite that pings would fail
+# on a build machine rather than on a defect.
+run test_netpath      test_netpath.c ../core/services/netpath.c $(if [ "$(uname -o 2>/dev/null)" = "Msys" ]; then echo "-liphlpapi -lws2_32"; fi)
 run test_ft_uri       test_ft_uri.c        # header-only: the SFTP URI a file manager opens - base64 escaping, IPv6 brackets (FT4)
 run test_clip_dir     test_clip_dir.c      # header-only: which way the clipboard may travel, and the clamp (CLIP6)
 run test_hid_lock     test_hid_lock.c ../core/protocol/proto.c  # the Caps/Num/Scroll Lock message on :base+11 (HID1)
