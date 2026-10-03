@@ -38,6 +38,7 @@
  */
 #pragma once
 
+#include <QKeySequence>
 #include <QWidget>
 #include <QImage>
 #include <QVideoFrame>
@@ -91,6 +92,10 @@ public slots:
     /* IN4 - hide the LOCAL system cursor over the video. On a remote desktop the
      * VM draws its own cursor inside the picture, so the local one is a second,
      * lagging cursor; hiding it leaves only the VM's. */
+    /* KEY1 - the fullscreen chord, from the one shortcut table. Empty unbinds
+     * it, in which case the key is forwarded to the VM like any other. */
+    void setFullscreenKey(const QKeySequence &seq);
+
     void setLocalCursorHidden(bool hidden);
 
     /* OV4 - show/hide the control bar for immersive fullscreen. */
@@ -112,6 +117,9 @@ protected:
     void keyReleaseEvent(QKeyEvent *e) override;
 
 private:
+    bool isFullscreenKey(const QKeyEvent *e) const;
+    int  fs_key_ = 0;   /* KEY1 - key|modifiers, 0 = unbound */
+
     /* Widget point -> decoded-frame point, accounting for the letterbox. Returns
      * false when the point is on a black bar (outside the video). */
     bool mapToFrame(const QPointF &widgetPt, int &fx, int &fy) const;

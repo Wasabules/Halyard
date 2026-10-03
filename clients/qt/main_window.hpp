@@ -34,6 +34,7 @@
 #pragma once
 
 #include <QMainWindow>
+#include <QKeySequence>
 #include <QRect>
 #include <QVector>
 
@@ -98,6 +99,8 @@ private slots:
     void onSignInFailed(const QString &why);
     /* UI2 - run the sign-in sequence again after it failed or expired. */
     void restartSignIn();
+    /* AUTH9 - forget the stored refresh token and pair again. */
+    void signOut();
     void onBootstrapReady(const BootstrapWorker::Ready &r);
     void connectTo(const QString &id);
 
@@ -114,7 +117,10 @@ private:
     bool overlaysAllowed() const;
     /* OV10 - another of our windows is sitting over the picture. */
     bool ownWindowOverVideo() const;
-    void applyOverlayHotkey();
+    /* KEY1 - every shortcut, from the one table in shortcuts.hpp. Re-run
+     * when the settings window changes a binding. */
+    void applyShortcuts();
+    QKeySequence keySequenceFor(int action) const;
     QRect videoGlobalRect() const;
     void listMachines();
     void setPage(int index);
@@ -140,6 +146,7 @@ private:
     QLabel      *machines_empty_ = nullptr;
     QVector<MachineCard *> machine_cards_;
     QStringList  machine_names_;
+    QString      last_machine_id_;   /* UI3 - what Retry retries */
     /* QT5 - kept so retranslate() can re-label them. */
     QLabel  *machines_title_ = nullptr;
     QMenu   *view_menu_      = nullptr;
@@ -152,6 +159,7 @@ private:
     QAction *act_fs_         = nullptr;
     QAction *act_hide_cursor_= nullptr;
     QAction *act_disconnect_ = nullptr;
+    QAction *act_sign_out_   = nullptr;
     QAction *act_stream_metrics_ = nullptr;
 
     QStringList machine_ids_;
@@ -181,7 +189,8 @@ private:
     FileManagerWindow *file_manager_ = nullptr;
     halyard::StreamHud     *stream_hud_ = nullptr;
     halyard::StreamOverlay *stream_overlay_ = nullptr;
-    QShortcut              *overlay_shortcut_ = nullptr;
+    QShortcut              *overlay_shortcut_    = nullptr;
+    QShortcut              *screenshot_shortcut_ = nullptr;
     QTimer                 *overlay_watch_    = nullptr;  /* OV10 - overlap poll */
     QLabel                 *toast_ = nullptr;
     QTimer                 *toast_timer_ = nullptr;

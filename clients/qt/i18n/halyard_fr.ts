@@ -566,6 +566,10 @@
         <translation>Recommencer</translation>
     </message>
     <message>
+        <source>Sign &amp;out</source>
+        <translation>Se déc&amp;onnecter</translation>
+    </message>
+    <message>
         <source>&amp;View</source>
         <translation>&amp;Affichage</translation>
     </message>
@@ -680,6 +684,26 @@
     <message>
         <source>sign-in failed</source>
         <translation>échec de la connexion</translation>
+    </message>
+    <message>
+        <source>Sign out</source>
+        <translation>Se déconnecter</translation>
+    </message>
+    <message>
+        <source>Forget the saved session on this computer?
+
+You will have to sign in through a browser again at the next start. Nothing on the machines themselves is changed.</source>
+        <translation>Oublier la session enregistrée sur cet ordinateur&#xa0;?
+
+Vous devrez vous reconnecter via un navigateur au prochain démarrage. Rien n&apos;est modifié sur les machines elles-mêmes.</translation>
+    </message>
+    <message>
+        <source>Signed out.</source>
+        <translation>Déconnecté.</translation>
+    </message>
+    <message>
+        <source>Signed out, but the stored session could not be removed from disk.</source>
+        <translation>Déconnecté, mais la session enregistrée n&apos;a pas pu être supprimée du disque.</translation>
     </message>
     <message>
         <source>signed in</source>
@@ -1937,20 +1961,56 @@ Audio, TEL QU&apos;ACCORDÉ&#xa0;: %12 Hz, %13 bits, codec %14
         <translation>S&apos;applique à la prochaine session - la sortie est ouverte au démarrage d&apos;un flux. Un périphérique débranché ensuite retombe sur le défaut du système plutôt que de devenir muet.</translation>
     </message>
     <message>
-        <source>In-stream overlay</source>
-        <translation>Overlay dans le flux</translation>
+        <source>Keyboard shortcuts</source>
+        <translation>Raccourcis clavier</translation>
     </message>
     <message>
-        <source>Open the overlay with</source>
-        <translation>Ouvrir l&apos;overlay avec</translation>
+        <source>%1 (while streaming)</source>
+        <translation>%1 (pendant le flux)</translation>
     </message>
     <message>
-        <source>A frameless menu over the stream: volume, equaliser, and which metrics show in the corner. It takes the keyboard while open, so its keys do not reach the VM. Default F8.</source>
-        <translation>Un menu superposé au flux&#xa0;: volume, égaliseur, et quelles métriques s&apos;affichent dans le coin. Il prend le clavier tant qu&apos;il est ouvert, donc ses touches n&apos;atteignent pas la VM. Par défaut F8.</translation>
+        <source>Restore the default shortcuts</source>
+        <translation>Rétablir les raccourcis par défaut</translation>
+    </message>
+    <message>
+        <source>Clearing a field unbinds the command. Changes take effect at once - no restart. The overlay is a frameless menu over the stream (volume, equaliser, which metrics show in the corner); it takes the keyboard while open, so its keys do not reach the VM.</source>
+        <translation>Vider un champ supprime le raccourci. Les changements prennent effet immédiatement - aucun redémarrage. L&apos;overlay est un menu sans bordure par-dessus le flux (volume, égaliseur, métriques affichées dans le coin)&#xa0;; il capte le clavier tant qu&apos;il est ouvert, donc ses touches n&apos;atteignent pas la VM.</translation>
+    </message>
+    <message>
+        <source>Same key for: %1. Qt fires neither when two commands share a chord, so both stop working until one is changed.</source>
+        <translation>Même touche pour&#xa0;: %1. Qt n&apos;en déclenche aucune quand deux commandes partagent un raccourci&#xa0;; les deux cessent donc de fonctionner tant que l&apos;une n&apos;est pas modifiée.</translation>
     </message>
     <message>
         <source>Defaults</source>
         <translation>Valeurs par défaut</translation>
+    </message>
+    <message>
+        <source>Fullscreen</source>
+        <translation>Plein écran</translation>
+    </message>
+    <message>
+        <source>Open the overlay</source>
+        <translation>Ouvrir l&apos;overlay</translation>
+    </message>
+    <message>
+        <source>Metrics window</source>
+        <translation>Fenêtre des métriques</translation>
+    </message>
+    <message>
+        <source>File transfer</source>
+        <translation>Transfert de fichiers</translation>
+    </message>
+    <message>
+        <source>Settings</source>
+        <translation>Paramètres</translation>
+    </message>
+    <message>
+        <source>Take a screenshot</source>
+        <translation>Faire une capture d&apos;écran</translation>
+    </message>
+    <message>
+        <source>Disconnect</source>
+        <translation>Déconnecter</translation>
     </message>
     <message>
         <source>Restore all defaults...</source>
@@ -1998,6 +2058,14 @@ Audio, TEL QU&apos;ACCORDÉ&#xa0;: %12 Hz, %13 bits, codec %14
     <message>
         <source>Connecting to the stream</source>
         <translation>Connexion au flux</translation>
+    </message>
+    <message>
+        <source>Back to the machines</source>
+        <translation>Retour aux machines</translation>
+    </message>
+    <message>
+        <source>Try again</source>
+        <translation>Réessayer</translation>
     </message>
 </context>
 <context>

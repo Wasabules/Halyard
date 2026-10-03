@@ -2,6 +2,33 @@
  * defects this file was reshaped around. */
 #include "settings_window.hpp"
 
+#include "shortcuts.hpp"
+
+/* === KEY1 — THE SHORTCUT LABELS, FOR lupdate ==============================
+ *
+ * The rows are built from `halyard::keys::actions()`, so the call is
+ * `tr(a.label)` with a pointer resolved at RUNTIME - which lupdate cannot
+ * see, and an unseen string renders in English however complete the French
+ * catalogue is. Declaring them here puts the seven in the catalogue under
+ * exactly the context `tr()` looks them up in.
+ *
+ * They are not read: the array exists so the scanner has something to find.
+ * `test_qt_shortcuts` asserts the table's size, which is what makes a label
+ * added there and forgotten here a test failure rather than an English word
+ * in a French window. */
+[[maybe_unused]] static const char *const kShortcutLabelsForLupdate[] = {
+    QT_TRANSLATE_NOOP("SettingsWindow", "Fullscreen"),
+    QT_TRANSLATE_NOOP("SettingsWindow", "Open the overlay"),
+    QT_TRANSLATE_NOOP("SettingsWindow", "Metrics window"),
+    QT_TRANSLATE_NOOP("SettingsWindow", "File transfer"),
+    QT_TRANSLATE_NOOP("SettingsWindow", "Settings"),
+    QT_TRANSLATE_NOOP("SettingsWindow", "Take a screenshot"),
+    QT_TRANSLATE_NOOP("SettingsWindow", "Disconnect"),
+};
+static_assert(sizeof kShortcutLabelsForLupdate / sizeof *kShortcutLabelsForLupdate
+                  == halyard::keys::ActCount,
+              "a shortcut was added to the table without a translatable label");
+
 #include "i18n.hpp"
 #include "settings_model.hpp"
 #include "settings_store.hpp"
@@ -571,29 +598,78 @@ QWidget *SettingsWindow::buildGeneralPage(QWidget *parent)
     }
 #endif
 
-    /* --- In-stream overlay (OV1) --------------------------------------- */
-    section(tr("In-stream overlay"));
+    /* === KEY1 — the keyboard shortcuts, all seven ======================= *
+     *
+     * One row per command, from `shortcuts.hpp`. What this section exists to
+     * make possible, beyond changing a key: SEEING a collision. The keys used
+     * to be set at seven separate call sites, so nothing had the whole set in
+     * front of it and two commands could quietly share a chord - at which
+     * point Qt fires neither and the pair simply stops working. */
+    section(tr("Keyboard shortcuts"));
     {
+        using namespace halyard::keys;
         auto *form = new QFormLayout;
         form->setHorizontalSpacing(theme::SpaceGroup);
-        auto *edit = new QKeySequenceEdit(page);
-        edit->setMaximumSequenceLength(1);   /* a single chord, like a game key */
-        QSettings st;
-        edit->setKeySequence(QKeySequence(
-            st.value(QStringLiteral("ui/overlay_hotkey"),
-                     QStringLiteral("F8")).toString()));
-        connect(edit, &QKeySequenceEdit::editingFinished, this, [this, edit] {
-            const QString seq = edit->keySequence().toString(QKeySequence::PortableText);
-            QSettings().setValue(QStringLiteral("ui/overlay_hotkey"),
-                                 seq.isEmpty() ? QStringLiteral("F8") : seq);
+
+        for (int i = 0; i < ActCount; i++) {
+            const ActionDef &a = action(i);
+            auto *edit = new QKeySequenceEdit(page);
+            edit->setMaximumSequenceLength(1);   /* a single chord, like a game key */
+            edit->setKeySequence(storedShortcut(i));
+            key_edits_[i] = edit;
+
+            connect(edit, &QKeySequenceEdit::editingFinished, this, [this, i, edit] {
+                const QString seq =
+                    edit->keySequence().toString(QKeySequence::PortableText);
+                /* "-" and not "" for a deliberately cleared key: an ABSENT
+                 * QSettings value means "never set" and must take the
+                 * default, while a user who unbound a command must get
+                 * nothing. The empty string cannot mean both. */
+                QSettings().setValue(QString::fromUtf8(action(i).settingsKey),
+                                     seq.isEmpty() ? QStringLiteral("-") : seq);
+                refreshShortcutConflicts();
+                emit overlayHotkeyChanged();   /* "a binding changed" - see the hpp */
+            });
+
+            /* The label says when a command is only meaningful in a stream,
+             * rather than leaving someone to wonder why F12 did nothing on the
+             * machine list. */
+            const QString label = a.streamOnly
+                ? tr("%1 (while streaming)").arg(tr(a.label))
+                : tr(a.label);
+            form->addRow(label, edit);
+        }
+        col->addLayout(form);
+
+        key_conflict_ = mutedLabel(QString(), page);
+        key_conflict_->setVisible(false);
+        col->addWidget(key_conflict_);
+
+        auto *reset = new QPushButton(tr("Restore the default shortcuts"), page);
+        connect(reset, &QPushButton::clicked, this, [this] {
+            using namespace halyard::keys;
+            QSettings st;
+            for (int i = 0; i < ActCount; i++) {
+                st.remove(QString::fromUtf8(action(i).settingsKey));
+                key_edits_[i]->setKeySequence(
+                    QKeySequence(QString::fromUtf8(action(i).def)));
+            }
+            refreshShortcutConflicts();
             emit overlayHotkeyChanged();
         });
-        form->addRow(tr("Open the overlay with"), edit);
-        col->addLayout(form);
+        auto *line = new QHBoxLayout;
+        line->addWidget(reset);
+        line->addStretch(1);
+        col->addLayout(line);
+
         col->addWidget(mutedLabel(
-            tr("A frameless menu over the stream: volume, equaliser, and which "
-               "metrics show in the corner. It takes the keyboard while open, so "
-               "its keys do not reach the VM. Default F8."), page));
+            tr("Clearing a field unbinds the command. Changes take effect at "
+               "once - no restart. The overlay is a frameless menu over the "
+               "stream (volume, equaliser, which metrics show in the corner); "
+               "it takes the keyboard while open, so its keys do not reach the "
+               "VM."), page));
+
+        refreshShortcutConflicts();
     }
 
     /* --- Defaults ------------------------------------------------------- */
@@ -702,4 +778,52 @@ void SettingsWindow::applyFilter(const QString &needle)
         for (int i = 0; i < hits.size(); i++)
             if (hits[i] > 0) { rail_->setCurrentRow(i); break; }
     }
+}
+
+/* KEY1 - what is stored for `i`, or its default. Mirrors
+ * `MainWindow::keySequenceFor`; the two are kept together deliberately rather
+ * than shared, because this one must not depend on the main window and that
+ * one must not depend on a window that may never be opened. */
+QKeySequence SettingsWindow::storedShortcut(int i) const
+{
+    const auto &a = halyard::keys::action(i);
+    const QString v = QSettings().value(QString::fromUtf8(a.settingsKey)).toString();
+    if (v == QStringLiteral("-")) return QKeySequence();
+    if (v.isEmpty()) return QKeySequence(QString::fromUtf8(a.def));
+    return QKeySequence(v);
+}
+
+/* KEY1 - mark the rows that share a chord.
+ *
+ * The comparison is done on the text `QKeySequence::toString` produces, which
+ * is the same normalisation Qt dispatches on - so the check agrees with what
+ * actually happens rather than with a second opinion about what "Ctrl+M"
+ * means. `halyard::keys::conflicting` is pure and tested. */
+void SettingsWindow::refreshShortcutConflicts()
+{
+    using namespace halyard::keys;
+
+    QStringList seqs;
+    for (int i = 0; i < ActCount; i++)
+        seqs << key_edits_[i]->keySequence().toString(QKeySequence::PortableText);
+
+    const QVector<int> bad = conflicting(seqs);
+    for (int i = 0; i < ActCount; i++)
+        key_edits_[i]->setStyleSheet(
+            bad.contains(i) ? QStringLiteral("border: 1px solid %1;")
+                                  .arg(theme::bad(this).name())
+                            : QString());
+
+    if (bad.isEmpty()) {
+        key_conflict_->setVisible(false);
+        return;
+    }
+    QStringList names;
+    for (int i : bad) names << tr(action(i).label);
+    key_conflict_->setText(
+        tr("Same key for: %1. Qt fires neither when two commands share a "
+           "chord, so both stop working until one is changed.")
+            .arg(names.join(QStringLiteral(", "))));
+    key_conflict_->setStyleSheet(theme::css(theme::bad(this)));
+    key_conflict_->setVisible(true);
 }

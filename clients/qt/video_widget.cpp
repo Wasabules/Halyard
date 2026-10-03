@@ -275,17 +275,41 @@ void VideoWidget::postKey(QKeyEvent *e, bool pressed)
     if (ev) shadow_input_post_scancode((uint16_t)ev, pressed);
 }
 
+/* KEY1 - is this event the fullscreen key?
+ *
+ * The key used to be written here as a literal `Qt::Key_F11` AND in the menu
+ * action, so changing one left the other swallowing the old key. The sequence
+ * now arrives from `MainWindow::applyShortcuts`, which reads the one table.
+ *
+ * Compared as key + modifiers rather than through `QKeySequence::matches`:
+ * matches() wants a sequence built from the event, and building one per key
+ * press on the streaming path - which is every key the VM receives - is work
+ * for nothing when a single chord is all that can be configured. */
+bool VideoWidget::isFullscreenKey(const QKeyEvent *e) const
+{
+    if (fs_key_ == 0) return false;
+    const int mods = int(e->modifiers() & ~Qt::KeypadModifier);
+    return (fs_key_ & ~Qt::KeyboardModifierMask) == e->key()
+        && (fs_key_ &  Qt::KeyboardModifierMask) == mods;
+}
+
+void VideoWidget::setFullscreenKey(const QKeySequence &seq)
+{
+    fs_key_ = seq.isEmpty() ? 0 : seq[0].toCombined();
+}
+
 void VideoWidget::keyPressEvent(QKeyEvent *e)
 {
-    /* IN3 - F11 is a LOCAL command (fullscreen), never forwarded. Intercepting
-     * it here is also what keeps a guaranteed, hook-proof way out of fullscreen:
-     * F11 is not one of the keys IN2's hook swallows, so it always reaches us. */
-    if (e->key() == Qt::Key_F11) { emit requestFullscreenToggle(); return; }
+    /* IN3 - the fullscreen key is a LOCAL command, never forwarded.
+     * Intercepting it here is also what keeps a hook-proof way out of
+     * fullscreen: it is not one of the keys IN2's hook swallows, so it always
+     * reaches us. */
+    if (isFullscreenKey(e)) { emit requestFullscreenToggle(); return; }
     postKey(e, true);
 }
 
 void VideoWidget::keyReleaseEvent(QKeyEvent *e)
 {
-    if (e->key() == Qt::Key_F11) return;   /* its press was consumed locally */
+    if (isFullscreenKey(e)) return;   /* its press was consumed locally */
     postKey(e, false);
 }

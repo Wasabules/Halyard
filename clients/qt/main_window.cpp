@@ -11,6 +11,7 @@
 #include "file_manager_window.hpp"
 #include "about_dialog.hpp"
 #include "machine_card.hpp"
+#include "shortcuts.hpp"
 #include "stream_overlay.hpp"
 #include "theme.hpp"
 
@@ -252,6 +253,17 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
     steps_ = new StepListWidget(this);
     stack_->addWidget(steps_);
 
+    /* UI3 - a bootstrap that fails is recoverable: the machine was asleep, the
+     * video server was not up yet, the network blinked. Retry re-runs the SAME
+     * `connectTo` with the machine we were given, so there is one path in. */
+    connect(steps_, &StepListWidget::retryRequested, this, [this] {
+        if (!last_machine_id_.isEmpty()) connectTo(last_machine_id_);
+    });
+    connect(steps_, &StepListWidget::backRequested, this, [this] {
+        setPage(PageMachines);
+        setMachinesBusy(false);
+    });
+
     /* -------------------------------------------------- page 4: streaming */
     video_ = new VideoWidget(this);
     stack_->addWidget(video_);
@@ -362,12 +374,28 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
 
         /* The hotkey is an application shortcut: it fires before the key reaches
          * the video surface, so it is NOT forwarded to the VM. Configurable in
-         * Settings > General; rebuilt by applyOverlayHotkey(). */
+         * Settings > General; rebuilt by applyShortcuts(). */
+        /* === KEY1 - the two commands that have no menu entry ===============
+         *
+         * Overlay and screenshot exist only in the overlay's Tools tab, so
+         * they need a `QShortcut` of their own. The other five are menu
+         * entries and carry their key on the `QAction`; all seven are set from
+         * the same table by `applyShortcuts()`.
+         *
+         * APPLICATION context on both, because the video widget holds the
+         * keyboard while streaming and a widget-context shortcut would never
+         * be reached. */
         overlay_shortcut_ = new QShortcut(this);
         overlay_shortcut_->setContext(Qt::ApplicationShortcut);
         connect(overlay_shortcut_, &QShortcut::activated, this,
                 &MainWindow::toggleOverlay);
-        applyOverlayHotkey();
+
+        screenshot_shortcut_ = new QShortcut(this);
+        screenshot_shortcut_->setContext(Qt::ApplicationShortcut);
+        connect(screenshot_shortcut_, &QShortcut::activated, this,
+                &MainWindow::takeScreenshot);
+
+        applyShortcuts();
 
         /* OV3 - the overlays follow the APPLICATION's activity: alt-tab away
          * and they go, come back and they return. */
@@ -399,12 +427,13 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
          * it only on macOS. So the portable shortcut is given explicitly and
          * the standard one is added on top, which is what a Mac user reaches
          * for. */
-        act_settings->setShortcuts({ QKeySequence(QStringLiteral("Ctrl+,")),
-                                     QKeySequence::Preferences });
+        /* KEY1 - the key itself comes from `applyShortcuts()`, which reads the
+         * one table. The STANDARD sequence is added here because it is not a
+         * user choice: Qt binds `Preferences` only on macOS, and a Mac user
+         * reaches for it whatever else is configured. */
         connect(act_settings, &QAction::triggered, this, &MainWindow::openSettings);
 
         QAction *act_metrics = act_metrics_ = view_menu_->addAction(QString());
-        act_metrics->setShortcut(QKeySequence(QStringLiteral("Ctrl+M")));
         connect(act_metrics, &QAction::triggered, this, &MainWindow::openMetrics);
 
         /* IN4 - the "Stream" menu: the pause-menu tools, in the menu bar, shown
@@ -413,7 +442,6 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
          * for the ones a bar has no room for (the pointer choice). */
         stream_menu_ = menuBar()->addMenu(QString());
         act_fs_ = stream_menu_->addAction(QString());
-        act_fs_->setShortcut(QKeySequence(QStringLiteral("F11")));
         connect(act_fs_, &QAction::triggered, this, &MainWindow::toggleFullscreen);
         act_hide_cursor_ = stream_menu_->addAction(QString());
         act_hide_cursor_->setCheckable(true);
@@ -434,7 +462,6 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
          * the SFTP channel and its credential exist only then; `session_live_`
          * drives it, set on connect and cleared on every session exit. */
         act_files_ = view_menu_->addAction(QString());
-        act_files_->setShortcut(QKeySequence(QStringLiteral("Ctrl+T")));
         act_files_->setEnabled(false);
         connect(act_files_, &QAction::triggered, this, &MainWindow::openFileManager);
 
@@ -444,6 +471,13 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
          * menu on macOS, where a Help menu entry called "About" is wrong. On
          * Windows and Linux the role is ignored and it stays here, so one line
          * is correct on all three. */
+        /* AUTH9 - sign out. In View and not in Help: it acts on the account,
+         * which is what this menu is about, and it is destructive enough to
+         * want a separator above it. */
+        view_menu_->addSeparator();
+        act_sign_out_ = view_menu_->addAction(QString());
+        connect(act_sign_out_, &QAction::triggered, this, &MainWindow::signOut);
+
         help_menu_ = menuBar()->addMenu(QString());
         QAction *act_about = act_about_ = help_menu_->addAction(QString());
         act_about->setMenuRole(QAction::AboutRole);
@@ -579,6 +613,7 @@ void MainWindow::retranslate()
 {
     machines_title_->setText(tr("Your machines"));
     retry_btn_->setText(tr("Start over"));
+    act_sign_out_->setText(tr("Sign &out"));
     view_menu_->setTitle(tr("&View"));
     act_settings_->setText(tr("&Settings"));
     act_metrics_->setText(tr("&Metrics"));
@@ -606,7 +641,7 @@ void MainWindow::openSettings()
     if (!settings_) {
         settings_ = new SettingsWindow(this);
         connect(settings_, &SettingsWindow::overlayHotkeyChanged, this,
-                &MainWindow::applyOverlayHotkey);
+                &MainWindow::applyShortcuts);
         connect(settings_, &SettingsWindow::settingChanged, this,
                 [this](const QString &env, const QString &v, bool live) {
                     const QString shown = v.isEmpty() ? tr("(unset)") : v;
@@ -795,11 +830,58 @@ void MainWindow::toggleOverlay()
     }
 }
 
-void MainWindow::applyOverlayHotkey()
+/* === KEY1 — EVERY KEY FROM THE ONE TABLE ==================================
+ *
+ * Called at construction and again whenever the settings window changes a
+ * binding, so a new key takes effect without a restart. Reading all seven in
+ * one place is also what makes a collision detectable at all: when they were
+ * set at seven call sites, nothing ever had the set in front of it.
+ *
+ * `keySequenceFor` falls back to the table's default for a missing or empty
+ * stored value, so a configuration file that predates a command still gets a
+ * working key rather than none. */
+QKeySequence MainWindow::keySequenceFor(int action) const
 {
-    const QString seq = QSettings()
-        .value(QStringLiteral("ui/overlay_hotkey"), QStringLiteral("F8")).toString();
-    overlay_shortcut_->setKey(QKeySequence(seq));
+    const auto &a = halyard::keys::action(action);
+    const QString stored = QSettings()
+        .value(QString::fromUtf8(a.settingsKey)).toString();
+    /* An explicitly cleared key is stored as "-": a QSettings value that is
+     * merely absent means "never set" and must take the default, while a user
+     * who deliberately unbound a command must get nothing. Distinguishing the
+     * two is why the empty string is not used for either. */
+    if (stored == QStringLiteral("-")) return QKeySequence();
+    if (stored.isEmpty()) return QKeySequence(QString::fromUtf8(a.def));
+    return QKeySequence(stored);
+}
+
+void MainWindow::applyShortcuts()
+{
+    using namespace halyard::keys;
+
+    act_fs_->setShortcut(keySequenceFor(ActFullscreen));
+    act_metrics_->setShortcut(keySequenceFor(ActMetrics));
+    act_files_->setShortcut(keySequenceFor(ActFiles));
+    /* Preferences stays alongside the configured one - see the note at the
+     * menu. A list with an empty sequence in it is harmless; Qt ignores it. */
+    act_settings_->setShortcuts({ keySequenceFor(ActSettings),
+                                  QKeySequence(QKeySequence::Preferences) });
+    act_disconnect_->setShortcut(keySequenceFor(ActDisconnect));
+
+    /* The five menu actions get APPLICATION context too. The default is
+     * `WindowShortcut`, which is not reached while the video widget has the
+     * keyboard - and the Stream menu is hidden off a session anyway, so its
+     * entries would otherwise be unreachable by key exactly when they matter.
+     * Set here rather than at construction so one loop covers them all. */
+    for (QAction *a : { act_fs_, act_metrics_, act_files_, act_settings_,
+                        act_disconnect_ })
+        a->setShortcutContext(Qt::ApplicationShortcut);
+
+    overlay_shortcut_->setKey(keySequenceFor(ActOverlay));
+    screenshot_shortcut_->setKey(keySequenceFor(ActScreenshot));
+
+    /* UI5 - the stream's own F11 handler used to be a second declaration of
+     * the same key. It now asks us, so there is one source. */
+    if (video_) video_->setFullscreenKey(keySequenceFor(ActFullscreen));
 }
 
 /* OV2 - a transient note over the stream. A frameless tool window rather than
@@ -1021,6 +1103,45 @@ void MainWindow::onSignInFailed(const QString &why)
     statusBar()->showMessage(tr("sign-in failed"));
 }
 
+/* === AUTH9 — SIGN OUT =====================================================
+ *
+ * Confirmed, because it is not undoable: the stored refresh token is the only
+ * thing standing between this machine and typing a device code into a browser
+ * again, and nothing else in the application can put it back.
+ *
+ * A live session is stopped first. Signing out while streaming would leave a
+ * session running against credentials the application has just thrown away -
+ * it would keep working until the next token refresh and then fail somewhere
+ * unrelated, which is the worst of both. */
+void MainWindow::signOut()
+{
+    const QMessageBox::StandardButton a = QMessageBox::question(
+        this, tr("Sign out"),
+        tr("Forget the saved session on this computer?\n\n"
+           "You will have to sign in through a browser again at the next "
+           "start. Nothing on the machines themselves is changed."),
+        QMessageBox::Yes | QMessageBox::Cancel, QMessageBox::Cancel);
+    if (a != QMessageBox::Yes) return;
+
+    if (session_live_ && sess_) sess_->requestStop();
+
+    const bool ok = oauth_forget_refresh();
+    bearer_.clear();
+    launcher_url_.clear();
+    machine_ids_.clear();
+    machine_names_.clear();
+    last_machine_id_.clear();
+    for (MachineCard *c : machine_cards_) { machines_lay_->removeWidget(c); delete c; }
+    machine_cards_.clear();
+    act_files_->setEnabled(false);
+    stream_menu_->menuAction()->setVisible(false);
+
+    statusBar()->showMessage(ok ? tr("Signed out.")
+                                : tr("Signed out, but the stored session could "
+                                     "not be removed from disk."));
+    restartSignIn();
+}
+
 void MainWindow::restartSignIn()
 {
     /* The same call the constructor makes. `AuthWorker::signIn` clears its own
@@ -1114,6 +1235,7 @@ void MainWindow::connectTo(const QString &id)
 {
     const int row = machine_ids_.indexOf(id);
     if (row < 0) return;
+    last_machine_id_ = id;   /* UI3 - what Retry retries */
 
     /* Core's contract 1: one session per process. Refused here rather than
      * letting two worker threads into the same module state. */

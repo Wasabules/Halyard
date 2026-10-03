@@ -1,6 +1,7 @@
 /* MachineCard - see the header for why a card. */
 #include "machine_card.hpp"
 
+#include "machine_state.hpp"
 #include "theme.hpp"
 
 #include <QGraphicsDropShadowEffect>
@@ -10,26 +11,6 @@
 #include <QVBoxLayout>
 
 namespace theme = halyard::theme;
-
-namespace {
-
-/* The server's own words for a VM's state, mapped onto the three the card
- * shows. Anything unrecognised reads as "off" rather than being invented into
- * a green pill - the colour is a claim, and a wrong one here sends someone
- * clicking Connect on a machine that is not there. */
-const char *pillClassFor(const QString &state)
-{
-    const QString s = state.toLower();
-    if (s.contains(QStringLiteral("start")) || s.contains(QStringLiteral("boot")) ||
-        s.contains(QStringLiteral("pending")))
-        return "busy";
-    if (s.contains(QStringLiteral("run")) || s.contains(QStringLiteral("ready")) ||
-        s.contains(QStringLiteral("active")) || s.contains(QStringLiteral("started")))
-        return "ok";
-    return "off";
-}
-
-}  // namespace
 
 MachineCard::MachineCard(const QString &id, const QString &name,
                          const QString &state, const QString &datacentre,
@@ -55,7 +36,7 @@ MachineCard::MachineCard(const QString &id, const QString &name,
     auto *sub = new QHBoxLayout;
     sub->setSpacing(theme::SpaceRow);
     pill_ = new QLabel(state.isEmpty() ? tr("unknown") : state, this);
-    pill_->setProperty("pill", QString::fromUtf8(pillClassFor(state)));
+    pill_->setProperty("pill", QString::fromUtf8(halyard::pillClassFor(state)));
     sub->addWidget(pill_);
     if (!datacentre.isEmpty()) {
         auto *dc = new QLabel(datacentre, this);

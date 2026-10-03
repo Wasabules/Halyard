@@ -48,11 +48,13 @@
 #pragma once
 
 #include <QVector>
+#include <QKeySequence>
 #include <QWidget>
 
 #include <functional>
 
 class QLabel;
+class QKeySequenceEdit;
 class QLineEdit;
 class QListWidget;
 class QStackedWidget;
@@ -71,12 +73,21 @@ signals:
     void settingChanged(const QString &env, const QString &value, bool live);
     /* OV1 - the overlay hotkey was changed; the main window rebuilds its
      * shortcut. A client preference (QSettings), not a core env var. */
+    /* KEY1 - a binding changed; the main window re-reads the whole table.
+     * The name is kept from when the overlay was the only configurable key,
+     * because renaming a signal is churn with no reader. */
     void overlayHotkeyChanged();
 
 protected:
     void changeEvent(QEvent *e) override;
 
 private:
+    /* KEY1 - one editor per command, indexed by halyard::keys::ActionId. */
+    QKeySequenceEdit *key_edits_[7] = {};
+    QLabel           *key_conflict_ = nullptr;
+    QKeySequence      storedShortcut(int i) const;
+    void              refreshShortcutConflicts();
+
     void rebuild();
     QWidget *buildContent();
     QWidget *buildGeneralPage(QWidget *parent);

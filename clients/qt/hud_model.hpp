@@ -31,6 +31,7 @@
 
 #include <functional>
 
+#include "hud_grade.hpp"   /* Grade, and the thresholds, pure and tested */
 #include "rate_meter.hpp"
 
 extern "C" {
@@ -66,8 +67,6 @@ enum HudChart {
     ChLatency   = 1 << 7,
     ChDefault   = ChDecoded | ChBitrate,
 };
-
-enum class Grade { Neutral, Good, Warn, Bad };
 
 /* The meters that turn core's cumulative counters into live rates. Owned by the
  * widget (GUI thread only) and handed to hudSample each tick. */

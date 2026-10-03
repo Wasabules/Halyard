@@ -56,21 +56,7 @@ HudSnap hudSample(HudMeters &m, quint64 presented)
     return h;
 }
 
-/* Grading helpers - the thresholds are Borealis's. */
-static Grade gradeHi(double v, double warn, double good)
-{
-    if (v >= good) return Grade::Good;
-    if (v >= warn) return Grade::Warn;
-    return Grade::Bad;
-}
-static Grade gradeLo(double v, double warn, double good)
-{
-    if (v <= good) return Grade::Good;
-    if (v <= warn) return Grade::Warn;
-    return Grade::Bad;
-}
-static Grade badIfAny(uint32_t v) { return v ? Grade::Bad : Grade::Neutral; }
-static Grade warnIfAny(uint32_t v) { return v ? Grade::Warn : Grade::Neutral; }
+/* Grading lives in hud_grade.hpp (pure, and tested there). */
 
 const QVector<HudRow> &hudRows()
 {
@@ -87,7 +73,7 @@ const QVector<HudRow> &hudRows()
           return h.dispWaitFed ? n(h.dispWaitMs, 1) + QStringLiteral(" ms")
                                : tr_h("—"); },
       [](const HudSnap &h) {
-          return h.dispWaitFed ? gradeLo(h.dispWaitMs, 33, 16) : Grade::Neutral; },
+          return h.dispWaitFed ? gradeLo(h.dispWaitMs, grade::kDispWaitWarnMs, grade::kDispWaitGoodMs) : Grade::Neutral; },
       nullptr },
     { SecPerf, QT_TRANSLATE_NOOP("Hud", "Frames decoded"),
       [](const HudSnap &h) { return QString::number(h.s.h264_frames_decoded); },
@@ -130,7 +116,7 @@ const QVector<HudRow> &hudRows()
                     .arg(h.s.chunks_missing).arg(h.s.chunks_expected)
               : tr_h("—"); },
       [](const HudSnap &h) {
-          return h.s.chunks_expected ? gradeLo(h.lossPct, 1.0, 0.3) : Grade::Neutral; },
+          return h.s.chunks_expected ? gradeLo(h.lossPct, grade::kLossWarnPct, grade::kLossGoodPct) : Grade::Neutral; },
       nullptr },
     { SecNet, QT_TRANSLATE_NOOP("Hud", "Lost pictures"),
       [](const HudSnap &h) { return QString::number(h.s.chunks_orphan_lost); },
@@ -148,7 +134,7 @@ const QVector<HudRow> &hudRows()
       [](const HudSnap &h) {
           return h.s.ctrl_rtt_us ? n(h.rttMs, 1) + QStringLiteral(" ms") : tr_h("—"); },
       [](const HudSnap &h) {
-          return h.s.ctrl_rtt_us ? gradeLo(h.rttMs, 80, 30) : Grade::Neutral; },
+          return h.s.ctrl_rtt_us ? gradeLo(h.rttMs, grade::kRttWarnMs, grade::kRttGoodMs) : Grade::Neutral; },
       nullptr },
     { SecNet, QT_TRANSLATE_NOOP("Hud", "RTT avg / p90 / jitter"),
       [](const HudSnap &h) {

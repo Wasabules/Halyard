@@ -15,6 +15,7 @@
 #include <QLabel>
 #include <QPainter>
 #include <QPainterPath>
+#include <QPushButton>
 #include <QTimer>
 #include <QVBoxLayout>
 
@@ -174,6 +175,23 @@ StepListWidget::StepListWidget(QWidget *parent) : QWidget(parent)
         rows_.append(r);
     }
 
+    /* UI3 - the way out of a failed connection. Hidden until something fails,
+     * so the screen is not offering to retry what has not yet gone wrong. */
+    footer_ = new QWidget(card);
+    auto *fl = new QHBoxLayout(footer_);
+    fl->setContentsMargins(0, theme::SpaceGroup, 0, 0);
+    fl->setSpacing(theme::SpaceRow);
+    back_  = new QPushButton(tr("Back to the machines"), footer_);
+    retry_ = new QPushButton(tr("Try again"), footer_);
+    retry_->setProperty("accent", true);
+    fl->addStretch(1);
+    fl->addWidget(back_);
+    fl->addWidget(retry_);
+    connect(back_,  &QPushButton::clicked, this, &StepListWidget::backRequested);
+    connect(retry_, &QPushButton::clicked, this, &StepListWidget::retryRequested);
+    footer_->setVisible(false);
+    lay->addWidget(footer_);
+
     outer->addWidget(card);
 
     /* One timer for the whole column, stopped whenever nothing is running: a
@@ -198,7 +216,13 @@ void StepListWidget::reset()
         refresh(i);
     }
     if (subhead_) subhead_->clear();
+    setFailed(false);
     retimeAnimation();
+}
+
+void StepListWidget::setFailed(bool on)
+{
+    if (footer_) footer_->setVisible(on);
 }
 
 void StepListWidget::setHeadline(const QString &text)
@@ -215,6 +239,7 @@ void StepListWidget::setState(int index, State s, const QString &detail)
     rows_[index].state = s;
     if (!detail.isEmpty()) rows_[index].detail = detail;
     refresh(index);
+    if (s == State::Failed) setFailed(true);
     retimeAnimation();
 }
 

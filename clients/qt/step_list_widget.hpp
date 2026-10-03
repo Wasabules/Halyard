@@ -31,6 +31,7 @@
 #include <QVector>
 
 class QLabel;
+class QPushButton;
 class QTimer;
 class QVBoxLayout;
 
@@ -73,6 +74,15 @@ public:
      * the capability probe, a refused credential. */
     void setHeadline(const QString &text);
 
+    /* UI3 - a failed bootstrap left the screen on a red step with no way out
+     * but the window's close button. The two buttons appear only once a step
+     * has failed, and `reset()` takes them away again. */
+    void setFailed(bool on);
+
+signals:
+    void retryRequested();
+    void backRequested();
+
 protected:
     void changeEvent(QEvent *e) override;
 
@@ -94,5 +104,8 @@ private:
     QLabel *headline_ = nullptr;
     QLabel *subhead_  = nullptr;
     QTimer *anim_     = nullptr;
+    QPushButton *retry_  = nullptr;
+    QPushButton *back_   = nullptr;
+    QWidget     *footer_ = nullptr;
     qreal   phase_    = 0.0;
 };
