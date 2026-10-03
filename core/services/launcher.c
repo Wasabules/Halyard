@@ -782,6 +782,27 @@ bool launcher_get_capabilities(const char *launcher_base, const char *bearer,
 
     out->raw_json = strndup(resp.data, resp.len);
 
+    /* === DISP1 2026-10-03 - PRINT THE BODY WE ALREADY HAVE =================
+     *
+     * The parser below takes four values out of this reply and the rest is
+     * kept in `raw_json` and never looked at. The RE of ShadowStreamer 6.3.1
+     * says the server enforces a per-client MAXIMUM NUMBER OF DISPLAYS
+     * ("VM does not support more than %d display(s)") from a limit block that
+     * also holds the resolution and frame-rate ceilings - and those two
+     * demonstrably come from this endpoint. So the display count plausibly
+     * arrives here too, in a key nobody has read.
+     *
+     * Guessing the key name and parsing it would be writing code against a
+     * hypothesis. Printing the body is one line and answers it.
+     *
+     * Off by default and not merely quiet: this is a whole HTTP body in the
+     * log, and a body is exactly the kind of thing that turns out to hold an
+     * identifier when someone attaches the log to an issue. */
+    if (getenv("SHADOW_LOG_CAPS_JSON")) {
+        JOURNAL_INFO_(JOURNAL_CAT_NETWORK,
+                      "[DISP1] /vms/*/capabilities body: %.1500s", out->raw_json);
+    }
+
     json_error_t err;
     json_t *root = json_loads(resp.data, 0, &err);
     http_free(&resp);

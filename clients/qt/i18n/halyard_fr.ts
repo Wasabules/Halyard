@@ -1956,6 +1956,14 @@ Audio, TEL QU&apos;ACCORDÉ&#xa0;: %12 Hz, %13 bits, codec %14
         <translation>LIST, PUT, STAT, GET, un aller-retour octet par octet et REMOVE contre la VM, avec un compte rendu dans le journal. Nécessite un build avec -DSHADOW_FILETRANSFER=ON.</translation>
     </message>
     <message>
+        <source>Log the capabilities reply</source>
+        <translation>Journaliser la réponse de capacités</translation>
+    </message>
+    <message>
+        <source>Writes the machine&apos;s /capabilities body to the log, whole. We read four values out of it and ignore the rest; this shows what else is there. A whole HTTP body in a log can hold an identifier - do not attach that log to a public issue.</source>
+        <translation>Écrit dans le journal le corps /capabilities de la machine, en entier. Nous en lisons quatre valeurs et ignorons le reste&#xa0;; ceci montre ce qu&apos;il y a d&apos;autre. Un corps HTTP complet dans un journal peut contenir un identifiant - n&apos;attachez pas ce journal à un ticket public.</translation>
+    </message>
+    <message>
         <source>Fingerprint every frame</source>
         <translation>Empreinte de chaque image</translation>
     </message>

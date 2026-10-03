@@ -852,6 +852,22 @@ inline const QVector<Setting> &settings()
         "-DSHADOW_FILETRANSFER=ON."),
       .kind = K::Toggle, .unsetValue = 0, .def = 0 },
 
+    /* DISP1 2026-10-03 - the capabilities body, verbatim. The RE of
+     * ShadowStreamer 6.3.1 shows the server enforcing a per-client maximum
+     * number of displays from the same limit block as the resolution and
+     * frame-rate ceilings, and those two come from this endpoint - so the
+     * display count plausibly arrives here, in a key we do not read. */
+    { .env = "SHADOW_LOG_CAPS_JSON",
+      .page = QT_TRANSLATE_NOOP("Settings", "Diagnostics"),
+      .group = QT_TRANSLATE_NOOP("Settings", "Tests and probes"),
+      .label = QT_TRANSLATE_NOOP("Settings", "Log the capabilities reply"),
+      .description = QT_TRANSLATE_NOOP("Settings",
+        "Writes the machine's /capabilities body to the log, whole. We read "
+        "four values out of it and ignore the rest; this shows what else is "
+        "there. A whole HTTP body in a log can hold an identifier - do not "
+        "attach that log to a public issue."),
+      .kind = K::Toggle, .unsetValue = 0, .def = 0 },
+
     { .env = "SHADOW_FRAME_HASH",
       .page = QT_TRANSLATE_NOOP("Settings", "Diagnostics"),
       .group = QT_TRANSLATE_NOOP("Settings", "Tests and probes"),
