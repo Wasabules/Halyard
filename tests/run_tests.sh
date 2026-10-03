@@ -176,6 +176,14 @@ if pkg-config --exists Qt6Core 2>/dev/null; then
 else
     echo "== the Qt settings table / language choice: SKIPPED ==  (no Qt6Core through pkg-config)"
 fi
+# QR1: the module grid the Qt login screen paints. Needs libqrencode, which
+# neither console toolchain packages - hence its own guard rather than the Qt
+# one above.
+if pkg-config --exists libqrencode 2>/dev/null; then
+    run test_qr_matrix test_qr_matrix.c ../core/services/qr_helper.c $(pkg-config --cflags --libs libqrencode)
+else
+    echo "== the QR module grid: SKIPPED ==  (no libqrencode through pkg-config)"
+fi
 run test_ft_uri       test_ft_uri.c        # header-only: the SFTP URI a file manager opens - base64 escaping, IPv6 brackets (FT4)
 run test_clip_dir     test_clip_dir.c      # header-only: which way the clipboard may travel, and the clamp (CLIP6)
 run test_hid_lock     test_hid_lock.c ../core/protocol/proto.c  # the Caps/Num/Scroll Lock message on :base+11 (HID1)

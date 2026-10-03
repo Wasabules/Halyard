@@ -20,6 +20,7 @@ void AuthWorker::signIn()
     stop_ = false;
 
     /* --- 1. the data centre, which yields the one URL everything needs --- */
+    emit stage(StageDatacentre);
     emit progress(tr("resolving the data centre"));
     halyard::ScopedGapInfo gap;
     long http = 0;
@@ -38,6 +39,7 @@ void AuthWorker::signIn()
     emit datacentre(str(gap->name), launcherUrl);
 
     /* --- 2. the OIDC endpoints ------------------------------------------- */
+    emit stage(StageEndpoints);
     emit progress(tr("discovering the sign-in endpoints"));
     halyard::ScopedDiscovery disc;
     if (!oauth_discover(disc.out(), &http)) {
@@ -67,6 +69,7 @@ void AuthWorker::signIn()
     }
 
     /* --- 4. the device grant -------------------------------------------- */
+    emit stage(StageCode);
     emit progress(tr("asking for a device code"));
     halyard::ScopedDeviceInit grant;
     if (!oauth_device_init(disc.out(), grant.out(), &http) || !grant->user_code) {

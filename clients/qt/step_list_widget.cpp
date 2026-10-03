@@ -15,6 +15,7 @@
 #include <QLabel>
 #include <QPainter>
 #include <QPainterPath>
+#include <QProgressBar>
 #include <QPushButton>
 #include <QTimer>
 #include <QVBoxLayout>
@@ -145,6 +146,36 @@ StepListWidget::StepListWidget(QWidget *parent) : QWidget(parent)
     subhead_->setProperty("dim", true);
     subhead_->setWordWrap(true);
     lay->addWidget(subhead_);
+
+    /* UI7 - the two numbers that answer "should I wait". Determinate, because
+     * the total is known: seven, always. A busy indicator here would say only
+     * that something is happening, which the spinning dot already says. */
+    {
+        auto *pr = new QHBoxLayout;
+        pr->setSpacing(theme::SpaceRow);
+        progress_ = new QProgressBar(card);
+        progress_->setRange(0, 7);
+        progress_->setTextVisible(false);
+        progress_->setFixedHeight(6);
+        elapsed_ = new QLabel(card);
+        elapsed_->setProperty("dim", true);
+        pr->addWidget(progress_, 1);
+        pr->addWidget(elapsed_);
+        lay->addLayout(pr);
+    }
+
+    /* UI7 - one line standing in for the steps that are done. Flat, so it
+     * reads as a summary and not as another button to press. */
+    collapsed_ = new QPushButton(card);
+    collapsed_->setFlat(true);
+    collapsed_->setCursor(Qt::PointingHandCursor);
+    collapsed_->setVisible(false);
+    connect(collapsed_, &QPushButton::clicked, this, [this] {
+        expanded_ = true;
+        refreshCollapse();
+    });
+    lay->addWidget(collapsed_);
+
     lay->addSpacing(theme::SpaceGroup);
 
     for (const char *t : kTitles) {
@@ -182,6 +213,7 @@ StepListWidget::StepListWidget(QWidget *parent) : QWidget(parent)
     fl->setContentsMargins(0, theme::SpaceGroup, 0, 0);
     fl->setSpacing(theme::SpaceRow);
     back_  = new QPushButton(tr("Back to the machines"), footer_);
+    cancel_ = new QPushButton(tr("Cancel"), card);
     retry_ = new QPushButton(tr("Try again"), footer_);
     retry_->setProperty("accent", true);
     fl->addStretch(1);
@@ -190,7 +222,39 @@ StepListWidget::StepListWidget(QWidget *parent) : QWidget(parent)
     connect(back_,  &QPushButton::clicked, this, &StepListWidget::backRequested);
     connect(retry_, &QPushButton::clicked, this, &StepListWidget::retryRequested);
     footer_->setVisible(false);
+
+    /* UI7 - the failure's detail, in full and selectable.
+     *
+     * The detail used to be elided into the step's own row, which is right
+     * while things are going well (a long address must not move the titles)
+     * and wrong the moment one fails: an HTTP body cut at 40 characters with
+     * an ellipsis in the middle is the one thing someone needs to read. */
+    error_ = new QLabel(card);
+    error_->setWordWrap(true);
+    error_->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    error_->setFont(theme::monoFont(card));
+    error_->setVisible(false);
+    lay->addWidget(error_);
+
     lay->addWidget(footer_);
+
+    /* UI7 - Cancel while it runs. Its own row above the footer, because the
+     * footer is the failed state and these two are never up together. */
+    {
+        auto *cl = new QHBoxLayout;
+        cl->setContentsMargins(0, theme::SpaceRow, 0, 0);
+        cl->addStretch(1);
+        cl->addWidget(cancel_);
+        lay->addLayout(cl);
+        connect(cancel_, &QPushButton::clicked, this,
+                &StepListWidget::cancelRequested);
+    }
+
+    /* The elapsed seconds, ticking once a second - not at the animation's 33
+     * ms, which would repaint a label 30 times to change it once. */
+    clock_ = new QTimer(this);
+    clock_->setInterval(1000);
+    connect(clock_, &QTimer::timeout, this, &StepListWidget::refreshProgress);
 
     outer->addWidget(card);
 
@@ -217,12 +281,70 @@ void StepListWidget::reset()
     }
     if (subhead_) subhead_->clear();
     setFailed(false);
+    expanded_ = false;
+    since_.start();
+    if (clock_) clock_->start();
+    if (cancel_) cancel_->setVisible(true);
+    refreshProgress();
+    refreshCollapse();
     retimeAnimation();
 }
 
 void StepListWidget::setFailed(bool on)
 {
     if (footer_) footer_->setVisible(on);
+    if (cancel_) cancel_->setVisible(!on);
+    if (on && clock_) clock_->stop();
+
+    if (!error_) return;
+    if (!on) { error_->setVisible(false); error_->clear(); return; }
+
+    /* UI7 - the detail of whichever step failed, verbatim. */
+    for (const Row &r : rows_)
+        if (r.state == State::Failed && !r.detail.isEmpty()) {
+            error_->setText(r.detail);
+            error_->setStyleSheet(theme::css(theme::bad(this)));
+            error_->setVisible(true);
+            /* UI7 - a failure is also a reason to show the steps again: the
+             * collapsed summary hides which ones had passed. */
+            expanded_ = true;
+            refreshCollapse();
+            return;
+        }
+    error_->setVisible(false);
+}
+
+/* UI7 - "4 of 7" and the seconds. */
+void StepListWidget::refreshProgress()
+{
+    int done = 0;
+    for (const Row &r : rows_) if (r.state == State::Done) done++;
+    if (progress_) progress_->setValue(done);
+    if (!elapsed_) return;
+
+    const qint64 sec = since_.isValid() ? since_.elapsed() / 1000 : 0;
+    elapsed_->setText(tr("%1/7 \u00b7 %2 s").arg(done).arg(sec));
+}
+
+/* UI7 - fold the finished steps away once there are enough of them to be in
+ * the way. Two is the threshold: one tick is not clutter, and collapsing from
+ * the first would make the list jump on every step. */
+void StepListWidget::refreshCollapse()
+{
+    int done = 0;
+    for (const Row &r : rows_) if (r.state == State::Done) done++;
+
+    const bool fold = !expanded_ && done >= 2;
+    for (const Row &r : rows_) {
+        QWidget *row = r.label ? r.label->parentWidget() : nullptr;
+        if (row) row->setVisible(!(fold && r.state == State::Done));
+    }
+    if (collapsed_) {
+        collapsed_->setVisible(fold);
+        collapsed_->setText(tr("%n step(s) completed", "", done)
+                            + QStringLiteral("  \u25be"));
+        collapsed_->setStyleSheet(theme::css(theme::muted(this)));
+    }
 }
 
 void StepListWidget::setHeadline(const QString &text)
@@ -240,6 +362,8 @@ void StepListWidget::setState(int index, State s, const QString &detail)
     if (!detail.isEmpty()) rows_[index].detail = detail;
     refresh(index);
     if (s == State::Failed) setFailed(true);
+    refreshProgress();
+    refreshCollapse();
     retimeAnimation();
 }
 
@@ -280,6 +404,23 @@ void StepListWidget::refresh(int index)
                            (r.state == State::Running ? QStringLiteral("font-weight:bold;")
                                                       : QString()));
 
+    /* UI7 - the live row, tinted, with an accent bar down its left edge. Set
+     * on the ROW and not on the label so the tint spans the dot and the detail
+     * too; a stripe behind one of three widgets reads as a highlight gone
+     * wrong. The accent is taken at 22/255 - enough to find, not enough to
+     * compete with the text on it. */
+    if (QWidget *row = r.label->parentWidget()) {
+        if (r.state == State::Running) {
+            QColor a = theme::accent(this);
+            row->setStyleSheet(
+                QStringLiteral("background: rgba(%1,%2,%3,22);"
+                               "border-left: 2px solid %4; border-radius: 4px;")
+                    .arg(a.red()).arg(a.green()).arg(a.blue()).arg(a.name()));
+        } else {
+            row->setStyleSheet(QString());
+        }
+    }
+
     /* Elided here and not by the layout: a QLabel with word wrap off still
      * reports its full text width as its size hint, and the stretch then
      * cannot shrink it below that. */
@@ -294,4 +435,80 @@ void StepListWidget::refresh(int index)
     }
     if (r.state == State::Failed) r.detailLabel->setStyleSheet(theme::css(theme::bad(this)));
     else                          r.detailLabel->setStyleSheet(QString());
+}
+
+/* ============================================================ SignInSteps */
+
+SignInSteps::SignInSteps(QWidget *parent) : QWidget(parent)
+{
+    /* The three phases that can take time. Worded as what is being waited
+     * for, not as what the code is doing: "contacting the data centre" is
+     * something a person can act on (their network), "tinag_get_datacenter"
+     * is not. */
+    titles_ = { QT_TR_NOOP("Data centre"), QT_TR_NOOP("Endpoints"),
+                QT_TR_NOOP("Code") };
+
+    auto *row = new QHBoxLayout(this);
+    row->setContentsMargins(0, 0, 0, 0);
+    row->setSpacing(theme::SpaceGroup);
+    row->addStretch(1);
+    for (const char *t : titles_) {
+        Cell c;
+        c.dot   = new StepDot(this);
+        c.label = new QLabel(tr(t), this);
+        auto *pair = new QHBoxLayout;
+        pair->setContentsMargins(0, 0, 0, 0);
+        pair->setSpacing(theme::SpaceTight);
+        pair->addWidget(c.dot);
+        pair->addWidget(c.label);
+        row->addLayout(pair);
+        cells_.append(c);
+    }
+    row->addStretch(1);
+
+    /* Same rule as the column: the timer runs only while a dot is spinning. */
+    anim_ = new QTimer(this);
+    anim_->setInterval(33);
+    connect(anim_, &QTimer::timeout, this, [this] {
+        phase_ = std::fmod(phase_ + 0.033, 1.0);
+        for (const Cell &c : cells_) c.dot->setPhase(phase_);
+    });
+    refresh();
+}
+
+void SignInSteps::setStage(int index)
+{
+    stage_ = index;
+    failed_ = false;
+    done_ = false;
+    refresh();
+}
+
+void SignInSteps::setFailed() { failed_ = true; refresh(); }
+void SignInSteps::setComplete() { done_ = true; refresh(); }
+void SignInSteps::reset() { stage_ = 0; failed_ = false; done_ = false; refresh(); }
+
+void SignInSteps::refresh()
+{
+    for (int i = 0; i < cells_.size(); i++) {
+        StepDot::State st;
+        if (done_)             st = StepDot::State::Done;
+        else if (i <  stage_)  st = StepDot::State::Done;
+        else if (i == stage_)  st = failed_ ? StepDot::State::Failed
+                                            : StepDot::State::Running;
+        else                   st = StepDot::State::Pending;
+        cells_[i].dot->setState(st);
+
+        /* Only the live one is emphasised. The labels are short and three of
+         * them in accent would read as a title rather than as progress. */
+        const bool live = (i == stage_ && !done_ && !failed_);
+        cells_[i].label->setStyleSheet(
+            live ? theme::css(theme::accent(this)) + QStringLiteral("font-weight:bold;")
+                 : theme::css(theme::muted(this)));
+        cells_[i].label->setText(tr(titles_.at(i)));
+    }
+
+    const bool spinning = !done_ && !failed_ && stage_ < cells_.size();
+    if (spinning && !anim_->isActive())      anim_->start();
+    else if (!spinning && anim_->isActive()) anim_->stop();
 }

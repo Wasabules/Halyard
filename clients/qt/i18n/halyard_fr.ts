@@ -523,20 +523,31 @@
 <context>
     <name>MachineCard</name>
     <message>
-        <source>unknown</source>
-        <translation>inconnu</translation>
-    </message>
-    <message>
         <source>Connect</source>
         <translation>Se connecter</translation>
+    </message>
+    <message>
+        <source>used today</source>
+        <translation>utilisée aujourd&apos;hui</translation>
+    </message>
+    <message>
+        <source>used yesterday</source>
+        <translation>utilisée hier</translation>
+    </message>
+    <message numerus="yes">
+        <source>used %n day(s) ago</source>
+        <translation>
+            <numerusform>utilisée il y a %n jour</numerusform>
+            <numerusform>utilisée il y a %n jours</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>used on %1</source>
+        <translation>utilisée le %1</translation>
     </message>
 </context>
 <context>
     <name>MainWindow</name>
-    <message>
-        <source>signing in...</source>
-        <translation>connexion...</translation>
-    </message>
     <message>
         <source>Code copied to the clipboard.</source>
         <translation>Code copié dans le presse-papiers.</translation>
@@ -562,8 +573,16 @@
         <translation>Vos machines</translation>
     </message>
     <message>
+        <source>Filter...</source>
+        <translation>Filtrer...</translation>
+    </message>
+    <message>
         <source>Start over</source>
         <translation>Recommencer</translation>
+    </message>
+    <message>
+        <source>Your Shadow cloud PC, on anything you own.</source>
+        <translation>Votre PC cloud Shadow, sur tout ce que vous possédez.</translation>
     </message>
     <message>
         <source>Sign &amp;out</source>
@@ -646,12 +665,32 @@
         <translation>Diagnostic copié dans le presse-papiers.</translation>
     </message>
     <message>
-        <source>Open &lt;a href=&quot;%1&quot;&gt;%1&lt;/a&gt; and enter this code.%2&lt;br&gt;It is valid for %3 s.</source>
-        <translation>Ouvrez &lt;a href=&quot;%1&quot;&gt;%1&lt;/a&gt; et saisissez ce code.%2&lt;br&gt;Il est valable %3 s.</translation>
+        <source>Connecting</source>
+        <translation>Connexion</translation>
     </message>
     <message>
-        <source>  The code is already on your clipboard.</source>
-        <translation>  Le code est déjà dans votre presse-papiers.</translation>
+        <source>Finish signing in</source>
+        <translation>Terminer la connexion</translation>
+    </message>
+    <message>
+        <source>Scan with a phone, then enter the code</source>
+        <translation>Scannez avec un téléphone, puis saisissez le code</translation>
+    </message>
+    <message>
+        <source>Scan with a phone - the code is included</source>
+        <translation>Scannez avec un téléphone - le code est inclus</translation>
+    </message>
+    <message>
+        <source>Or open &lt;a href=&quot;%1&quot;&gt;%1&lt;/a&gt; and enter this code.%2</source>
+        <translation>Ou ouvrez &lt;a href=&quot;%1&quot;&gt;%1&lt;/a&gt; et saisissez ce code.%2</translation>
+    </message>
+    <message>
+        <source> The code is already on your clipboard.</source>
+        <translation> Le code est déjà dans votre presse-papiers.</translation>
+    </message>
+    <message>
+        <source>Open &lt;a href=&quot;%1&quot;&gt;%1&lt;/a&gt; and enter this code.%2</source>
+        <translation>Ouvrez &lt;a href=&quot;%1&quot;&gt;%1&lt;/a&gt; et saisissez ce code.%2</translation>
     </message>
     <message>
         <source>Code copied — copy again</source>
@@ -682,6 +721,10 @@
         <translation>La connexion n&apos;a pas abouti : %1</translation>
     </message>
     <message>
+        <source>Sign-in failed</source>
+        <translation>Échec de la connexion</translation>
+    </message>
+    <message>
         <source>sign-in failed</source>
         <translation>échec de la connexion</translation>
     </message>
@@ -706,6 +749,14 @@ Vous devrez vous reconnecter via un navigateur au prochain démarrage. Rien n&ap
         <translation>Déconnecté, mais la session enregistrée n&apos;a pas pu être supprimée du disque.</translation>
     </message>
     <message>
+        <source>Signing in</source>
+        <translation>Connexion en cours</translation>
+    </message>
+    <message>
+        <source>Contacting Shadow...</source>
+        <translation>Contact de Shadow...</translation>
+    </message>
+    <message>
         <source>signed in</source>
         <translation>connecté</translation>
     </message>
@@ -723,6 +774,30 @@ Vous devrez vous reconnecter via un navigateur au prochain démarrage. Rien n&ap
             <numerusform>%n machine</numerusform>
             <numerusform>%n machines</numerusform>
         </translation>
+    </message>
+    <message>
+        <source>No machine matches “%1”.</source>
+        <translation>Aucune machine ne correspond à «&#xa0;%1&#xa0;».</translation>
+    </message>
+    <message>
+        <source>Your session was refused (HTTP %1). Signing out and back in is usually what this needs.</source>
+        <translation>Votre session a été refusée (HTTP %1). Se déconnecter puis se reconnecter suffit généralement.</translation>
+    </message>
+    <message>
+        <source>Shadow could not be reached. Check the connection, then try again.</source>
+        <translation>Shadow est injoignable. Vérifiez la connexion, puis réessayez.</translation>
+    </message>
+    <message>
+        <source>The machine list could not be fetched (HTTP %1).</source>
+        <translation>La liste des machines n&apos;a pas pu être récupérée (HTTP %1).</translation>
+    </message>
+    <message>
+        <source>Try again</source>
+        <translation>Réessayer</translation>
+    </message>
+    <message>
+        <source>the machine list could not be fetched</source>
+        <translation>la liste des machines n&apos;a pas pu être récupérée</translation>
     </message>
     <message>
         <source>Already streaming</source>
@@ -1961,6 +2036,30 @@ Audio, TEL QU&apos;ACCORDÉ&#xa0;: %12 Hz, %13 bits, codec %14
         <translation>S&apos;applique à la prochaine session - la sortie est ouverte au démarrage d&apos;un flux. Un périphérique débranché ensuite retombe sur le défaut du système plutôt que de devenir muet.</translation>
     </message>
     <message>
+        <source>Appearance</source>
+        <translation>Apparence</translation>
+    </message>
+    <message>
+        <source>Follow the system</source>
+        <translation>Suivre le système</translation>
+    </message>
+    <message>
+        <source>Light</source>
+        <translation>Clair</translation>
+    </message>
+    <message>
+        <source>Dark</source>
+        <translation>Sombre</translation>
+    </message>
+    <message>
+        <source>Theme</source>
+        <translation>Thème</translation>
+    </message>
+    <message>
+        <source>Applies at once. A few already-open windows keep a colour they took when they were built - restart if one looks wrong.</source>
+        <translation>S&apos;applique immédiatement. Quelques fenêtres déjà ouvertes gardent une couleur prise à leur construction - redémarrez si l&apos;une paraît fausse.</translation>
+    </message>
+    <message>
         <source>Keyboard shortcuts</source>
         <translation>Raccourcis clavier</translation>
     </message>
@@ -2030,6 +2129,21 @@ Audio, TEL QU&apos;ACCORDÉ&#xa0;: %12 Hz, %13 bits, codec %14
     </message>
 </context>
 <context>
+    <name>SignInSteps</name>
+    <message>
+        <source>Data centre</source>
+        <translation>Data centre</translation>
+    </message>
+    <message>
+        <source>Endpoints</source>
+        <translation>Endpoints</translation>
+    </message>
+    <message>
+        <source>Code</source>
+        <translation>Code</translation>
+    </message>
+</context>
+<context>
     <name>StepListWidget</name>
     <message>
         <source>Starting the machine</source>
@@ -2064,8 +2178,23 @@ Audio, TEL QU&apos;ACCORDÉ&#xa0;: %12 Hz, %13 bits, codec %14
         <translation>Retour aux machines</translation>
     </message>
     <message>
+        <source>Cancel</source>
+        <translation>Annuler</translation>
+    </message>
+    <message>
         <source>Try again</source>
         <translation>Réessayer</translation>
+    </message>
+    <message>
+        <source>%1/7 · %2 s</source>
+        <translation>%1/7 · %2 s</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n step(s) completed</source>
+        <translation>
+            <numerusform>%n étape terminée</numerusform>
+            <numerusform>%n étapes terminées</numerusform>
+        </translation>
     </message>
 </context>
 <context>

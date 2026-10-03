@@ -83,6 +83,14 @@ int main(int argc, char **argv)
         else                 QApplication::setStyle(QStringLiteral("Fusion"));
     }
 
+    /* D2 - the theme choice, BEFORE the sheet: the sheet's colours are derived
+     * from the palette, so a palette set afterwards would leave every card,
+     * pill and border painted for the other theme. */
+    {
+        const int m = QSettings().value(QStringLiteral("ui/theme"), 0).toInt();
+        halyard::theme::applyThemeMode(static_cast<halyard::theme::ThemeMode>(m));
+    }
+
     /* The sheet on the application, not per window: a dialog opened later - the
      * settings window, the file manager, the overlay - inherits it without
      * having to remember. The colours inside it are derived from the palette,

@@ -91,10 +91,43 @@ QColor accent(const QWidget *context = nullptr);       /* the one brand colour *
 /* The whole application's style sheet. Applied once to qApp; every screen then
  * gets the same buttons, inputs and cards without repeating a rule. A widget
  * opts into the card look with setProperty("card", true). */
+/* === D3 2026-10-03 — SHOULD THIS APPLICATION ANIMATE? =====================
+ *
+ * Three sources, in order: `SHADOW_QT_ANIM=0` (ours, and the escape hatch the
+ * house rules ask for), then the system's own "show animations" preference,
+ * then yes.
+ *
+ * The system setting is not a nicety. Animation is a known trigger for
+ * vestibular disorders, every desktop exposes a switch for it, and an
+ * animation that cannot be turned off is an accessibility defect rather than a
+ * style choice. Windows answers through `SPI_GETCLIENTAREAANIMATION`, which is
+ * what the "Show animations in Windows" toggle writes; on other platforms we
+ * have no portable answer and default to yes.
+ *
+ * Read once and cached: it is consulted on every animated transition, and a
+ * SystemParametersInfo call per card of a staggered list would be absurd. The
+ * cost of caching is that toggling it needs a restart, which is the same
+ * contract the ~260 SHADOW_* toggles already have. */
+bool animationsEnabled();
+
 QString appStyleSheet(const QWidget *context = nullptr);
 
 /* A soft drop shadow for a card. Returns a new effect each call: a
  * QGraphicsEffect belongs to exactly one widget. */
+/* === D2 2026-10-03 — LIGHT, DARK, OR WHAT THE SYSTEM SAYS ================
+ *
+ * Every colour in this file is derived from `QPalette`, so a theme choice is a
+ * PALETTE override and not a second stylesheet: set the palette, call
+ * `appStyleSheet` again, and cards, pills, borders and accents all follow.
+ * That is the whole reason the derivation was built that way.
+ *
+ * `Auto` leaves the palette Qt resolved from the desktop alone. */
+enum class ThemeMode { Auto = 0, Light, Dark };
+
+/* Applies `mode` to the application palette. Returns true when it changed
+ * something, so the caller knows whether to re-apply the stylesheet. */
+bool applyThemeMode(ThemeMode mode);
+
 QGraphicsDropShadowEffect *elevation(QWidget *on, int radius = 18);
 
 /* -------------------------------------------------------------------- mark */

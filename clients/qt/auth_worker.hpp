@@ -51,7 +51,24 @@ public slots:
      * required, then `succeeded` once a token is in hand. */
     void signIn();
 
+public:
+    /* === UI4 2026-10-03 — THE THREE PHASES OF A SIGN-IN =====================
+     *
+     * The pairing screen showed one line, `progress(QString)`, so a slow data
+     * centre lookup was indistinguishable from a frozen window - the text sat
+     * there and nothing moved.
+     *
+     * These are the three phases that can be slow, as INDICES rather than as
+     * words to pattern-match: the screen marks everything below the current
+     * one done and the current one running. Deliberately not derived from the
+     * `progress` strings, which are prose meant for a human and would tie the
+     * display to their exact wording. */
+    enum SignInStage { StageDatacentre = 0, StageEndpoints, StageCode, StageCount };
+
 signals:
+    /* Entering phase `index` (see SignInStage). */
+    void stage(int index);
+
     /* The data centre, resolved first because everything needs its URL. */
     void datacentre(const QString &name, const QString &launcherUrl);
 

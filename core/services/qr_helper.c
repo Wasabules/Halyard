@@ -27,6 +27,11 @@ bool qr_generate_bmp(const char *text, const char *out_path, int pixel_size) {
     (void)text; (void)out_path; (void)pixel_size;
     return false;
 }
+bool qr_matrix(const char *text, unsigned char *out, int cap, int *width) {
+    (void)text; (void)out; (void)cap;
+    if (width) *width = 0;
+    return false;
+}
 #else
 
 #include <qrencode.h>
@@ -107,6 +112,30 @@ bool qr_generate_bmp(const char *text, const char *out_path, int pixel_size) {
     free(img);
     QRcode_free(qr);
     return ok;
+}
+
+/* See the header (QR1). */
+bool qr_matrix(const char *text, unsigned char *out, int cap, int *width) {
+    if (width) *width = 0;
+    if (!text || !out || cap <= 0) return false;
+
+    QRcode *qr = QRcode_encodeString(text, 0, QR_ECLEVEL_M, QR_MODE_8, 1);
+    if (!qr) return false;
+
+    const int w = qr->width;
+    /* Refuse rather than truncate: half a QR code is not a smaller QR code,
+     * it is an image a scanner will read as something else or not at all. */
+    if (w <= 0 || (long)w * w > (long)cap) { QRcode_free(qr); return false; }
+
+    for (int i = 0; i < w * w; i++) {
+        /* libqrencode packs flags in each byte; bit 0 is the module colour and
+         * the rest describe which pattern it belongs to. Masking is not
+         * optional - the raw byte is non-zero on light modules too. */
+        out[i] = (unsigned char)(qr->data[i] & 1);
+    }
+    if (width) *width = w;
+    QRcode_free(qr);
+    return true;
 }
 
 #endif /* __SWITCH__ */

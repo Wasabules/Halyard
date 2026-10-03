@@ -43,6 +43,8 @@
 class QStackedWidget;
 class QThread;
 class QLabel;
+class QFrame;
+class QLineEdit;
 class QScrollArea;
 class QVBoxLayout;
 class MachineCard;
@@ -54,13 +56,15 @@ class AuthWorker;
 class SessionWorker;
 class VideoWidget;
 class StepListWidget;
+class SignInSteps;
 class SettingsWindow;
 class MetricsWindow;
 class FileManagerWindow;
 class QShortcut;
 class QMoveEvent;
 class QResizeEvent;
-namespace halyard { class StreamHud; class StreamOverlay; }
+namespace halyard { class StreamHud; class StreamOverlay;
+                    class QrView; class CodeCells; class ValidityBar; }
 
 class MainWindow : public QMainWindow
 {
@@ -95,6 +99,7 @@ private slots:
     void onSignedIn(const QString &bearer, const QString &launcherUrl);
     void onMachinesFetched(const QStringList &ids, const QStringList &names,
                            const QStringList &states);
+    void onMachinesFailed(int http);   /* D5 */
     void onPairingProgress(int secondsLeft);
     void onSignInFailed(const QString &why);
     /* UI2 - run the sign-in sequence again after it failed or expired. */
@@ -108,10 +113,17 @@ protected:
     void changeEvent(QEvent *e) override;
     void moveEvent(QMoveEvent *e) override;
     void resizeEvent(QResizeEvent *e) override;
+    /* UI5 - Up/Down/Home/End on the machine list. */
+    bool eventFilter(QObject *o, QEvent *ev) override;
 
 private:
     void retranslate();
     void setMachinesBusy(bool busy);
+    /* UI6 - the machine list's furniture. */
+    void clearMachineCards();
+    void showMachineSkeletons();
+    void staggerIn(QWidget *w, int index);
+    void applyMachineFilter(const QString &text);
     void repositionOverlays();
     void updateOverlayVisibility();
     bool overlaysAllowed() const;
@@ -119,6 +131,8 @@ private:
     bool ownWindowOverVideo() const;
     /* KEY1 - every shortcut, from the one table in shortcuts.hpp. Re-run
      * when the settings window changes a binding. */
+    void updateHeroVisibility();
+    void updateHeader(int index);   /* D1 */
     void applyShortcuts();
     QKeySequence keySequenceFor(int action) const;
     QRect videoGlobalRect() const;
@@ -130,22 +144,40 @@ private:
     QStackedWidget *stack_ = nullptr;
 
     /* pairing */
-    QLabel *pair_code_ = nullptr;
     QLabel *pair_hint_ = nullptr;
     QPushButton *copy_code_btn_ = nullptr;
     QLabel      *pair_countdown_ = nullptr;
+    QWidget     *pair_hero_    = nullptr;
+    QLabel      *pair_tagline_ = nullptr;
+    QLabel      *pair_heading_ = nullptr;
+    QLabel      *qr_caption_   = nullptr;
+    SignInSteps *signin_steps_ = nullptr;
+    halyard::QrView     *qr_             = nullptr;
+    halyard::CodeCells  *pair_cells_     = nullptr;
+    halyard::ValidityBar *pair_validity_ = nullptr;
+    int          pair_expires_ = 600;   /* UI4 - what the bar scales against */
     QPushButton *retry_btn_      = nullptr;
     QPushButton *open_page_btn_ = nullptr;
     QString pair_user_code_, pair_uri_, pair_uri_complete_;
 
 
     /* machines */
+    QScrollArea *machines_scroll_ = nullptr;   /* UI5 - the arrows land here */
     QWidget     *machines_host_ = nullptr;
     QVBoxLayout *machines_lay_  = nullptr;
     QLabel      *machines_subtitle_ = nullptr;
     QLabel      *machines_empty_ = nullptr;
     QVector<MachineCard *> machine_cards_;
     QStringList  machine_names_;
+    QWidget     *header_         = nullptr;   /* D1 */
+    QLabel      *header_title_   = nullptr;
+    QLabel      *header_account_ = nullptr;
+    QLineEdit   *machines_filter_ = nullptr;
+    QFrame      *machines_error_       = nullptr;   /* D5 */
+    QLabel      *machines_error_text_  = nullptr;
+    QPushButton *machines_error_retry_ = nullptr;
+    QVector<QWidget *> machine_skeletons_;
+    QString      datacentre_;        /* UI6 - shown on every card */
     QString      last_machine_id_;   /* UI3 - what Retry retries */
     /* QT5 - kept so retranslate() can re-label them. */
     QLabel  *machines_title_ = nullptr;

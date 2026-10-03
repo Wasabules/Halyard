@@ -27,10 +27,12 @@
  */
 #pragma once
 
+#include <QElapsedTimer>
 #include <QWidget>
 #include <QVector>
 
 class QLabel;
+class QProgressBar;
 class QPushButton;
 class QTimer;
 class QVBoxLayout;
@@ -82,6 +84,8 @@ public:
 signals:
     void retryRequested();
     void backRequested();
+    /* UI7 - give up while it is still going, not only after it has failed. */
+    void cancelRequested();
 
 protected:
     void changeEvent(QEvent *e) override;
@@ -104,8 +108,74 @@ private:
     QLabel *headline_ = nullptr;
     QLabel *subhead_  = nullptr;
     QTimer *anim_     = nullptr;
+    /* === UI7 2026-10-03 - PROGRESS, AND WHAT IS WORTH LOOKING AT =========
+     *
+     * Seven lines with no sense of how far along they are: someone watching a
+     * machine boot cannot tell whether to wait or to give up. So:
+     *
+     *  - `progress_`/`elapsed_` say "4 of 7" and the seconds, which together
+     *    answer that question;
+     *  - the LIVE row gets a tinted background and an accent bar, because bold
+     *    text in a column of seven is not enough to find at a glance;
+     *  - the finished rows collapse into one line after a moment. Borealis
+     *    does the same, and for the same reason: four ticks are the part that
+     *    is over, and they were taking four sevenths of the eye's attention.
+     */
+    QProgressBar *progress_ = nullptr;
+    QLabel       *elapsed_  = nullptr;
+    QPushButton  *cancel_   = nullptr;
+    QPushButton  *collapsed_ = nullptr;   /* "4 completed" - click to expand */
+    QLabel       *error_     = nullptr;   /* the detail, in full, on failure */
+    QTimer       *clock_     = nullptr;
+    QElapsedTimer since_;
+    bool          expanded_  = false;
+    void refreshProgress();
+    void refreshCollapse();
     QPushButton *retry_  = nullptr;
     QPushButton *back_   = nullptr;
     QWidget     *footer_ = nullptr;
     qreal   phase_    = 0.0;
+};
+
+/* === UI4 2026-10-03 — THE SIGN-IN'S OWN THREE STEPS ========================
+ *
+ * The same idea as StepListWidget and the same dot, for the three phases of a
+ * sign-in (`AuthWorker::SignInStage`). A separate class and not a parameter of
+ * StepListWidget because the two differ in what they are driven BY: the
+ * bootstrap reports each step's state independently, while a sign-in only ever
+ * says "I am now in phase N" - everything below is done by construction, and
+ * encoding that rule once here is what keeps the caller from having to mark
+ * three rows on every signal.
+ *
+ * Compact on purpose: one line of three dots with their labels, not a column.
+ * It sits above a code the user is meant to read, and a column of three would
+ * push the code down for information that is only interesting while it moves.
+ */
+class SignInSteps : public QWidget
+{
+    Q_OBJECT
+
+public:
+    explicit SignInSteps(QWidget *parent = nullptr);
+
+    /* Phase `index` is now running; everything before it is done. */
+    void setStage(int index);
+    /* The phase that was running failed; the rest stay as they are. */
+    void setFailed();
+    /* Every phase done - the row then has nothing left to say, so the caller
+     * normally hides it. */
+    void setComplete();
+    void reset();
+
+private:
+    void refresh();
+
+    struct Cell { StepDot *dot = nullptr; QLabel *label = nullptr; };
+    QVector<Cell> cells_;
+    QVector<const char *> titles_;
+    int  stage_  = 0;
+    bool failed_ = false;
+    bool done_   = false;
+    QTimer *anim_ = nullptr;
+    qreal   phase_ = 0.0;
 };

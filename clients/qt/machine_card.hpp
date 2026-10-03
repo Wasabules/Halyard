@@ -12,12 +12,28 @@
  * and Connect is a real button on the card rather than a shared one at the
  * bottom whose target you infer from the selection. Double-clicking the card
  * connects too, because the old list taught that gesture.
+ *
+ * === UI5 2026-10-03 - THE KEYBOARD, WHICH THE LIST GAVE FOR FREE ==========
+ *
+ * The `QListWidget` this replaced came with arrow keys, Enter, Home and End,
+ * and nobody had to write a line of it. A `QFrame` has none of that, so the
+ * redesign quietly made the machine list mouse-only - a regression, and the
+ * kind that does not show up in a screenshot.
+ *
+ * So the card takes focus (`StrongFocus`), draws its own focus ring, and acts
+ * on Enter, Return and Space. The ARROWS are not handled here: moving between
+ * siblings is the container's business, and a card that reached for its
+ * neighbours would have to know how they are laid out. The window does it.
  */
 #pragma once
 
+#include <QDateTime>
 #include <QFrame>
 #include <QString>
 
+class QEnterEvent;
+class QGraphicsDropShadowEffect;
+class QKeyEvent;
 class QLabel;
 class QPushButton;
 
@@ -29,7 +45,22 @@ public:
     MachineCard(const QString &id, const QString &name, const QString &state,
                 const QString &datacentre, QWidget *parent = nullptr);
 
+    /* === UI6 2026-10-03 - WHAT THE CARD IS FOR ============================
+     *
+     * The card carried a name and a button, which is a list row with rounded
+     * corners. The three things that actually decide which machine to pick are
+     * where it runs, when it was last used, and whether it is awake - and the
+     * launcher only answers the first two (it sends `status: null` and the run
+     * state arrives later on the SSE stream).
+     *
+     * `setLastUsed` takes the local record, not a server field: nothing in the
+     * protocol remembers which machine THIS computer connected to, and that is
+     * the one ordering question a person actually has. */
+    void setLastUsed(const QDateTime &when);
+
     QString machineId() const { return id_; }
+    /* UI5 - fire the same action the button does, for the container's Enter. */
+    void    activate();
     void    setBusy(bool busy);     /* a session is running: nothing to connect to */
 
 signals:
@@ -37,9 +68,21 @@ signals:
 
 protected:
     void mouseDoubleClickEvent(QMouseEvent *e) override;
+    /* UI6 - the lift on hover. `enterEvent`/`leaveEvent` and not a `:hover`
+     * rule, because a stylesheet cannot animate: the shadow's blur radius has
+     * to be driven by a QPropertyAnimation. */
+    void enterEvent(QEnterEvent *e) override;
+    void leaveEvent(QEvent *e) override;
+    void keyPressEvent(QKeyEvent *e) override;
+    void paintEvent(QPaintEvent *e) override;
+    void focusInEvent(QFocusEvent *e) override;
+    void focusOutEvent(QFocusEvent *e) override;
 
 private:
     QString      id_;
     QLabel      *pill_ = nullptr;
+    QLabel      *last_used_ = nullptr;
+    class QGraphicsDropShadowEffect *shadow_ = nullptr;
+    void animateElevation(int to);
     QPushButton *connect_ = nullptr;
 };

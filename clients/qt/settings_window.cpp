@@ -4,6 +4,8 @@
 
 #include "shortcuts.hpp"
 
+#include <QApplication>
+
 /* === KEY1 — THE SHORTCUT LABELS, FOR lupdate ==============================
  *
  * The rows are built from `halyard::keys::actions()`, so the call is
@@ -597,6 +599,42 @@ QWidget *SettingsWindow::buildGeneralPage(QWidget *parent)
                "default rather than going silent."), page));
     }
 #endif
+
+    /* === D2 — THE THEME ================================================= *
+     *
+     * Three choices and no more. "Auto" leaves the palette Qt resolved from
+     * the desktop alone, which is right almost always; the two overrides exist
+     * for the case the desktop gets it wrong, which on Linux it regularly does
+     * (a GTK dark theme that Qt reads as light).
+     *
+     * Applied at once AND stored: the palette is set, then the stylesheet is
+     * rebuilt from it, because every colour in the sheet is derived from the
+     * palette and a sheet left in place would still be painted for the other
+     * theme. A restart is still mentioned because some already-built widgets
+     * cache a colour they took at construction. */
+    section(tr("Appearance"));
+    {
+        auto *form = new QFormLayout;
+        form->setHorizontalSpacing(theme::SpaceGroup);
+        auto *box = new QComboBox(page);
+        box->addItem(tr("Follow the system"), 0);
+        box->addItem(tr("Light"), 1);
+        box->addItem(tr("Dark"), 2);
+        QSettings st;
+        const int cur = st.value(QStringLiteral("ui/theme"), 0).toInt();
+        box->setCurrentIndex(box->findData(cur) >= 0 ? box->findData(cur) : 0);
+        connect(box, &QComboBox::currentIndexChanged, this, [this, box](int i) {
+            const int m = box->itemData(i).toInt();
+            QSettings().setValue(QStringLiteral("ui/theme"), m);
+            theme::applyThemeMode(static_cast<theme::ThemeMode>(m));
+            if (qApp) qApp->setStyleSheet(theme::appStyleSheet(nullptr));
+        });
+        form->addRow(tr("Theme"), box);
+        col->addLayout(form);
+        col->addWidget(mutedLabel(
+            tr("Applies at once. A few already-open windows keep a colour they "
+               "took when they were built - restart if one looks wrong."), page));
+    }
 
     /* === KEY1 — the keyboard shortcuts, all seven ======================= *
      *

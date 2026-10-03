@@ -11,6 +11,7 @@
 #include "file_manager_window.hpp"
 #include "about_dialog.hpp"
 #include "machine_card.hpp"
+#include "pairing_widgets.hpp"
 #include "shortcuts.hpp"
 #include "stream_overlay.hpp"
 #include "theme.hpp"
@@ -48,7 +49,10 @@ static MainWindow *g_main_window = nullptr;
 #include <QPropertyAnimation>
 #include <QEasingCurve>
 #include <QGraphicsDropShadowEffect>
+#include <QLineEdit>
 #include <QScrollArea>
+#include <QDateTime>
+#include <algorithm>
 #include <QFrame>
 #include <QPushButton>
 #include <QVBoxLayout>
@@ -90,37 +94,153 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
     setWindowIcon(halyard::theme::appIcon());
     resize(1280, 760);
 
-    stack_ = new QStackedWidget(this);
-    setCentralWidget(stack_);
+    /* === D1 2026-10-03 — ONE HEADER, NOT THREE TOPS ======================
+     *
+     * Each page invented its own top: the pairing card had the mark and the
+     * name, the machine list a title and a count, the connecting screen a
+     * headline. So moving between them changed the whole window and nothing
+     * said it was still the same application.
+     *
+     * A slim strip above the stack instead: the mark, where you are, and the
+     * account. It is HIDDEN on the pairing page, which has the hero and would
+     * otherwise show the mark twice, and on the streaming page, where every
+     * pixel belongs to the picture. That is two exceptions out of four, which
+     * is the sort of thing that argues against a shared header - but the two
+     * that keep it are the two you move between while using the client. */
+    auto *shell = new QWidget(this);
+    auto *shellLay = new QVBoxLayout(shell);
+    shellLay->setContentsMargins(0, 0, 0, 0);
+    shellLay->setSpacing(0);
+
+    header_ = new QWidget(shell);
+    header_->setFixedHeight(52);
+    {
+        auto *hl = new QHBoxLayout(header_);
+        hl->setContentsMargins(halyard::theme::SpacePage, 0,
+                               halyard::theme::SpacePage, 0);
+        hl->setSpacing(halyard::theme::SpaceRow);
+
+        auto *mark = new QLabel(header_);
+        mark->setPixmap(halyard::theme::appIcon().pixmap(22, 22));
+
+        header_title_ = new QLabel(header_);
+        header_title_->setProperty("h2", true);
+
+        header_account_ = new QLabel(header_);
+        header_account_->setProperty("dim", true);
+
+        hl->addWidget(mark);
+        hl->addWidget(header_title_);
+        hl->addStretch(1);
+        hl->addWidget(header_account_);
+
+        /* A hairline under it rather than a filled bar: the bar competed with
+         * the cards for being the brightest thing on the page. */
+        header_->setStyleSheet(
+            QStringLiteral("border-bottom: 1px solid %1;")
+                .arg(halyard::theme::border(header_).name()));
+    }
+    shellLay->addWidget(header_);
+
+    stack_ = new QStackedWidget(shell);
+    shellLay->addWidget(stack_, 1);
+    setCentralWidget(shell);
 
     /* ---------------------------------------------------- page 1: pairing
      *
-     * UI1 - the sign-in screen as a centred card: the mark and the name, then
-     * the code in large spaced type with its two actions. The card is what
-     * gives the code a place of its own instead of floating in the window. */
+     * === UI4 2026-10-03 - THE FIRST SCREEN =================================
+     *
+     * Two columns: a hero on the left that says what this application is, and
+     * the work on the right. A single centred card on a grey window is a
+     * DIALOG, and a dialog is what you dismiss - this is the screen someone
+     * sees before they have decided to trust the thing.
+     *
+     * The right column is ordered by what is being waited for. Before a code
+     * arrives: the three sign-in phases, moving, so a slow data centre is not
+     * mistaken for a frozen window. Once it arrives: the QR first, because
+     * scanning it removes the transfer entirely, then the code in cells for
+     * whoever has no phone to hand, then the two buttons.
+     *
+     * See pairing_widgets.hpp for why the QR, the cells and the bar are each
+     * painted rather than being a label. */
     {
         auto *page = new QWidget(this);
-        auto *outer = new QVBoxLayout(page);
+        auto *cols = new QHBoxLayout(page);
+        cols->setContentsMargins(0, 0, 0, 0);
+        cols->setSpacing(0);
+
+        /* ---- the hero ---------------------------------------------------- */
+        pair_hero_ = new QWidget(page);
+        pair_hero_->setFixedWidth(330);
+        {
+            /* The accent, darkened, as a flat panel. Deliberately not a
+             * gradient built from two invented colours: the accent is derived
+             * from the system palette (theme::accent) so it already tracks a
+             * dark or light desktop, and a hand-picked second stop would be
+             * the one thing on this screen that does not. */
+            const QColor a = halyard::theme::accent(pair_hero_);
+            pair_hero_->setStyleSheet(
+                QStringLiteral("background: qlineargradient(x1:0,y1:0,x2:0,y2:1,"
+                               "stop:0 %1, stop:1 %2);")
+                    .arg(a.darker(140).name(), a.darker(190).name()));
+
+            auto *hl = new QVBoxLayout(pair_hero_);
+            hl->setContentsMargins(36, 44, 36, 36);
+            hl->setSpacing(halyard::theme::SpaceRow);
+
+            auto *mark = new QLabel(pair_hero_);
+            /* Drawn in white: the mark takes its ink from the palette, and on
+             * a light desktop that is near-black - invisible on this panel. */
+            mark->setPixmap(halyard::theme::appIcon(QColor(255, 255, 255))
+                                .pixmap(72, 72));
+
+            auto *title = new QLabel(str(SHADOW_APP_NAME), pair_hero_);
+            QFont tf = title->font();
+            tf.setPixelSize(30);
+            tf.setBold(true);
+            title->setFont(tf);
+            title->setStyleSheet(QStringLiteral("color: #ffffff;"));
+
+            pair_tagline_ = new QLabel(pair_hero_);
+            pair_tagline_->setWordWrap(true);
+            pair_tagline_->setStyleSheet(
+                QStringLiteral("color: rgba(255,255,255,190);"));
+
+            auto *version = new QLabel(str(SHADOW_VERSION), pair_hero_);
+            version->setStyleSheet(QStringLiteral("color: rgba(255,255,255,120);"));
+
+            hl->addWidget(mark);
+            hl->addSpacing(8);
+            hl->addWidget(title);
+            hl->addWidget(pair_tagline_);
+            hl->addStretch(1);
+            hl->addWidget(version);
+        }
+        cols->addWidget(pair_hero_);
+
+        /* ---- the work ---------------------------------------------------- */
+        auto *right = new QWidget(page);
+        auto *outer = new QVBoxLayout(right);
         outer->setAlignment(Qt::AlignCenter);
 
-        auto *card = new QFrame(page);
+        auto *card = new QFrame(right);
         card->setProperty("card", true);
         card->setGraphicsEffect(halyard::theme::elevation(card, 24));
-        card->setMaximumWidth(520);
+        card->setMaximumWidth(460);
         auto *lay = new QVBoxLayout(card);
-        lay->setContentsMargins(36, 30, 36, 30);
+        lay->setContentsMargins(32, 28, 32, 28);
         lay->setSpacing(halyard::theme::SpaceRow);
-        lay->setAlignment(Qt::AlignCenter);
 
-        auto *mark = new QLabel(card);
-        mark->setPixmap(halyard::theme::appIcon().pixmap(56, 56));
-        mark->setAlignment(Qt::AlignCenter);
+        pair_heading_ = new QLabel(card);
+        pair_heading_->setProperty("h2", true);
+        pair_heading_->setAlignment(Qt::AlignCenter);
 
-        auto *title = new QLabel(str(SHADOW_APP_NAME), card);
-        title->setProperty("h1", true);
-        title->setAlignment(Qt::AlignCenter);
+        /* UI4 - the three phases, above everything, and hidden the moment a
+         * code is in hand: by then they have nothing left to say and would
+         * only be pushing the code down. */
+        signin_steps_ = new SignInSteps(card);
 
-        pair_hint_ = new QLabel(tr("signing in..."), card);
+        pair_hint_ = new QLabel(card);
         pair_hint_->setAlignment(Qt::AlignCenter);
         pair_hint_->setWordWrap(true);
         /* The hint carries the sign-in URL as a real link: rich text, opened in
@@ -130,22 +250,21 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
         pair_hint_->setTextInteractionFlags(Qt::TextBrowserInteraction);
         pair_hint_->setOpenExternalLinks(true);
 
-        /* The code sits on its own surface: it is the one thing to read and to
-         * retype, so it gets the contrast. */
-        pair_code_ = new QLabel(QString(), card);
-        QFont cf = pair_code_->font();
-        cf.setPointSize(cf.pointSize() + 18);
-        cf.setBold(true);
-        cf.setLetterSpacing(QFont::AbsoluteSpacing, 8);
-        pair_code_->setFont(cf);
-        pair_code_->setAlignment(Qt::AlignCenter);
-        pair_code_->setTextInteractionFlags(Qt::TextSelectableByMouse);
-        pair_code_->setStyleSheet(
-            QStringLiteral("background:%1; border-radius:10px; padding:14px;")
-                .arg(halyard::theme::surfaceAlt(card).name()));
-        pair_code_->setVisible(false);
+        qr_ = new halyard::QrView(card);
+        qr_->setVisible(false);
+        qr_caption_ = new QLabel(card);
+        qr_caption_->setProperty("dim", true);
+        qr_caption_->setAlignment(Qt::AlignCenter);
+        qr_caption_->setVisible(false);
+        auto *qrRow = new QHBoxLayout;
+        qrRow->addStretch(1);
+        qrRow->addWidget(qr_);
+        qrRow->addStretch(1);
 
-        /* === UI2 — THE DEADLINE, AND A WAY BACK FROM IT ====================
+        pair_cells_ = new halyard::CodeCells(card);
+        pair_cells_->setVisible(false);
+
+        /* === UI2 - THE DEADLINE, AND A WAY BACK FROM IT ====================
          *
          * A device code is good for 600 s and then the grant is dead. Two
          * things were missing, both of them reported: the deadline was only in
@@ -157,6 +276,8 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
          * button. `AuthWorker::signIn` keeps no state across calls (it clears
          * its own stop flag and every handle is scoped), so a retry is the same
          * call the constructor makes - not a second code path. */
+        pair_validity_ = new halyard::ValidityBar(card);
+        pair_validity_->setVisible(false);
         pair_countdown_ = new QLabel(QString(), card);
         pair_countdown_->setAlignment(Qt::AlignCenter);
         pair_countdown_->setProperty("dim", true);
@@ -191,16 +312,20 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
             if (!u.isEmpty()) QDesktopServices::openUrl(QUrl(u));
         });
 
-        lay->addWidget(mark);
-        lay->addWidget(title);
-        lay->addSpacing(6);
+        lay->addWidget(pair_heading_);
+        lay->addWidget(signin_steps_);
         lay->addWidget(pair_hint_);
-        lay->addSpacing(10);
-        lay->addWidget(pair_code_);
+        lay->addLayout(qrRow);
+        lay->addWidget(qr_caption_);
+        lay->addSpacing(4);
+        lay->addWidget(pair_cells_);
+        lay->addWidget(pair_validity_);
         lay->addWidget(pair_countdown_);
-        lay->addSpacing(6);
+        lay->addSpacing(4);
         lay->addLayout(btnRow);
+
         outer->addWidget(card);
+        cols->addWidget(right, 1);
         stack_->addWidget(page);
     }
 
@@ -218,17 +343,37 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
 
         auto *head = new QHBoxLayout;
         machines_title_ = new QLabel(page);
-        machines_title_->setProperty("h1", true);
+        /* D1 - h2 and not h1: the header above now carries the page name, and
+         * two 26px titles one under the other read as a mistake. This one
+         * stays because it is where the filter and the count hang. */
+        machines_title_->setProperty("h2", true);
         machines_subtitle_ = new QLabel(page);
         machines_subtitle_->setProperty("dim", true);
         head->addWidget(machines_title_);
         head->addStretch(1);
+        /* UI6 - a filter, shown only past six machines. Below that it is a
+         * control that costs a row and saves nothing; past it, reading a
+         * scrolling list to find one name is the slowest thing on the page. */
+        machines_filter_ = new QLineEdit(page);
+        machines_filter_->setClearButtonEnabled(true);
+        machines_filter_->setMaximumWidth(240);
+        machines_filter_->setVisible(false);
+        connect(machines_filter_, &QLineEdit::textChanged, this,
+                &MainWindow::applyMachineFilter);
+        head->addWidget(machines_filter_);
         head->addWidget(machines_subtitle_);
         lay->addLayout(head);
 
         auto *scroll = new QScrollArea(page);
         scroll->setWidgetResizable(true);
         scroll->setFrameShape(QFrame::NoFrame);
+        /* UI5 - the arrows arrive here, because the scroll area is what has
+         * the focus before any card does and what keeps it when a card is
+         * removed. An event filter rather than a QScrollArea subclass: there
+         * is nothing else to subclass it for. */
+        machines_scroll_ = scroll;
+        scroll->installEventFilter(this);
+        scroll->setFocusPolicy(Qt::StrongFocus);
         machines_host_ = new QWidget(scroll);
         machines_lay_ = new QVBoxLayout(machines_host_);
         machines_lay_->setContentsMargins(0, 0, 0, 0);
@@ -244,6 +389,38 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
         machines_empty_->setProperty("dim", true);
         machines_empty_->setWordWrap(true);
         lay->addWidget(machines_empty_);
+
+        /* === D5 — THE LIST CAN ALSO FAIL ==================================
+         *
+         * A refused token or a dead network produced an empty page and one
+         * line in the status bar, so the two cases a person must tell apart -
+         * "you have no machines" and "we could not ask" - looked identical.
+         * This says which, and offers the retry, because a network blink is
+         * the common cause and it needs no more than asking again. */
+        machines_error_ = new QFrame(page);
+        machines_error_->setProperty("card", true);
+        machines_error_->setVisible(false);
+        {
+            auto *el = new QVBoxLayout(machines_error_);
+            el->setContentsMargins(halyard::theme::SpaceGroup,
+                                   halyard::theme::SpaceGroup,
+                                   halyard::theme::SpaceGroup,
+                                   halyard::theme::SpaceGroup);
+            el->setSpacing(halyard::theme::SpaceRow);
+            machines_error_text_ = new QLabel(machines_error_);
+            machines_error_text_->setWordWrap(true);
+            machines_error_text_->setTextInteractionFlags(Qt::TextSelectableByMouse);
+            machines_error_retry_ = new QPushButton(machines_error_);
+            machines_error_retry_->setProperty("accent", true);
+            connect(machines_error_retry_, &QPushButton::clicked, this,
+                    &MainWindow::listMachines);
+            auto *er = new QHBoxLayout;
+            er->addStretch(1);
+            er->addWidget(machines_error_retry_);
+            el->addWidget(machines_error_text_);
+            el->addLayout(er);
+        }
+        lay->addWidget(machines_error_);
 
         stack_->addWidget(page);
     }
@@ -262,6 +439,16 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
     connect(steps_, &StepListWidget::backRequested, this, [this] {
         setPage(PageMachines);
         setMachinesBusy(false);
+    });
+    /* UI7 - give up while it is still running. The abort flag is the same one
+     * a server-side end raises, so the teardown is the one path and not a
+     * second one written for Cancel. */
+    connect(steps_, &StepListWidget::cancelRequested, this, [this] {
+        if (sess_) sess_->requestStop();
+        if (boot_) boot_->requestStop();
+        session_live_ = false;
+        setMachinesBusy(false);
+        setPage(PageMachines);
     });
 
     /* -------------------------------------------------- page 4: streaming */
@@ -492,6 +679,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
     applyShortcuts();
 
     retranslate();
+    updateHeroVisibility();
     setPage(PagePairing);
 
     /* ============================ the three workers ====================== */
@@ -515,10 +703,17 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
      * from core's DECODE thread. */
     connect(auth_, &AuthWorker::datacentre, this,
             [this](const QString &name, const QString &) {
+                /* UI6 - kept, because the cards show it: it is per account, so
+                 * one value for the whole list. */
+                datacentre_ = name;
                 statusBar()->showMessage(tr("data centre: %1").arg(name));
             }, Qt::QueuedConnection);
     connect(auth_, &AuthWorker::progress, this, [this](const QString &w) {
         pair_hint_->setText(w);
+    }, Qt::QueuedConnection);
+    connect(auth_, &AuthWorker::stage, this, [this](int i) {
+        signin_steps_->setStage(i);
+        signin_steps_->setVisible(true);
     }, Qt::QueuedConnection);
     connect(auth_, &AuthWorker::pairingNeeded, this,
             &MainWindow::onPairingNeeded, Qt::QueuedConnection);
@@ -619,7 +814,9 @@ MainWindow::~MainWindow()
 void MainWindow::retranslate()
 {
     machines_title_->setText(tr("Your machines"));
+    machines_filter_->setPlaceholderText(tr("Filter..."));
     retry_btn_->setText(tr("Start over"));
+    pair_tagline_->setText(tr("Your Shadow cloud PC, on anything you own."));
     act_sign_out_->setText(tr("Sign &out"));
     view_menu_->setTitle(tr("&View"));
     act_settings_->setText(tr("&Settings"));
@@ -767,6 +964,42 @@ void MainWindow::repositionOverlays()
  * a rendering fault. Overlap and not focus, because the window the person is
  * reading is not always the focused one - and overlap is also what lets the
  * file manager live on a second monitor with the HUD still up. */
+/* === UI5 — THE ARROWS ON THE MACHINE LIST =================================
+ *
+ * Up/Down move between cards, Home/End jump to the ends, and the card itself
+ * handles Enter (see machine_card.hpp for why the split). Implemented on the
+ * CONTAINER because moving between siblings needs to know the set, and a card
+ * that reached for its neighbours would have to know how they are laid out.
+ *
+ * `ensureWidgetVisible` is not optional: focus can move to a card below the
+ * fold, and a focus ring you cannot see is worse than none - the list looks
+ * like it has stopped responding. */
+bool MainWindow::eventFilter(QObject *o, QEvent *ev)
+{
+    if (o == machines_scroll_ && ev->type() == QEvent::KeyPress
+        && !machine_cards_.isEmpty()) {
+        auto *ke = static_cast<QKeyEvent *>(ev);
+        int cur = -1;
+        for (int i = 0; i < machine_cards_.size(); i++)
+            if (machine_cards_.at(i)->hasFocus()) { cur = i; break; }
+
+        int want = cur;
+        switch (ke->key()) {
+        case Qt::Key_Down: want = (cur < 0) ? 0 : qMin(cur + 1, machine_cards_.size() - 1); break;
+        case Qt::Key_Up:   want = (cur < 0) ? 0 : qMax(cur - 1, 0); break;
+        case Qt::Key_Home: want = 0; break;
+        case Qt::Key_End:  want = machine_cards_.size() - 1; break;
+        default: return QMainWindow::eventFilter(o, ev);
+        }
+        if (want != cur) {
+            machine_cards_.at(want)->setFocus(Qt::OtherFocusReason);
+            machines_scroll_->ensureWidgetVisible(machine_cards_.at(want), 0, 12);
+        }
+        return true;
+    }
+    return QMainWindow::eventFilter(o, ev);
+}
+
 bool MainWindow::ownWindowOverVideo() const
 {
     const QRect v = videoGlobalRect();
@@ -896,10 +1129,18 @@ void MainWindow::applyShortcuts()
  * click-through so it can never swallow a shot in a game. */
 void MainWindow::showToast(const QString &text)
 {
-    /* OV3 - never while the stream is not in front: these are always-on-top
-     * tool windows, and an unparented one floats over every other application
-     * for ever (reported). */
-    if (!overlaysAllowed()) return;
+    /* === OV3/D4 — WHERE A TOAST IS ALLOWED ================================
+     *
+     * Originally gated on `overlaysAllowed()`, which also means "on the
+     * streaming page" - so every confirmation outside a stream went to the
+     * status bar, which is where messages go to be missed.
+     *
+     * The gate that actually mattered was never the page: it was that an
+     * unparented always-on-top tool window floats over every other
+     * application for ever (reported). That is fixed by the parent and by
+     * OV10's dropping of the topmost hint. What remains is the honest
+     * condition - this application is in front, and not minimised. */
+    if (!app_active_ || isMinimized()) return;
     if (!toast_) {
         /* Parented to the main window on purpose: a null parent makes it an
          * independent top-level that Windows keeps alive and on top whatever
@@ -921,10 +1162,13 @@ void MainWindow::showToast(const QString &text)
     }
     toast_->setText(text);
     toast_->adjustSize();
-    const QRect r = videoGlobalRect();
-    if (!r.isNull())
-        toast_->move(r.center().x() - toast_->width() / 2,
-                     r.bottom() - toast_->height() - 48);
+    /* D4 - over the picture while streaming, else near the bottom of the
+     * window. `videoGlobalRect()` is null off the streaming page, and a toast
+     * placed from a null rectangle landed at the top left of the desktop. */
+    QRect r = videoGlobalRect();
+    if (r.isNull()) r = QRect(mapToGlobal(QPoint(0, 0)), size());
+    toast_->move(r.center().x() - toast_->width() / 2,
+                 r.bottom() - toast_->height() - 48);
     toast_->show();
     toast_->raise();
     toast_timer_->start(2600);
@@ -981,6 +1225,7 @@ void MainWindow::resizeEvent(QResizeEvent *e)
 {
     QMainWindow::resizeEvent(e);
     repositionOverlays();
+    updateHeroVisibility();   /* UI4 */
 }
 
 void MainWindow::openAbout()
@@ -992,10 +1237,35 @@ void MainWindow::openAbout()
     dlg.exec();
 }
 
+/* D1 - what the header says, per page. */
+void MainWindow::updateHeader(int index)
+{
+    if (!header_) return;
+    /* The pairing page has the hero (the mark twice would be silly) and the
+     * streaming page owns every pixel. */
+    header_->setVisible(index == PageMachines || index == PageConnecting);
+    header_title_->setText(index == PageConnecting ? tr("Connecting")
+                                                   : tr("Your machines"));
+    /* The account is not something we hold - no profile call is made, and
+     * making one just to fill a header would be collecting a name we have no
+     * other use for. The data centre is what we do know, and it is the part
+     * that matters for a stream. */
+    header_account_->setText(datacentre_);
+}
+
+/* UI4 - the hero is the first thing to go when there is no room. 820 px is
+ * where the 330 px panel starts squeezing the 460 px card below its own
+ * minimum; under that the content matters and the decoration does not. */
+void MainWindow::updateHeroVisibility()
+{
+    if (pair_hero_) pair_hero_->setVisible(width() >= 820);
+}
+
 void MainWindow::setPage(int index)
 {
     const int from = stack_->currentIndex();
     stack_->setCurrentIndex(index);
+    updateHeader(index);
     updateOverlayVisibility();   /* OV3 - off the stream page, no overlays */
 
     /* === UI1 — A 140 ms FADE IN ON THE PAGE THAT ARRIVES ==================
@@ -1014,8 +1284,11 @@ void MainWindow::setPage(int index)
      * REMOVED when the animation ends rather than left at opacity 1: an effect
      * still installed keeps the widget on the slow path for every later
      * repaint. `SHADOW_QT_ANIM=0` turns the transitions off. */
-    static const bool kAnim = qgetenv("SHADOW_QT_ANIM") != "0";
-    if (!kAnim || from == index || index == PageStreaming) return;
+    /* D3 - one gate for every animation in the client: our toggle, then the
+     * system's "show animations" preference. */
+    if (!halyard::theme::animationsEnabled() || from == index
+        || index == PageStreaming)
+        return;
 
     QWidget *page = stack_->widget(index);
     if (!page) return;
@@ -1038,7 +1311,6 @@ void MainWindow::setPage(int index)
 void MainWindow::onPairingNeeded(const QString &userCode, const QString &uri,
                                  const QString &uriComplete, int expiresIn)
 {
-    pair_code_->setText(userCode);
     pair_user_code_ = userCode;
     pair_uri_ = uri.isEmpty() ? QStringLiteral("https://shadow.tech/device") : uri;
     pair_uri_complete_ = uriComplete;
@@ -1053,25 +1325,51 @@ void MainWindow::onPairingNeeded(const QString &userCode, const QString &uri,
         copied = true;
     }
 
-    /* The URL as a real, clickable link (rich text). */
+    /* UI4 - the phases are done with: a code is the thing they were leading
+     * to, and leaving them up would push it down for nothing. */
+    signin_steps_->setVisible(false);
+    pair_heading_->setText(tr("Finish signing in"));
+
+    /* UI4 - the QR encodes the COMPLETE URI when the server gave one, because
+     * that form carries the code: scanning it then needs no typing at all. We
+     * fall back to the plain URI, where the phone still saves the URL and only
+     * the code has to be entered. */
+    const QString qrText = !pair_uri_complete_.isEmpty() ? pair_uri_complete_
+                                                          : pair_uri_;
+    const bool haveQr = qr_->setText(qrText);
+    qr_->setVisible(haveQr);
+    qr_caption_->setVisible(haveQr);
+    qr_caption_->setText(pair_uri_complete_.isEmpty()
+                             ? tr("Scan with a phone, then enter the code")
+                             : tr("Scan with a phone - the code is included"));
+
+    /* The URL as a real, clickable link (rich text). The validity is no longer
+     * written here: it is the bar and the countdown under the code, and saying
+     * it a third time in a sentence that is read once was the version people
+     * missed. */
     pair_hint_->setText(
-        tr("Open <a href=\"%1\">%1</a> and enter this code.%2<br>It is valid "
-           "for %3 s.")
-            .arg(pair_uri_.toHtmlEscaped(),
-                 copied ? tr("  The code is already on your clipboard.")
-                        : QString(),
-                 QString::number(expiresIn)));
+        haveQr ? tr("Or open <a href=\"%1\">%1</a> and enter this code.%2")
+                     .arg(pair_uri_.toHtmlEscaped(),
+                          copied ? tr(" The code is already on your clipboard.")
+                                 : QString())
+               : tr("Open <a href=\"%1\">%1</a> and enter this code.%2")
+                     .arg(pair_uri_.toHtmlEscaped(),
+                          copied ? tr(" The code is already on your clipboard.")
+                                 : QString()));
 
     copy_code_btn_->setText(copied ? tr("Code copied — copy again")
                                    : tr("Copy the code"));
     open_page_btn_->setText(pair_uri_complete_.isEmpty()
                                 ? tr("Open the sign-in page")
                                 : tr("Open the sign-in page (code prefilled)"));
-    pair_code_->setVisible(true);
+    pair_cells_->setCode(userCode);
+    pair_cells_->setVisible(true);
+    pair_validity_->setVisible(true);
     copy_code_btn_->setVisible(true);
     open_page_btn_->setVisible(true);
     retry_btn_->setVisible(false);
     pair_countdown_->setVisible(true);
+    pair_expires_ = expiresIn > 0 ? expiresIn : 600;
     onPairingProgress(expiresIn);
 }
 
@@ -1085,6 +1383,7 @@ void MainWindow::onPairingProgress(int secondsLeft)
                              .arg(secondsLeft / 60)
                              .arg(secondsLeft % 60, 2, 10, QLatin1Char('0'));
     pair_countdown_->setText(tr("this code expires in %1").arg(mmss));
+    pair_validity_->setRemaining(secondsLeft, pair_expires_);
     /* Under a minute it stops being background information. */
     pair_countdown_->setStyleSheet(
         secondsLeft <= 60 ? halyard::theme::css(halyard::theme::warn(this)) : QString());
@@ -1099,8 +1398,13 @@ void MainWindow::onSignInFailed(const QString &why)
      * retry instead of ending at a sentence. The code and its two buttons go:
      * that code is dead, and leaving it on screen invites retyping it. */
     pair_hint_->setText(tr("Sign-in did not complete: %1").arg(why));
-    pair_code_->clear();
-    pair_code_->setVisible(false);
+    pair_heading_->setText(tr("Sign-in failed"));
+    signin_steps_->setFailed();
+    signin_steps_->setVisible(true);
+    pair_cells_->setVisible(false);
+    pair_validity_->setVisible(false);
+    qr_->setVisible(false);
+    qr_caption_->setVisible(false);
     pair_countdown_->setVisible(false);
     copy_code_btn_->setVisible(false);
     open_page_btn_->setVisible(false);
@@ -1138,8 +1442,7 @@ void MainWindow::signOut()
     machine_ids_.clear();
     machine_names_.clear();
     last_machine_id_.clear();
-    for (MachineCard *c : machine_cards_) { machines_lay_->removeWidget(c); delete c; }
-    machine_cards_.clear();
+    clearMachineCards();
     act_files_->setEnabled(false);
     stream_menu_->menuAction()->setVisible(false);
 
@@ -1156,12 +1459,17 @@ void MainWindow::restartSignIn()
      * fresh attempt and not a resumption of the dead one. */
     retry_btn_->setEnabled(false);
     retry_btn_->setVisible(false);
-    pair_code_->clear();
-    pair_code_->setVisible(false);
+    pair_cells_->setVisible(false);
+    pair_validity_->setVisible(false);
+    qr_->setVisible(false);
+    qr_caption_->setVisible(false);
     pair_countdown_->setVisible(false);
     copy_code_btn_->setVisible(false);
     open_page_btn_->setVisible(false);
-    pair_hint_->setText(tr("signing in..."));
+    pair_heading_->setText(tr("Signing in"));
+    pair_hint_->setText(tr("Contacting Shadow..."));
+    signin_steps_->reset();
+    signin_steps_->setVisible(true);
     setPage(PagePairing);
     statusBar()->clearMessage();
     QMetaObject::invokeMethod(auth_, "signIn", Qt::QueuedConnection);
@@ -1172,13 +1480,20 @@ void MainWindow::onSignedIn(const QString &bearer, const QString &launcherUrl)
     bearer_ = bearer;            /* a credential: kept, never logged */
     launcher_url_ = launcherUrl;
     pair_hint_->setText(tr("signed in"));
-    pair_code_->clear();
+    signin_steps_->setComplete();
+    pair_cells_->setVisible(false);
+    pair_validity_->setVisible(false);
+    qr_->setVisible(false);
+    qr_caption_->setVisible(false);
+    pair_countdown_->setVisible(false);
     listMachines();
 }
 
 void MainWindow::listMachines()
 {
     statusBar()->showMessage(tr("fetching your machines..."));
+    showMachineSkeletons();
+    setPage(PageMachines);   /* UI6 - so the skeletons are what is on screen */
     const QByteArray base = launcher_url_.toUtf8();
     const QByteArray tok  = bearer_.toUtf8();
 
@@ -1189,8 +1504,10 @@ void MainWindow::listMachines()
         halyard::ScopedVmPage page;
         long http = 0;
         QStringList ids, names, states;
+        bool fetched = false;
         if (launcher_list_vms(base.constData(), tok.constData(), 0, 50,
                               page.out(), &http)) {
+            fetched = true;
             for (int i = 0; i < page->count; i++) {
                 const VmInfo &v = page->items[i];
                 ids << str(v.id);
@@ -1200,6 +1517,14 @@ void MainWindow::listMachines()
                 names  << label;
                 states << str(v.state);
             }
+        }
+        if (!fetched) {
+            /* D5 - the HTTP code goes with it: "could not be reached" and
+             * "your session was refused" need different actions, and the
+             * number is what tells them apart. */
+            QMetaObject::invokeMethod(this, "onMachinesFailed", Qt::QueuedConnection,
+                                      Q_ARG(int, int(http)));
+            return;
         }
         /* UI1 - the three fields separately: the card gives each its own place,
          * so gluing them into one string here would only have to be undone. */
@@ -1213,24 +1538,171 @@ void MainWindow::listMachines()
 void MainWindow::onMachinesFetched(const QStringList &ids, const QStringList &names,
                                    const QStringList &states)
 {
-    machine_ids_ = ids;
-    machine_names_ = names;
-    for (MachineCard *c : machine_cards_) { machines_lay_->removeWidget(c); delete c; }
-    machine_cards_.clear();
+    clearMachineCards();
 
-    for (int i = 0; i < ids.size(); i++) {
-        auto *card = new MachineCard(ids[i], names.value(i), states.value(i),
-                                     QString(), machines_host_);
+    /* === UI6 — MOST RECENTLY USED FIRST =================================
+     *
+     * The server's order is whatever its database returns, which for someone
+     * with four machines means the one they always use can be third. The
+     * local record of last connections is the only thing that knows better,
+     * and it is a stable sort so machines never used keep the server's order
+     * among themselves rather than shuffling between launches. */
+    QVector<int> order;
+    for (int i = 0; i < ids.size(); i++) order.append(i);
+    QSettings st;
+    st.beginGroup(QStringLiteral("machines"));
+    QVector<QDateTime> used(ids.size());
+    for (int i = 0; i < ids.size(); i++)
+        used[i] = st.value(ids.at(i) + QStringLiteral("/last_used")).toDateTime();
+    st.endGroup();
+    std::stable_sort(order.begin(), order.end(), [&used](int a, int b) {
+        if (used[a].isValid() != used[b].isValid()) return used[a].isValid();
+        if (!used[a].isValid()) return false;          /* both unknown: keep order */
+        return used[a] > used[b];
+    });
+
+    machine_ids_.clear();
+    machine_names_.clear();
+    for (int k = 0; k < order.size(); k++) {
+        const int i = order.at(k);
+        machine_ids_   << ids.at(i);
+        machine_names_ << names.value(i);
+
+        auto *card = new MachineCard(ids.at(i), names.value(i), states.value(i),
+                                     datacentre_, machines_host_);
+        card->setLastUsed(used[i]);
         connect(card, &MachineCard::connectRequested, this, &MainWindow::connectTo);
         /* Before the trailing stretch, so the cards stay at the top. */
         machines_lay_->insertWidget(machines_lay_->count() - 1, card);
         machine_cards_.append(card);
+        staggerIn(card, k);
     }
+    machines_filter_->setVisible(machine_cards_.size() > 6);
+    /* UI5 - the keyboard lands somewhere useful. The old list selected row 0
+     * on arrival; focusing the first card is the same courtesy, and without it
+     * the arrows have nothing to move FROM. */
+    if (!machine_cards_.isEmpty()) machine_cards_.first()->setFocus(Qt::OtherFocusReason);
+
+    machines_error_->setVisible(false);
     machines_empty_->setVisible(ids.isEmpty());
     machines_empty_->setText(tr("No machine on this account."));
     machines_subtitle_->setText(tr("%n machine(s)", "", ids.size()));
     statusBar()->showMessage(tr("%n machine(s)", "", ids.size()));
     setPage(PageMachines);
+}
+
+/* UI6 - take the cards down, skeletons included. One place, because three
+ * callers had three slightly different versions of it and one of them leaked
+ * the placeholder widgets. */
+void MainWindow::clearMachineCards()
+{
+    for (MachineCard *c : machine_cards_) { machines_lay_->removeWidget(c); delete c; }
+    machine_cards_.clear();
+    for (QWidget *w : machine_skeletons_) { machines_lay_->removeWidget(w); delete w; }
+    machine_skeletons_.clear();
+}
+
+/* === UI6 — SKELETONS WHILE FETCHING ======================================
+ *
+ * The page went up empty and then jumped when the list arrived, which reads as
+ * a glitch rather than as loading. Three grey blocks the size of a card say
+ * "something is coming and it will look like this".
+ *
+ * Three and not one per machine: we do not know how many there are yet, and
+ * guessing would make the jump worse when the guess is wrong. */
+void MainWindow::showMachineSkeletons()
+{
+    clearMachineCards();
+    machines_error_->setVisible(false);
+    machines_empty_->setVisible(false);
+    machines_filter_->setVisible(false);
+    for (int i = 0; i < 3; i++) {
+        auto *sk = new QFrame(machines_host_);
+        sk->setProperty("card", true);
+        sk->setFixedHeight(72);
+        /* Fading, so it is visibly WAITING rather than broken. The animation
+         * is owned by the widget, so deleting the skeleton stops it. */
+        auto *fx = new QGraphicsOpacityEffect(sk);
+        fx->setOpacity(0.45);
+        sk->setGraphicsEffect(fx);
+        auto *a = new QPropertyAnimation(fx, "opacity", sk);
+        a->setDuration(900);
+        a->setStartValue(0.25);
+        a->setKeyValueAt(0.5, 0.6);
+        a->setEndValue(0.25);
+        a->setLoopCount(-1);
+        a->start();
+        machines_lay_->insertWidget(machines_lay_->count() - 1, sk);
+        machine_skeletons_.append(sk);
+    }
+}
+
+/* UI6 - fade and rise, 40 ms apart.
+ *
+ * Capped at six: beyond that the last card of a twenty-machine list would
+ * arrive most of a second late, and a stagger that outlasts the reader's
+ * attention is just a slow list. The effect is REMOVED on completion - one
+ * left installed keeps the widget on the slow repaint path for ever. */
+void MainWindow::staggerIn(QWidget *w, int index)
+{
+    if (!halyard::theme::animationsEnabled()) return;
+
+    auto *fx = new QGraphicsOpacityEffect(w);
+    fx->setOpacity(0.0);
+    w->setGraphicsEffect(fx);
+
+    auto *a = new QPropertyAnimation(fx, "opacity", w);
+    a->setDuration(180);
+    a->setStartValue(0.0);
+    a->setEndValue(1.0);
+    a->setEasingCurve(QEasingCurve::OutCubic);
+    connect(a, &QPropertyAnimation::finished, w, [w] { w->setGraphicsEffect(nullptr); });
+
+    const int delay = qMin(index, 6) * 40;
+    QTimer::singleShot(delay, w, [a] { a->start(QAbstractAnimation::DeleteWhenStopped); });
+}
+
+/* UI6 - hide what does not match. Case-insensitive on the NAME only: the id is
+ * a uuid nobody types, and matching it would make a search for "paris" hit a
+ * machine whose id happens to contain those letters. */
+void MainWindow::applyMachineFilter(const QString &text)
+{
+    const QString q = text.trimmed();
+    int shown = 0;
+    for (int i = 0; i < machine_cards_.size(); i++) {
+        const bool match = q.isEmpty()
+            || machine_names_.value(i).contains(q, Qt::CaseInsensitive);
+        machine_cards_.at(i)->setVisible(match);
+        if (match) shown++;
+    }
+    if (!q.isEmpty() && shown == 0) {
+        machines_empty_->setText(tr("No machine matches \u201c%1\u201d.").arg(q));
+        machines_empty_->setVisible(true);
+    } else if (!machine_cards_.isEmpty()) {
+        machines_empty_->setVisible(false);
+    }
+}
+
+/* D5 - the list could not be fetched. */
+void MainWindow::onMachinesFailed(int http)
+{
+    clearMachineCards();
+    machines_empty_->setVisible(false);
+    machines_filter_->setVisible(false);
+    machines_subtitle_->clear();
+
+    machines_error_text_->setText(
+        http == 401 || http == 403
+            ? tr("Your session was refused (HTTP %1). Signing out and back in "
+                 "is usually what this needs.").arg(http)
+            : http == 0
+                ? tr("Shadow could not be reached. Check the connection, then "
+                     "try again.")
+                : tr("The machine list could not be fetched (HTTP %1).").arg(http));
+    machines_error_retry_->setText(tr("Try again"));
+    machines_error_->setVisible(true);
+    setPage(PageMachines);
+    statusBar()->showMessage(tr("the machine list could not be fetched"));
 }
 
 void MainWindow::setMachinesBusy(bool busy)
@@ -1243,6 +1715,16 @@ void MainWindow::connectTo(const QString &id)
     const int row = machine_ids_.indexOf(id);
     if (row < 0) return;
     last_machine_id_ = id;   /* UI3 - what Retry retries */
+
+    /* UI6 - the local record the list is ordered by. Written on the ATTEMPT
+     * and not on success: "the one I was last on" is what a person means, and
+     * a connection that failed is still the one they tried. */
+    {
+        QSettings st;
+        st.beginGroup(QStringLiteral("machines"));
+        st.setValue(id + QStringLiteral("/last_used"), QDateTime::currentDateTime());
+        st.endGroup();
+    }
 
     /* Core's contract 1: one session per process. Refused here rather than
      * letting two worker threads into the same module state. */

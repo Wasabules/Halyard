@@ -1,6 +1,9 @@
 #include "theme.hpp"
 
 #include <QFontDatabase>
+#ifdef Q_OS_WIN
+#  include <windows.h>
+#endif
 #include <QGraphicsDropShadowEffect>
 #include <QGuiApplication>
 #include <QPainter>
@@ -129,6 +132,53 @@ QColor accent(const QWidget *context)
     const QPalette pal = basePalette(context);
     const bool dark = pal.color(QPalette::Window).lightnessF() < 0.5;
     return QColor::fromHsl(210, 160, dark ? 160 : 110);
+}
+
+bool animationsEnabled()
+{
+    static const bool kOn = [] {
+        if (qgetenv("SHADOW_QT_ANIM") == "0") return false;
+#ifdef Q_OS_WIN
+        BOOL on = TRUE;
+        if (SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION, 0, &on, 0))
+            return on != FALSE;
+#endif
+        return true;
+    }();
+    return kOn;
+}
+
+/* See the header (D2). */
+bool applyThemeMode(ThemeMode mode)
+{
+    if (mode == ThemeMode::Auto) return false;
+
+    const bool dark = (mode == ThemeMode::Dark);
+    /* A palette built from two anchors and nothing else: the window colour and
+     * the text colour. Everything this file paints is derived from those two
+     * (surface, surfaceAlt, border, accent, muted), so naming more of them
+     * here would be inventing values the derivation would then ignore - and
+     * the two would disagree the first time one of them was edited. */
+    const QColor win  = dark ? QColor(0x1e, 0x1f, 0x24) : QColor(0xf4, 0xf5, 0xf7);
+    const QColor text = dark ? QColor(0xe9, 0xea, 0xee) : QColor(0x1b, 0x1c, 0x20);
+    const QColor base = dark ? QColor(0x17, 0x18, 0x1c) : QColor(0xff, 0xff, 0xff);
+
+    QPalette pal;
+    pal.setColor(QPalette::Window,          win);
+    pal.setColor(QPalette::WindowText,      text);
+    pal.setColor(QPalette::Base,            base);
+    pal.setColor(QPalette::AlternateBase,   win);
+    pal.setColor(QPalette::Text,            text);
+    pal.setColor(QPalette::Button,          win);
+    pal.setColor(QPalette::ButtonText,      text);
+    pal.setColor(QPalette::ToolTipBase,     base);
+    pal.setColor(QPalette::ToolTipText,     text);
+    /* Disabled text must be derived too, or it is black on dark. */
+    pal.setColor(QPalette::Disabled, QPalette::WindowText, mix(text, win, 0.55));
+    pal.setColor(QPalette::Disabled, QPalette::ButtonText, mix(text, win, 0.55));
+    pal.setColor(QPalette::Disabled, QPalette::Text,       mix(text, win, 0.55));
+    QGuiApplication::setPalette(pal);
+    return true;
 }
 
 QString appStyleSheet(const QWidget *context)
