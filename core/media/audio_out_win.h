@@ -17,6 +17,7 @@
  * only a Windows build gets any code. */
 #pragma once
 
+#include <stdbool.h>
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -35,6 +36,12 @@ typedef struct {
     uint32_t stream_latency_frames;  /* IAudioClient::GetStreamLatency */
     uint32_t mix_rate;               /* the endpoint's mix format; the engine converts to it */
     uint32_t mix_channels;
+    /* AUD-DEV1: a specific endpoint was asked for (`device_id` non-empty) and
+     * whether it was the one opened. Asked and not found = the default was
+     * opened instead, which the caller must SAY - a sound coming out of the
+     * wrong speakers with nothing in the log is the defect this prevents. */
+    bool     device_requested;
+    bool     device_found;
 } audio_out_win_info;
 
 /* COM on the calling thread, multithreaded apartment. Returns 1 when
@@ -42,13 +49,26 @@ typedef struct {
 int  audio_out_win_thread_begin(void);
 void audio_out_win_thread_end(int began);
 
-/* Opens the default render endpoint (eConsole) in shared mode, `rate` Hz,
+/* === AUD-DEV1 2026-10-03 - CHOOSING THE OUTPUT DEVICE ======================
+ *
+ * `device_id` is an endpoint ID as `IMMDevice::GetId` writes it, in UTF-8
+ * (`{0.0.0.00000000}.{guid}`) - the same string Qt's `QAudioDevice::id()`
+ * carries on Windows, which is how the desktop client's settings page fills
+ * it. NULL or "" = the default endpoint, exactly as before.
+ *
+ * An ID that no longer resolves (the headset is unplugged, the driver was
+ * reinstalled and minted a new GUID) falls back to the DEFAULT rather than
+ * failing: losing the chosen device must cost the choice, not the sound.
+ * `info->device_found` says which happened.
+ *
+ * Opens the chosen render endpoint (or the default, eConsole) in shared mode, `rate` Hz,
  * `channels` x s16 interleaved, with an engine buffer of `buffer_ms`. The
  * stream is NOT started: the first successful write starts it, so the engine
  * never plays an empty buffer. NULL on failure, with the failing HRESULT in
  * *hr. It took 83 ms to 1.2 s on the dev machine: never call it on a thread
  * that something else waits for. */
 audio_out_win *audio_out_win_open(uint32_t rate, uint32_t channels, uint32_t buffer_ms,
+                                  const char *device_id,
                                   audio_out_win_info *info, long *hr);
 
 /* Waits for the engine's period event, at most `timeout_ms`: 1 when it fired,

@@ -1761,6 +1761,28 @@ bool ctrl_session_file_transfer_secret(char *out, size_t cap, size_t *n)
     return true;
 }
 
+bool ctrl_session_file_transfer_endpoint(char *host, size_t host_cap,
+                                         uint16_t *port)
+{
+    if (port) *port = 0;
+    if (!host || host_cap == 0) return false;
+    host[0] = '\0';
+    const shadow_chan_caps *cc = &g_caps.chan[SHADOW_CHAN_IDX_FILETRANSFER];
+    if (!cc->granted || !g_ft_host[0]) return false;
+
+    /* Strip the `ipv6-` marker the rest of core carries internally: a client
+     * dialing getaddrinfo() needs the bare address, exactly as ctrl_audio_dtls
+     * and the others strip it before connect(). */
+    const char *h = g_ft_host;
+    if (strncmp(h, "ipv6-", 5) == 0) h += 5;
+    size_t i = 0;
+    while (h[i] && i + 1 < host_cap) { host[i] = h[i]; i++; }
+    host[i] = '\0';
+    if (h[i]) { host[0] = '\0'; return false; }   /* refused, not truncated */
+    if (port) *port = cc->port;
+    return true;
+}
+
 bool ctrl_session_file_transfer_uri(char *out, size_t cap, size_t *n)
 {
     if (n) *n = 0;

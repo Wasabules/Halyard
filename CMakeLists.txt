@@ -804,11 +804,23 @@ if (SHADOW_BUILD_QT AND PLATFORM_DESKTOP)
         clients/qt/theme.cpp                clients/qt/theme.hpp
         clients/qt/i18n.cpp                 clients/qt/i18n.hpp
         clients/qt/settings_store.cpp       clients/qt/settings_store.hpp
+        clients/qt/ft_worker.cpp            clients/qt/ft_worker.hpp
+        clients/qt/file_manager_window.cpp  clients/qt/file_manager_window.hpp
         clients/qt/i18n_match.hpp
         clients/qt/core_scope.hpp
         clients/qt/settings_model.hpp
         clients/qt/plane_copy.hpp
     )
+    # FM1 2026-10-03 - the file manager needs the SFTP channel, which is core's
+    # `filetransfer.c` behind -DSHADOW_FILETRANSFER=ON (libssh). A desktop
+    # client is exactly the "future desktop client" that module was written for
+    # (its own header says so), so the Qt build turns it ON by default - unlike
+    # the consoles, which have no business carrying libssh. Pass
+    # -DSHADOW_FILETRANSFER=OFF to build the Qt client without it; the menu entry
+    # then reports "built without file-transfer support" rather than vanishing.
+    if (NOT DEFINED SHADOW_FILETRANSFER OR SHADOW_FILETRANSFER)
+        set(SHADOW_FILETRANSFER ON CACHE BOOL "" FORCE)
+    endif ()
     # QT5 - C++20 for the settings table's designated initializers: a row of
     # fifteen positional fields is how two of them end up swapped unseen.
     set_target_properties(halyard-qt PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)

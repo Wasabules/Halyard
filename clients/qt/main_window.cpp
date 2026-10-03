@@ -8,6 +8,7 @@
 #include "video_widget.hpp"
 #include "settings_window.hpp"
 #include "metrics_window.hpp"
+#include "file_manager_window.hpp"
 #include "about_dialog.hpp"
 #include "theme.hpp"
 
@@ -140,6 +141,14 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
         act_metrics->setShortcut(QKeySequence(QStringLiteral("Ctrl+M")));
         connect(act_metrics, &QAction::triggered, this, &MainWindow::openMetrics);
 
+        /* FM1 - the file manager. Enabled only while a session is live, because
+         * the SFTP channel and its credential exist only then; `session_live_`
+         * drives it, set on connect and cleared on every session exit. */
+        act_files_ = view_menu_->addAction(QString());
+        act_files_->setShortcut(QKeySequence(QStringLiteral("Ctrl+T")));
+        act_files_->setEnabled(false);
+        connect(act_files_, &QAction::triggered, this, &MainWindow::openFileManager);
+
         /* QT4 - Help, with About.
          *
          * `QAction::AboutRole` is what moves this item into the application
@@ -218,6 +227,11 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
                 video_->setStatus((ok ? tr("session ended: ")
                                       : tr("session stopped: ")) + why);
                 session_live_ = false;
+                /* FM1 - the SFTP credential died with the session, so the file
+                 * manager is now pointing at nothing: close it and grey the
+                 * menu entry until the next session grants a fresh channel. */
+                act_files_->setEnabled(false);
+                if (file_manager_) file_manager_->close();
                 setPage(PageMachines);
                 connect_->setEnabled(machines_->currentRow() >= 0);
             }, Qt::QueuedConnection);
@@ -254,6 +268,7 @@ void MainWindow::retranslate()
     view_menu_->setTitle(tr("&View"));
     act_settings_->setText(tr("&Settings"));
     act_metrics_->setText(tr("&Metrics"));
+    act_files_->setText(tr("&File transfer..."));
     help_menu_->setTitle(tr("&Help"));
     act_about_->setText(tr("&About %1").arg(str(SHADOW_APP_NAME)));
 }
@@ -288,6 +303,31 @@ void MainWindow::openMetrics()
     metrics_->show();
     metrics_->raise();
     metrics_->activateWindow();
+}
+
+void MainWindow::openFileManagerForced()
+{
+    const bool was = session_live_;
+    session_live_ = true;   /* let openFileManager() through for --files */
+    openFileManager();
+    session_live_ = was;
+}
+
+void MainWindow::openFileManager()
+{
+    /* Built fresh each time: the SFTP credential lives only as long as the
+     * session, so a window kept from a previous one would be dead. It connects
+     * from core's live grant in its own constructor. */
+    if (!session_live_) return;
+    if (!file_manager_) {
+        file_manager_ = new FileManagerWindow(this);
+        file_manager_->setAttribute(Qt::WA_DeleteOnClose);
+        connect(file_manager_, &QObject::destroyed, this,
+                [this] { file_manager_ = nullptr; });
+    }
+    file_manager_->show();
+    file_manager_->raise();
+    file_manager_->activateWindow();
 }
 
 void MainWindow::openAbout()
@@ -413,6 +453,13 @@ void MainWindow::onBootstrapReady(const BootstrapWorker::Ready &r)
                      QStringLiteral("%1:%2").arg(r.vmHost).arg(r.portBase));
     video_->setStatus(tr("opening the stream on :%1").arg(r.portBase + 11));
     setPage(PageStreaming);
+
+    /* FM1 - the file manager becomes reachable. The SFTP channel is granted a
+     * moment later, during the control-channel announcements inside the session;
+     * the window opened now would find it not-yet-ready and offers Reconnect, so
+     * enabling here rather than waiting for a caps signal we do not have is
+     * safe. */
+    act_files_->setEnabled(true);
 
     /* The SSE keepalives travel with it, and the session stops them - see
      * SessionWorker::runSession. */

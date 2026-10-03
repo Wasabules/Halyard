@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+<?xml version='1.0' encoding='utf-8'?>
 <!DOCTYPE TS>
 <TS version="2.1" language="fr" sourcelanguage="en">
 <context>
@@ -9,15 +9,15 @@
     </message>
     <message>
         <source>the data centre could not be resolved (HTTP %1)</source>
-        <translation>le centre de données n&apos;a pas pu être résolu (HTTP %1)</translation>
+        <translation>le centre de données n'a pas pu être résolu (HTTP %1)</translation>
     </message>
     <message>
         <source>the data centre gave no launcher URL</source>
-        <translation>le centre de données n&apos;a donné aucune URL de lanceur</translation>
+        <translation>le centre de données n'a donné aucune URL de lanceur</translation>
     </message>
     <message>
         <source>discovering the sign-in endpoints</source>
-        <translation>découverte des points d&apos;accès de connexion</translation>
+        <translation>découverte des points d'accès de connexion</translation>
     </message>
     <message>
         <source>OIDC discovery failed (HTTP %1)</source>
@@ -29,15 +29,15 @@
     </message>
     <message>
         <source>the saved session is no longer valid</source>
-        <translation>la session enregistrée n&apos;est plus valide</translation>
+        <translation>la session enregistrée n'est plus valide</translation>
     </message>
     <message>
         <source>asking for a device code</source>
-        <translation>demande d&apos;un code d&apos;appareil</translation>
+        <translation>demande d'un code d'appareil</translation>
     </message>
     <message>
         <source>no device code could be obtained (HTTP %1)</source>
-        <translation>aucun code d&apos;appareil n&apos;a pu être obtenu (HTTP %1)</translation>
+        <translation>aucun code d'appareil n'a pu être obtenu (HTTP %1)</translation>
     </message>
     <message>
         <source>cancelled</source>
@@ -53,7 +53,7 @@
     </message>
     <message>
         <source>the device code expired</source>
-        <translation>le code d&apos;appareil a expiré</translation>
+        <translation>le code d'appareil a expiré</translation>
     </message>
     <message>
         <source>no authorisation within %1 s</source>
@@ -64,7 +64,7 @@
     <name>BootstrapWorker</name>
     <message>
         <source>video %1, up to %2x%3 @ %4, codecs %5</source>
-        <translation>vidéo %1, jusqu&apos;à %2x%3 @ %4, codecs %5</translation>
+        <translation>vidéo %1, jusqu'à %2x%3 @ %4, codecs %5</translation>
     </message>
     <message>
         <source>allowed</source>
@@ -76,7 +76,7 @@
     </message>
     <message>
         <source>capabilities: HTTP %1, continuing</source>
-        <translation>capacités&#xa0;: HTTP %1, on continue</translation>
+        <translation>capacités : HTTP %1, on continue</translation>
     </message>
     <message>
         <source>HTTP %1</source>
@@ -92,15 +92,121 @@
     </message>
     <message>
         <source>launcher client: HTTP %1</source>
-        <translation>client lanceur&#xa0;: HTTP %1</translation>
+        <translation>client lanceur : HTTP %1</translation>
     </message>
     <message>
         <source>main client: HTTP %1</source>
-        <translation>client principal&#xa0;: HTTP %1</translation>
+        <translation>client principal : HTTP %1</translation>
     </message>
     <message>
         <source>one of the two event streams did not start - the control port stays shut without both</source>
-        <translation>l&apos;un des deux flux d&apos;événements n&apos;a pas démarré - le port de contrôle reste fermé sans les deux</translation>
+        <translation>l'un des deux flux d'événements n'a pas démarré - le port de contrôle reste fermé sans les deux</translation>
+    </message>
+</context>
+<context>
+    <name>FileManagerWindow</name>
+    <message>
+        <source>Connecting to the VM...</source>
+        <translation>Connexion à la VM...</translation>
+    </message>
+    <message>
+        <source>Halyard file transfer</source>
+        <translation>Transfert de fichiers Halyard</translation>
+    </message>
+    <message>
+        <source>This PC</source>
+        <translation>Ce PC</translation>
+    </message>
+    <message>
+        <source>The VM</source>
+        <translation>La VM</translation>
+    </message>
+    <message>
+        <source>Send  →</source>
+        <translation>Envoyer  →</translation>
+    </message>
+    <message>
+        <source>Reconnect</source>
+        <translation>Reconnecter</translation>
+    </message>
+    <message>
+        <source>←  Receive</source>
+        <translation>←  Recevoir</translation>
+    </message>
+    <message>
+        <source>Refresh</source>
+        <translation>Actualiser</translation>
+    </message>
+    <message>
+        <source>New folder</source>
+        <translation>Nouveau dossier</translation>
+    </message>
+    <message>
+        <source>Delete</source>
+        <translation>Supprimer</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>Annuler</translation>
+    </message>
+    <message>
+        <source>Name</source>
+        <translation>Nom</translation>
+    </message>
+    <message>
+        <source>Size</source>
+        <translation>Taille</translation>
+    </message>
+    <message>
+        <source>Type</source>
+        <translation>Type</translation>
+    </message>
+    <message>
+        <source>Parent folder</source>
+        <translation>Dossier parent</translation>
+    </message>
+    <message>
+        <source>Pick one or more files on the left. Folders are not sent yet - only files.</source>
+        <translation>Choisissez un ou plusieurs fichiers à gauche. Les dossiers ne sont pas encore envoyés - seulement les fichiers.</translation>
+    </message>
+    <message>
+        <source>Pick one or more files on the right. To enter a folder, double-click it.</source>
+        <translation>Choisissez un ou plusieurs fichiers à droite. Pour entrer dans un dossier, double-cliquez dessus.</translation>
+    </message>
+    <message>
+        <source>Folder name:</source>
+        <translation>Nom du dossier :</translation>
+    </message>
+    <message>
+        <source>%1 items</source>
+        <translation>%1 éléments</translation>
+    </message>
+    <message>
+        <source>Delete on the VM</source>
+        <translation>Supprimer sur la VM</translation>
+    </message>
+    <message>
+        <source>Delete %1 from the VM? This cannot be undone.</source>
+        <translation>Supprimer %1 de la VM ? Cette action est irréversible.</translation>
+    </message>
+    <message>
+        <source>Folder</source>
+        <translation>Dossier</translation>
+    </message>
+    <message>
+        <source>File</source>
+        <translation>Fichier</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n item(s).</source>
+        <translation>
+            <numerusform>%n élément.</numerusform>
+            <numerusform>%n éléments.</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Listing clipped - the folder has more than shown.</source>
+        <translation>Liste tronquée - le dossier en contient plus que montré.</translation>
     </message>
 </context>
 <context>
@@ -115,7 +221,7 @@
     </message>
     <message>
         <source>data centre: %1</source>
-        <translation>centre de données&#xa0;: %1</translation>
+        <translation>centre de données : %1</translation>
     </message>
     <message>
         <source>waiting for the browser - %1 s left</source>
@@ -123,15 +229,15 @@
     </message>
     <message>
         <source>sign-in failed: %1</source>
-        <translation>échec de la connexion&#xa0;: %1</translation>
+        <translation>échec de la connexion : %1</translation>
     </message>
     <message>
         <source>session ended: </source>
-        <translation>session terminée&#xa0;: </translation>
+        <translation>session terminée : </translation>
     </message>
     <message>
         <source>session stopped: </source>
-        <translation>session arrêtée&#xa0;: </translation>
+        <translation>session arrêtée : </translation>
     </message>
     <message>
         <source>Your machines</source>
@@ -152,6 +258,10 @@
     <message>
         <source>&amp;Metrics</source>
         <translation>&amp;Métriques</translation>
+    </message>
+    <message>
+        <source>&amp;File transfer...</source>
+        <translation>&amp;Transfert de fichiers...</translation>
     </message>
     <message>
         <source>&amp;Help</source>
@@ -185,7 +295,7 @@ Il est valable %3 s.</translation>
     </message>
     <message>
         <source>one-click link: %1</source>
-        <translation>lien en un clic&#xa0;: %1</translation>
+        <translation>lien en un clic : %1</translation>
     </message>
     <message>
         <source>signed in</source>
@@ -204,8 +314,8 @@ Il est valable %3 s.</translation>
         <translation>Diffusion déjà en cours</translation>
     </message>
     <message>
-        <source>Only one session can run at a time: the core&apos;s session API is global. Leave the current stream first.</source>
-        <translation>Une seule session peut tourner à la fois&#xa0;: l&apos;API de session du cœur est globale. Quittez d&apos;abord la diffusion en cours.</translation>
+        <source>Only one session can run at a time: the core's session API is global. Leave the current stream first.</source>
+        <translation>Une seule session peut tourner à la fois : l'API de session du cœur est globale. Quittez d'abord la diffusion en cours.</translation>
     </message>
     <message>
         <source>connecting to %1</source>
@@ -213,7 +323,7 @@ Il est valable %3 s.</translation>
     </message>
     <message>
         <source>opening the stream on :%1</source>
-        <translation>ouverture du flux sur&#xa0;:%1</translation>
+        <translation>ouverture du flux sur :%1</translation>
     </message>
 </context>
 <context>
@@ -242,9 +352,9 @@ Il est valable %3 s.</translation>
         <source>No session has completed its bootstrap yet.
 
 The grant snapshot appears once the server has answered the eight channel announcements.</source>
-        <translation>Aucune session n&apos;a encore terminé son amorçage.
+        <translation>Aucune session n'a encore terminé son amorçage.
 
-L&apos;état des autorisations apparaît une fois que le serveur a répondu aux huit annonces de canaux.</translation>
+L'état des autorisations apparaît une fois que le serveur a répondu aux huit annonces de canaux.</translation>
     </message>
     <message>
         <source>Session %1   ·   server %2.%3.%4   ·   port base %5
@@ -253,14 +363,14 @@ L&apos;état des autorisations apparaît une fois que le serveur a répondu aux 
 Video, AS GRANTED: %7×%8 @ %9 fps, codec %10, %11 Mb/s
 Audio, AS GRANTED: %12 Hz, %13 bits, codec %14
 
-&quot;As granted&quot; and not &quot;as asked&quot;: the server restates these and may not honour what was requested (KB §3.37).</source>
+"As granted" and not "as asked": the server restates these and may not honour what was requested (KB §3.37).</source>
         <translation>Session %1   ·   serveur %2.%3.%4   ·   base de ports %5
 %6 canaux accordés sur 8
 
-Vidéo, TELLE QU&apos;ACCORDÉE&#xa0;: %7×%8 @ %9 i/s, codec %10, %11 Mb/s
-Audio, TEL QU&apos;ACCORDÉ&#xa0;: %12 Hz, %13 bits, codec %14
+Vidéo, TELLE QU'ACCORDÉE : %7×%8 @ %9 i/s, codec %10, %11 Mb/s
+Audio, TEL QU'ACCORDÉ : %12 Hz, %13 bits, codec %14
 
-«&#xa0;Tel qu&apos;accordé&#xa0;» et non «&#xa0;tel que demandé&#xa0;»&#xa0;: le serveur reformule ces valeurs et peut ne pas honorer la demande (KB §3.37).</translation>
+« Tel qu'accordé » et non « tel que demandé » : le serveur reformule ces valeurs et peut ne pas honorer la demande (KB §3.37).</translation>
     </message>
     <message>
         <source>video</source>
@@ -319,7 +429,7 @@ Audio, TEL QU&apos;ACCORDÉ&#xa0;: %12 Hz, %13 bits, codec %14
     </message>
     <message>
         <source>Dial only IPv4. On a network where one family is a black hole, half of every retry round is spent waiting on an address that will never answer - measured at 8.6 s lost on one start-up, where the working family answered in 22 ms. Forcing the WRONG one prevents any connection: it has already stopped the control channel from opening (KB 2026-08-25).</source>
-        <translation>N&apos;utiliser que l&apos;IPv4. Sur un réseau où l&apos;une des deux familles est un trou noir, la moitié de chaque tour de tentatives est perdue à attendre une adresse qui ne répondra jamais - mesuré à 8,6 s perdues sur un démarrage, quand la famille fonctionnelle répondait en 22 ms. Forcer la MAUVAISE empêche toute connexion&#xa0;: cela a déjà empêché le canal de contrôle de s&apos;ouvrir (KB 2026-08-25).</translation>
+        <translation>N'utiliser que l'IPv4. Sur un réseau où l'une des deux familles est un trou noir, la moitié de chaque tour de tentatives est perdue à attendre une adresse qui ne répondra jamais - mesuré à 8,6 s perdues sur un démarrage, quand la famille fonctionnelle répondait en 22 ms. Forcer la MAUVAISE empêche toute connexion : cela a déjà empêché le canal de contrôle de s'ouvrir (KB 2026-08-25).</translation>
     </message>
     <message>
         <source>IPv6 only</source>
@@ -327,15 +437,15 @@ Audio, TEL QU&apos;ACCORDÉ&#xa0;: %12 Hz, %13 bits, codec %14
     </message>
     <message>
         <source>The same, the other way. Consulted only when IPv4 only is off, so the two cannot contradict each other.</source>
-        <translation>La même chose, dans l&apos;autre sens. Consulté seulement quand «&#xa0;IPv4 uniquement&#xa0;» est désactivé, pour que les deux ne puissent pas se contredire.</translation>
+        <translation>La même chose, dans l'autre sens. Consulté seulement quand « IPv4 uniquement » est désactivé, pour que les deux ne puissent pas se contredire.</translation>
     </message>
     <message>
         <source>Resolve the VM address once</source>
-        <translation>Résoudre l&apos;adresse de la VM une seule fois</translation>
+        <translation>Résoudre l'adresse de la VM une seule fois</translation>
     </message>
     <message>
-        <source>The VM&apos;s first resolved address is reused by every channel instead of each one resolving again. An experiment switch; the difference has not been measured.</source>
-        <translation>La première adresse résolue de la VM est réutilisée par tous les canaux au lieu que chacun la résolve à nouveau. Un interrupteur d&apos;expérience&#xa0;; la différence n&apos;a pas été mesurée.</translation>
+        <source>The VM's first resolved address is reused by every channel instead of each one resolving again. An experiment switch; the difference has not been measured.</source>
+        <translation>La première adresse résolue de la VM est réutilisée par tous les canaux au lieu que chacun la résolve à nouveau. Un interrupteur d'expérience ; la différence n'a pas été mesurée.</translation>
     </message>
     <message>
         <source>Transport</source>
@@ -347,7 +457,7 @@ Audio, TEL QU&apos;ACCORDÉ&#xa0;: %12 Hz, %13 bits, codec %14
     </message>
     <message>
         <source>Reliability instead of latency - and it costs the adaptive bitrate: in TCP the server refuses EnableDynamicBitrate, so the picture keeps the rate it started with.</source>
-        <translation>La fiabilité au lieu de la latence - au prix du débit adaptatif&#xa0;: en TCP le serveur refuse EnableDynamicBitrate, donc l&apos;image garde le débit avec lequel elle a démarré.</translation>
+        <translation>La fiabilité au lieu de la latence - au prix du débit adaptatif : en TCP le serveur refuse EnableDynamicBitrate, donc l'image garde le débit avec lequel elle a démarré.</translation>
     </message>
     <message>
         <source>Input over TCP</source>
@@ -355,7 +465,7 @@ Audio, TEL QU&apos;ACCORDÉ&#xa0;: %12 Hz, %13 bits, codec %14
     </message>
     <message>
         <source>Keyboard and mouse travel on the TCP input channel. Off selects the other transport, which has not been the measured path.</source>
-        <translation>Le clavier et la souris passent par le canal d&apos;entrées TCP. Désactivé, l&apos;autre transport est utilisé, qui n&apos;est pas le chemin mesuré.</translation>
+        <translation>Le clavier et la souris passent par le canal d'entrées TCP. Désactivé, l'autre transport est utilisé, qui n'est pas le chemin mesuré.</translation>
     </message>
     <message>
         <source>Cleartext registration on port +13</source>
@@ -363,7 +473,7 @@ Audio, TEL QU&apos;ACCORDÉ&#xa0;: %12 Hz, %13 bits, codec %14
     </message>
     <message>
         <source>Off for a reason (K9 2026-08-21): this 25-byte packet is OUR OWN addition - the official client never sends it and only emits encrypted packets on that port. The suspicion is that it invalidates the input channel server-side.</source>
-        <translation>Désactivé pour une raison (K9 2026-08-21)&#xa0;: ce paquet de 25 octets est NOTRE propre ajout - le client officiel ne l&apos;envoie jamais et n&apos;émet que des paquets chiffrés sur ce port. On soupçonne qu&apos;il invalide le canal d&apos;entrées côté serveur.</translation>
+        <translation>Désactivé pour une raison (K9 2026-08-21) : ce paquet de 25 octets est NOTRE propre ajout - le client officiel ne l'envoie jamais et n'émet que des paquets chiffrés sur ce port. On soupçonne qu'il invalide le canal d'entrées côté serveur.</translation>
     </message>
     <message>
         <source>Certificates</source>
@@ -374,8 +484,8 @@ Audio, TEL QU&apos;ACCORDÉ&#xa0;: %12 Hz, %13 bits, codec %14
         <translation>Utiliser le magasin de certificats fourni</translation>
     </message>
     <message>
-        <source>Requests are verified against resources/cacert.pem. Off uses the library&apos;s own store - which on a Windows build whose DLLs sit beside the binary is wrong: MSYS2&apos;s libcurl derives its CA path from its own DLL&apos;s directory. That is what produced &quot;data centre unreachable&quot; at boot (WIN2).</source>
-        <translation>Les requêtes sont vérifiées avec resources/cacert.pem. Désactivé, c&apos;est le magasin propre de la bibliothèque qui sert - ce qui est faux sur un build Windows dont les DLL sont à côté du binaire&#xa0;: la libcurl de MSYS2 déduit son chemin de certificats du dossier de sa propre DLL. C&apos;est ce qui produisait «&#xa0;centre de données injoignable&#xa0;» au démarrage (WIN2).</translation>
+        <source>Requests are verified against resources/cacert.pem. Off uses the library's own store - which on a Windows build whose DLLs sit beside the binary is wrong: MSYS2's libcurl derives its CA path from its own DLL's directory. That is what produced "data centre unreachable" at boot (WIN2).</source>
+        <translation>Les requêtes sont vérifiées avec resources/cacert.pem. Désactivé, c'est le magasin propre de la bibliothèque qui sert - ce qui est faux sur un build Windows dont les DLL sont à côté du binaire : la libcurl de MSYS2 déduit son chemin de certificats du dossier de sa propre DLL. C'est ce qui produisait « centre de données injoignable » au démarrage (WIN2).</translation>
     </message>
     <message>
         <source>Certificate store file</source>
@@ -383,7 +493,7 @@ Audio, TEL QU&apos;ACCORDÉ&#xa0;: %12 Hz, %13 bits, codec %14
     </message>
     <message>
         <source>An explicit PEM bundle, taking precedence over the setting above. A path that does not exist fails every request with a certificate error, not with a file error.</source>
-        <translation>Un fichier PEM explicite, prioritaire sur le réglage ci-dessus. Un chemin qui n&apos;existe pas fait échouer chaque requête avec une erreur de certificat, et non une erreur de fichier.</translation>
+        <translation>Un fichier PEM explicite, prioritaire sur le réglage ci-dessus. Un chemin qui n'existe pas fait échouer chaque requête avec une erreur de certificat, et non une erreur de fichier.</translation>
     </message>
     <message>
         <source>Reconnection</source>
@@ -391,11 +501,11 @@ Audio, TEL QU&apos;ACCORDÉ&#xa0;: %12 Hz, %13 bits, codec %14
     </message>
     <message>
         <source>Channel open attempts</source>
-        <translation>Tentatives d&apos;ouverture d&apos;un canal</translation>
+        <translation>Tentatives d'ouverture d'un canal</translation>
     </message>
     <message>
         <source>How many times a media channel is reopened before the session gives up. Each attempt costs the delay below, so a large count turns a dead port into a long, silent wait.</source>
-        <translation>Combien de fois un canal média est rouvert avant que la session abandonne. Chaque tentative coûte le délai ci-dessous&#xa0;: un grand nombre transforme un port mort en une longue attente silencieuse.</translation>
+        <translation>Combien de fois un canal média est rouvert avant que la session abandonne. Chaque tentative coûte le délai ci-dessous : un grand nombre transforme un port mort en une longue attente silencieuse.</translation>
     </message>
     <message>
         <source>Delay between attempts</source>
@@ -403,7 +513,7 @@ Audio, TEL QU&apos;ACCORDÉ&#xa0;: %12 Hz, %13 bits, codec %14
     </message>
     <message>
         <source>Paid once per failed attempt, so the worst case is this times the attempt count. Too short and a port that is merely slow to bind is declared dead.</source>
-        <translation>Payé à chaque tentative échouée&#xa0;: le pire cas vaut ce délai multiplié par le nombre de tentatives. Trop court, un port simplement lent à s&apos;ouvrir est déclaré mort.</translation>
+        <translation>Payé à chaque tentative échouée : le pire cas vaut ce délai multiplié par le nombre de tentatives. Trop court, un port simplement lent à s'ouvrir est déclaré mort.</translation>
     </message>
     <message>
         <source>ms</source>
@@ -411,11 +521,11 @@ Audio, TEL QU&apos;ACCORDÉ&#xa0;: %12 Hz, %13 bits, codec %14
     </message>
     <message>
         <source>Reconnect the event stream</source>
-        <translation>Reconnecter le flux d&apos;événements</translation>
+        <translation>Reconnecter le flux d'événements</translation>
     </message>
     <message>
         <source>The SSE stream holds the server-side binding (KB 3.5), so its silent death means teardown. Off returns to the one-shot behaviour: one network blip on that stream and the session ends.</source>
-        <translation>Le flux SSE maintient la liaison côté serveur (KB 3.5)&#xa0;: sa mort silencieuse signifie la fin de la session. Désactivé, on revient au comportement à usage unique&#xa0;: une coupure réseau sur ce flux et la session se termine.</translation>
+        <translation>Le flux SSE maintient la liaison côté serveur (KB 3.5) : sa mort silencieuse signifie la fin de la session. Désactivé, on revient au comportement à usage unique : une coupure réseau sur ce flux et la session se termine.</translation>
     </message>
     <message>
         <source>Video</source>
@@ -430,8 +540,8 @@ Audio, TEL QU&apos;ACCORDÉ&#xa0;: %12 Hz, %13 bits, codec %14
         <translation>Codec</translation>
     </message>
     <message>
-        <source>Sent as the request&apos;s wire value (K13). A codec this machine&apos;s libavcodec lacks falls back to H.264 with a line in the log, so the request and the decoder can disagree: the log says what is really decoding.</source>
-        <translation>Envoyé comme valeur de protocole de la requête (K13). Un codec absent de la libavcodec de cette machine retombe sur H.264 avec une ligne dans le journal&#xa0;: la requête et le décodeur peuvent donc diverger, et c&apos;est le journal qui dit ce qui est réellement décodé.</translation>
+        <source>Sent as the request's wire value (K13). A codec this machine's libavcodec lacks falls back to H.264 with a line in the log, so the request and the decoder can disagree: the log says what is really decoding.</source>
+        <translation>Envoyé comme valeur de protocole de la requête (K13). Un codec absent de la libavcodec de cette machine retombe sur H.264 avec une ligne dans le journal : la requête et le décodeur peuvent donc diverger, et c'est le journal qui dit ce qui est réellement décodé.</translation>
     </message>
     <message>
         <source>H.264</source>
@@ -450,8 +560,8 @@ Audio, TEL QU&apos;ACCORDÉ&#xa0;: %12 Hz, %13 bits, codec %14
         <translation>Débit</translation>
     </message>
     <message>
-        <source>Automatic uses the session&apos;s own value. Also re-read when the adaptation applies a new rate, so it caps that too.</source>
-        <translation>Automatique utilise la valeur de la session. Relu aussi quand l&apos;adaptation applique un nouveau débit&#xa0;: il la plafonne donc également.</translation>
+        <source>Automatic uses the session's own value. Also re-read when the adaptation applies a new rate, so it caps that too.</source>
+        <translation>Automatique utilise la valeur de la session. Relu aussi quand l'adaptation applique un nouveau débit : il la plafonne donc également.</translation>
     </message>
     <message>
         <source>Automatic</source>
@@ -462,16 +572,16 @@ Audio, TEL QU&apos;ACCORDÉ&#xa0;: %12 Hz, %13 bits, codec %14
         <translation>Images par seconde</translation>
     </message>
     <message>
-        <source>Automatic uses the session&apos;s own value. Above the display&apos;s refresh rate it costs decode time and bandwidth for frames nothing shows.</source>
-        <translation>Automatique utilise la valeur de la session. Au-delà de la fréquence de l&apos;écran, cela coûte du décodage et de la bande passante pour des images que rien n&apos;affiche.</translation>
+        <source>Automatic uses the session's own value. Above the display's refresh rate it costs decode time and bandwidth for frames nothing shows.</source>
+        <translation>Automatique utilise la valeur de la session. Au-delà de la fréquence de l'écran, cela coûte du décodage et de la bande passante pour des images que rien n'affiche.</translation>
     </message>
     <message>
         <source>Encoder profile</source>
-        <translation>Profil d&apos;encodage</translation>
+        <translation>Profil d'encodage</translation>
     </message>
     <message>
         <source>The same three choices as the Borealis quality screen. Automatic sends nothing; Speed is the value the official client hardcodes (CI_BODY_5).</source>
-        <translation>Les trois mêmes choix que l&apos;écran de qualité de Borealis. Automatique n&apos;envoie rien&#xa0;; Vitesse est la valeur codée en dur par le client officiel (CI_BODY_5).</translation>
+        <translation>Les trois mêmes choix que l'écran de qualité de Borealis. Automatique n'envoie rien ; Vitesse est la valeur codée en dur par le client officiel (CI_BODY_5).</translation>
     </message>
     <message>
         <source>Speed</source>
@@ -483,7 +593,7 @@ Audio, TEL QU&apos;ACCORDÉ&#xa0;: %12 Hz, %13 bits, codec %14
     </message>
     <message>
         <source>Sharper text and thin coloured lines, at a large bandwidth cost. On the Switch it is never requested whatever this says: the hardware refuses it in four places, and asking would give a black screen at triple the bitrate.</source>
-        <translation>Texte et fines lignes colorées plus nets, pour un coût en bande passante important. Sur Switch, elle n&apos;est jamais demandée quoi qu&apos;indique ce réglage&#xa0;: le matériel la refuse à quatre endroits, et la demander donnerait un écran noir à un débit triplé.</translation>
+        <translation>Texte et fines lignes colorées plus nets, pour un coût en bande passante important. Sur Switch, elle n'est jamais demandée quoi qu'indique ce réglage : le matériel la refuse à quatre endroits, et la demander donnerait un écran noir à un débit triplé.</translation>
     </message>
     <message>
         <source>Adaptation</source>
@@ -502,8 +612,8 @@ Audio, TEL QU&apos;ACCORDÉ&#xa0;: %12 Hz, %13 bits, codec %14
         <translation>Ne jamais dépasser le débit choisi</translation>
     </message>
     <message>
-        <source>Your bitrate choice is the adaptation&apos;s ceiling (CFG-1 2026-09-11). Off restores the earlier rule: a ceiling frozen from the session parameters, or 20, with your choice ignored.</source>
-        <translation>Votre choix de débit est le plafond de l&apos;adaptation (CFG-1 2026-09-11). Désactivé, on revient à l&apos;ancienne règle&#xa0;: un plafond figé d&apos;après les paramètres de session, ou 20, votre choix étant ignoré.</translation>
+        <source>Your bitrate choice is the adaptation's ceiling (CFG-1 2026-09-11). Off restores the earlier rule: a ceiling frozen from the session parameters, or 20, with your choice ignored.</source>
+        <translation>Votre choix de débit est le plafond de l'adaptation (CFG-1 2026-09-11). Désactivé, on revient à l'ancienne règle : un plafond figé d'après les paramètres de session, ou 20, votre choix étant ignoré.</translation>
     </message>
     <message>
         <source>Decoding</source>
@@ -515,7 +625,7 @@ Audio, TEL QU&apos;ACCORDÉ&#xa0;: %12 Hz, %13 bits, codec %14
     </message>
     <message>
         <source>Automatic follows the platform and a marker file left by an earlier attempt. An explicit choice wins over both, which is how the software fallback is tested.</source>
-        <translation>Automatique suit la plateforme et un fichier marqueur laissé par une tentative précédente. Un choix explicite l&apos;emporte sur les deux, c&apos;est ainsi qu&apos;on teste le repli logiciel.</translation>
+        <translation>Automatique suit la plateforme et un fichier marqueur laissé par une tentative précédente. Un choix explicite l'emporte sur les deux, c'est ainsi qu'on teste le repli logiciel.</translation>
     </message>
     <message>
         <source>Off</source>
@@ -527,11 +637,11 @@ Audio, TEL QU&apos;ACCORDÉ&#xa0;: %12 Hz, %13 bits, codec %14
     </message>
     <message>
         <source>Error concealment</source>
-        <translation>Masquage d&apos;erreurs</translation>
+        <translation>Masquage d'erreurs</translation>
     </message>
     <message>
         <source>MEASURED: an A/B of four modes showed no concealment alone gives a clean picture with the taskbar legible, while guessing invents macroblocks for the lost chunks - a smear of vertical stripes. Guessing is the earlier (N40) behaviour.</source>
-        <translation>MESURÉ&#xa0;: un comparatif de quatre modes a montré que sans masquage on obtient une image propre avec la barre des tâches lisible, alors que l&apos;estimation invente des macroblocs pour les fragments perdus - une traînée de rayures verticales. L&apos;estimation est l&apos;ancien comportement (N40).</translation>
+        <translation>MESURÉ : un comparatif de quatre modes a montré que sans masquage on obtient une image propre avec la barre des tâches lisible, alors que l'estimation invente des macroblocs pour les fragments perdus - une traînée de rayures verticales. L'estimation est l'ancien comportement (N40).</translation>
     </message>
     <message>
         <source>None</source>
@@ -546,8 +656,8 @@ Audio, TEL QU&apos;ACCORDÉ&#xa0;: %12 Hz, %13 bits, codec %14
         <translation>Décodage à faible délai (débogage)</translation>
     </message>
     <message>
-        <source>libavcodec&apos;s LOW_DELAY flag is a deviation from the official client, which does not set it; the decoder was returned to defaults to match it bit for bit. Kept for debugging.</source>
-        <translation>Le drapeau LOW_DELAY de libavcodec est un écart par rapport au client officiel, qui ne le positionne pas&#xa0;; le décodeur a été remis à ses valeurs par défaut pour lui correspondre au bit près. Conservé pour le débogage.</translation>
+        <source>libavcodec's LOW_DELAY flag is a deviation from the official client, which does not set it; the decoder was returned to defaults to match it bit for bit. Kept for debugging.</source>
+        <translation>Le drapeau LOW_DELAY de libavcodec est un écart par rapport au client officiel, qui ne le positionne pas ; le décodeur a été remis à ses valeurs par défaut pour lui correspondre au bit près. Conservé pour le débogage.</translation>
     </message>
     <message>
         <source>Experimental</source>
@@ -559,7 +669,7 @@ Audio, TEL QU&apos;ACCORDÉ&#xa0;: %12 Hz, %13 bits, codec %14
     </message>
     <message>
         <source>Sets the HDR flag of the video request. What the server and this client then do with it has not been measured.</source>
-        <translation>Positionne le drapeau HDR de la requête vidéo. Ce que le serveur et ce client en font ensuite n&apos;a pas été mesuré.</translation>
+        <translation>Positionne le drapeau HDR de la requête vidéo. Ce que le serveur et ce client en font ensuite n'a pas été mesuré.</translation>
     </message>
     <message>
         <source>Requested height</source>
@@ -567,7 +677,7 @@ Audio, TEL QU&apos;ACCORDÉ&#xa0;: %12 Hz, %13 bits, codec %14
     </message>
     <message>
         <source>A test override (N26) of the height asked of the server, introduced to find out whether the server adapts its stream to a smaller request. Not a validated setting.</source>
-        <translation>Une surcharge de test (N26) de la hauteur demandée au serveur, introduite pour savoir si le serveur adapte son flux à une demande plus petite. Ce n&apos;est pas un réglage validé.</translation>
+        <translation>Une surcharge de test (N26) de la hauteur demandée au serveur, introduite pour savoir si le serveur adapte son flux à une demande plus petite. Ce n'est pas un réglage validé.</translation>
     </message>
     <message>
         <source>Session default (1080p)</source>
@@ -587,7 +697,7 @@ Audio, TEL QU&apos;ACCORDÉ&#xa0;: %12 Hz, %13 bits, codec %14
     </message>
     <message>
         <source>What the official client calls high fidelity is not a bitrate, it is a codec: lossless FLAC instead of Opus (K14). The account allows both; FLAC costs several times the bandwidth.</source>
-        <translation>Ce que le client officiel appelle haute fidélité n&apos;est pas un débit mais un codec&#xa0;: FLAC sans perte au lieu d&apos;Opus (K14). Le compte autorise les deux&#xa0;; FLAC coûte plusieurs fois la bande passante.</translation>
+        <translation>Ce que le client officiel appelle haute fidélité n'est pas un débit mais un codec : FLAC sans perte au lieu d'Opus (K14). Le compte autorise les deux ; FLAC coûte plusieurs fois la bande passante.</translation>
     </message>
     <message>
         <source>Standard (Opus)</source>
@@ -602,8 +712,8 @@ Audio, TEL QU&apos;ACCORDÉ&#xa0;: %12 Hz, %13 bits, codec %14
         <translation>Volume forcé</translation>
     </message>
     <message>
-        <source>Not forced, the volume is the client&apos;s own. Forced, it applies from the moment the decoder opens - which is how a measurement starts silent. Above 100 % is amplification.</source>
-        <translation>Non forcé, le volume est celui du client. Forcé, il s&apos;applique dès l&apos;ouverture du décodeur - c&apos;est ainsi qu&apos;une mesure démarre en silence. Au-delà de 100 %, c&apos;est de l&apos;amplification.</translation>
+        <source>Not forced, the volume is the client's own. Forced, it applies from the moment the decoder opens - which is how a measurement starts silent. Above 100 % is amplification.</source>
+        <translation>Non forcé, le volume est celui du client. Forcé, il s'applique dès l'ouverture du décodeur - c'est ainsi qu'une mesure démarre en silence. Au-delà de 100 %, c'est de l'amplification.</translation>
     </message>
     <message>
         <source>%</source>
@@ -619,7 +729,7 @@ Audio, TEL QU&apos;ACCORDÉ&#xa0;: %12 Hz, %13 bits, codec %14
     </message>
     <message>
         <source>Past this much queued audio, the queue is trimmed back - for gaming, sound a third of a second late is worse than a glitch. The trim is faded, not cut (OUT-5). 0 disables the catch-up; values below 20 are raised to 20.</source>
-        <translation>Au-delà de cette quantité d&apos;audio en attente, la file est raccourcie - pour le jeu, un son en retard d&apos;un tiers de seconde est pire qu&apos;un accroc. La coupe est en fondu, pas franche (OUT-5). 0 désactive le rattrapage&#xa0;; les valeurs sous 20 sont portées à 20.</translation>
+        <translation>Au-delà de cette quantité d'audio en attente, la file est raccourcie - pour le jeu, un son en retard d'un tiers de seconde est pire qu'un accroc. La coupe est en fondu, pas franche (OUT-5). 0 désactive le rattrapage ; les valeurs sous 20 sont portées à 20.</translation>
     </message>
     <message>
         <source>Minimum buffer</source>
@@ -627,7 +737,7 @@ Audio, TEL QU&apos;ACCORDÉ&#xa0;: %12 Hz, %13 bits, codec %14
     </message>
     <message>
         <source>How much audio is kept queued. Measured on console: 20 gave 33-48 ms of latency, 16 gave 25-29 ms, 12 gave 21-24 ms; 16 keeps a margin the measurement could not yet justify removing. 0 brings back the starving behaviour.</source>
-        <translation>Quantité d&apos;audio gardée en attente. Mesuré sur console&#xa0;: 20 donnait 33-48 ms de latence, 16 donnait 25-29 ms, 12 donnait 21-24 ms&#xa0;; 16 garde une marge que la mesure ne permettait pas encore de supprimer. 0 ramène le comportement affamé.</translation>
+        <translation>Quantité d'audio gardée en attente. Mesuré sur console : 20 donnait 33-48 ms de latence, 16 donnait 25-29 ms, 12 donnait 21-24 ms ; 16 garde une marge que la mesure ne permettait pas encore de supprimer. 0 ramène le comportement affamé.</translation>
     </message>
     <message>
         <source>Trim cross-fade</source>
@@ -635,7 +745,7 @@ Audio, TEL QU&apos;ACCORDÉ&#xa0;: %12 Hz, %13 bits, codec %14
     </message>
     <message>
         <source>The length of the fade across a trim. 0 restores the hard cut exactly; the maximum is 20.</source>
-        <translation>La durée du fondu lors d&apos;une coupe. 0 rétablit exactement la coupe franche&#xa0;; le maximum est 20.</translation>
+        <translation>La durée du fondu lors d'une coupe. 0 rétablit exactement la coupe franche ; le maximum est 20.</translation>
     </message>
     <message>
         <source>ALSA latency (Linux)</source>
@@ -643,7 +753,7 @@ Audio, TEL QU&apos;ACCORDÉ&#xa0;: %12 Hz, %13 bits, codec %14
     </message>
     <message>
         <source>The latency asked of ALSA: lower underruns, higher is lip-sync error that cannot be removed later.</source>
-        <translation>La latence demandée à ALSA&#xa0;: plus basse, elle provoque des sous-alimentations&#xa0;; plus haute, c&apos;est un décalage son-image impossible à rattraper ensuite.</translation>
+        <translation>La latence demandée à ALSA : plus basse, elle provoque des sous-alimentations ; plus haute, c'est un décalage son-image impossible à rattraper ensuite.</translation>
     </message>
     <message>
         <source>Output</source>
@@ -655,15 +765,15 @@ Audio, TEL QU&apos;ACCORDÉ&#xa0;: %12 Hz, %13 bits, codec %14
     </message>
     <message>
         <source>Off returns to the path of before 2026-09-11, where audio was decoded and counted but never played (OUT-3). No effect elsewhere.</source>
-        <translation>Désactivé, on revient au chemin d&apos;avant le 2026-09-11, où l&apos;audio était décodé et compté mais jamais joué (OUT-3). Sans effet ailleurs.</translation>
+        <translation>Désactivé, on revient au chemin d'avant le 2026-09-11, où l'audio était décodé et compté mais jamais joué (OUT-3). Sans effet ailleurs.</translation>
     </message>
     <message>
         <source>High-priority audio thread (Windows)</source>
         <translation>Thread audio prioritaire (Windows)</translation>
     </message>
     <message>
-        <source>Registers the output thread with Windows&apos; multimedia scheduler. No load cell measured worse with it. It cannot help the session&apos;s receive thread, which is where starvation actually begins.</source>
-        <translation>Inscrit le thread de sortie auprès de l&apos;ordonnanceur multimédia de Windows. Aucune configuration de charge n&apos;a été mesurée pire avec. Il ne peut pas aider le thread de réception de la session, là où la famine commence réellement.</translation>
+        <source>Registers the output thread with Windows' multimedia scheduler. No load cell measured worse with it. It cannot help the session's receive thread, which is where starvation actually begins.</source>
+        <translation>Inscrit le thread de sortie auprès de l'ordonnanceur multimédia de Windows. Aucune configuration de charge n'a été mesurée pire avec. Il ne peut pas aider le thread de réception de la session, là où la famine commence réellement.</translation>
     </message>
     <message>
         <source>Revive a silent audio channel</source>
@@ -671,15 +781,15 @@ Audio, TEL QU&apos;ACCORDÉ&#xa0;: %12 Hz, %13 bits, codec %14
     </message>
     <message>
         <source>Tries to recover an audio channel that stops delivering, and logs how long it stayed silent. Its own comment calls it an executable hypothesis: a real revival has not yet been observed.</source>
-        <translation>Tente de récupérer un canal audio qui cesse de livrer, et journalise combien de temps il est resté muet. Son propre commentaire le qualifie d&apos;hypothèse exécutable&#xa0;: aucune relance réelle n&apos;a encore été observée.</translation>
+        <translation>Tente de récupérer un canal audio qui cesse de livrer, et journalise combien de temps il est resté muet. Son propre commentaire le qualifie d'hypothèse exécutable : aucune relance réelle n'a encore été observée.</translation>
     </message>
     <message>
         <source>Hardware Opus decoder (Switch)</source>
         <translation>Décodeur Opus matériel (Switch)</translation>
     </message>
     <message>
-        <source>Switch only: decodes Opus on the console&apos;s hardware decoder instead of libopus. No effect on a desktop.</source>
-        <translation>Switch uniquement&#xa0;: décode l&apos;Opus sur le décodeur matériel de la console au lieu de libopus. Sans effet sur un PC.</translation>
+        <source>Switch only: decodes Opus on the console's hardware decoder instead of libopus. No effect on a desktop.</source>
+        <translation>Switch uniquement : décode l'Opus sur le décodeur matériel de la console au lieu de libopus. Sans effet sur un PC.</translation>
     </message>
     <message>
         <source>Input</source>
@@ -695,7 +805,7 @@ Audio, TEL QU&apos;ACCORDÉ&#xa0;: %12 Hz, %13 bits, codec %14
     </message>
     <message>
         <source>Automatic announces one when a pad is actually present. Always announces one with no pad attached; Never leaves the VM with no controller at all.</source>
-        <translation>Automatique en annonce une quand une manette est réellement présente. Toujours en annonce une même sans manette branchée&#xa0;; Jamais laisse la VM sans aucune manette.</translation>
+        <translation>Automatique en annonce une quand une manette est réellement présente. Toujours en annonce une même sans manette branchée ; Jamais laisse la VM sans aucune manette.</translation>
     </message>
     <message>
         <source>Never</source>
@@ -711,7 +821,7 @@ Audio, TEL QU&apos;ACCORDÉ&#xa0;: %12 Hz, %13 bits, codec %14
     </message>
     <message>
         <source>Which controller the VM creates. Xbox 360 (XInput) is what Windows games support best; it was DualShock 4 until the guided capture turned out to have been made with one. The server refuses any other value, and then no rumble ever follows.</source>
-        <translation>Quelle manette la VM crée. Xbox 360 (XInput) est ce que les jeux Windows prennent le mieux en charge&#xa0;; c&apos;était DualShock 4 jusqu&apos;à ce qu&apos;on découvre que la capture guidée avait été faite avec une. Le serveur refuse toute autre valeur, et alors aucune vibration ne suit.</translation>
+        <translation>Quelle manette la VM crée. Xbox 360 (XInput) est ce que les jeux Windows prennent le mieux en charge ; c'était DualShock 4 jusqu'à ce qu'on découvre que la capture guidée avait été faite avec une. Le serveur refuse toute autre valeur, et alors aucune vibration ne suit.</translation>
     </message>
     <message>
         <source>Joy-Con (left)</source>
@@ -731,15 +841,15 @@ Audio, TEL QU&apos;ACCORDÉ&#xa0;: %12 Hz, %13 bits, codec %14
     </message>
     <message>
         <source>Scales every rumble packet; 0 is silence with the channel still live. Read per packet, so it applies at once.</source>
-        <translation>Met à l&apos;échelle chaque paquet de vibration&#xa0;; 0 est le silence avec le canal toujours actif. Lu à chaque paquet, donc appliqué immédiatement.</translation>
+        <translation>Met à l'échelle chaque paquet de vibration ; 0 est le silence avec le canal toujours actif. Lu à chaque paquet, donc appliqué immédiatement.</translation>
     </message>
     <message>
         <source>Read local pads (Linux)</source>
         <translation>Lire les manettes locales (Linux)</translation>
     </message>
     <message>
-        <source>The Linux desktop&apos;s evdev reader, opt-in while unvalidated. It decides whether THIS machine&apos;s pads are read, not whether a pad is announced to the VM - that is &quot;Announce a gamepad&quot;.</source>
-        <translation>Le lecteur evdev du bureau Linux, à activer explicitement tant qu&apos;il n&apos;est pas validé. Il décide si les manettes de CETTE machine sont lues, pas si une manette est annoncée à la VM - c&apos;est «&#xa0;Annoncer une manette&#xa0;».</translation>
+        <source>The Linux desktop's evdev reader, opt-in while unvalidated. It decides whether THIS machine's pads are read, not whether a pad is announced to the VM - that is "Announce a gamepad".</source>
+        <translation>Le lecteur evdev du bureau Linux, à activer explicitement tant qu'il n'est pas validé. Il décide si les manettes de CETTE machine sont lues, pas si une manette est annoncée à la VM - c'est « Annoncer une manette ».</translation>
     </message>
     <message>
         <source>Mouse</source>
@@ -751,7 +861,7 @@ Audio, TEL QU&apos;ACCORDÉ&#xa0;: %12 Hz, %13 bits, codec %14
     </message>
     <message>
         <source>Automatic is absolute on the desktop and relative once a game captures the mouse. Forcing relative brings back the deltas whose clamping produced an offset between the mouse, the cursor shown and the click.</source>
-        <translation>Automatique est absolu sur le bureau et relatif dès qu&apos;un jeu capture la souris. Forcer le relatif ramène les déplacements relatifs dont l&apos;écrêtage produisait un décalage entre la souris, le curseur affiché et le clic.</translation>
+        <translation>Automatique est absolu sur le bureau et relatif dès qu'un jeu capture la souris. Forcer le relatif ramène les déplacements relatifs dont l'écrêtage produisait un décalage entre la souris, le curseur affiché et le clic.</translation>
     </message>
     <message>
         <source>Always relative</source>
@@ -790,8 +900,8 @@ Audio, TEL QU&apos;ACCORDÉ&#xa0;: %12 Hz, %13 bits, codec %14
         <translation>Touches étendues</translation>
     </message>
     <message>
-        <source>Off sends every key on the plain template - a fallback in case the server ever refuses the extended one - and the extended keys then fall back to their keypad namesakes: the Up arrow types &quot;8&quot;.</source>
-        <translation>Désactivé, toutes les touches partent sur le modèle simple - un repli au cas où le serveur refuserait un jour le modèle étendu - et les touches étendues retombent alors sur leurs homonymes du pavé numérique&#xa0;: la flèche Haut tape «&#xa0;8&#xa0;».</translation>
+        <source>Off sends every key on the plain template - a fallback in case the server ever refuses the extended one - and the extended keys then fall back to their keypad namesakes: the Up arrow types "8".</source>
+        <translation>Désactivé, toutes les touches partent sur le modèle simple - un repli au cas où le serveur refuserait un jour le modèle étendu - et les touches étendues retombent alors sur leurs homonymes du pavé numérique : la flèche Haut tape « 8 ».</translation>
     </message>
     <message>
         <source>Send system shortcuts to the VM (Windows)</source>
@@ -799,7 +909,7 @@ Audio, TEL QU&apos;ACCORDÉ&#xa0;: %12 Hz, %13 bits, codec %14
     </message>
     <message>
         <source>A low-level hook sends Alt+Tab and the Windows key to the VM. A captured key is eaten: neither the Windows shell nor this window sees it.</source>
-        <translation>Un hook bas niveau envoie Alt+Tab et la touche Windows à la VM. Une touche capturée est consommée&#xa0;: ni le shell Windows ni cette fenêtre ne la voient.</translation>
+        <translation>Un hook bas niveau envoie Alt+Tab et la touche Windows à la VM. Une touche capturée est consommée : ni le shell Windows ni cette fenêtre ne la voient.</translation>
     </message>
     <message>
         <source>Clipboard</source>
@@ -814,8 +924,8 @@ Audio, TEL QU&apos;ACCORDÉ&#xa0;: %12 Hz, %13 bits, codec %14
         <translation>Sens</translation>
     </message>
     <message>
-        <source>One way protects what must not leave: otherwise anything copied on the VM lands in this machine&apos;s clipboard, where any application can read it. Enforced at the pull - with &quot;VM to this PC&quot; off, the text is never asked for.</source>
-        <translation>Un seul sens protège ce qui ne doit pas sortir&#xa0;: sinon tout ce qui est copié sur la VM arrive dans le presse-papiers de cette machine, où n&apos;importe quelle application peut le lire. Appliqué à la demande - avec «&#xa0;La VM vers ce PC&#xa0;» désactivé, le texte n&apos;est jamais demandé.</translation>
+        <source>One way protects what must not leave: otherwise anything copied on the VM lands in this machine's clipboard, where any application can read it. Enforced at the pull - with "VM to this PC" off, the text is never asked for.</source>
+        <translation>Un seul sens protège ce qui ne doit pas sortir : sinon tout ce qui est copié sur la VM arrive dans le presse-papiers de cette machine, où n'importe quelle application peut le lire. Appliqué à la demande - avec « La VM vers ce PC » désactivé, le texte n'est jamais demandé.</translation>
     </message>
     <message>
         <source>Both ways</source>
@@ -835,7 +945,7 @@ Audio, TEL QU&apos;ACCORDÉ&#xa0;: %12 Hz, %13 bits, codec %14
     </message>
     <message>
         <source>How often the local clipboard is looked at. One call with no lock and no conversion, so being wrong here is cheap either way.</source>
-        <translation>Fréquence à laquelle le presse-papiers local est consulté. Un seul appel sans verrou ni conversion&#xa0;: se tromper ici coûte peu dans un sens comme dans l&apos;autre.</translation>
+        <translation>Fréquence à laquelle le presse-papiers local est consulté. Un seul appel sans verrou ni conversion : se tromper ici coûte peu dans un sens comme dans l'autre.</translation>
     </message>
     <message>
         <source>Limits</source>
@@ -847,7 +957,7 @@ Audio, TEL QU&apos;ACCORDÉ&#xa0;: %12 Hz, %13 bits, codec %14
     </message>
     <message>
         <source>The ceiling on one clipboard transfer. Parsed with strtoul: a number past INT_MAX used to wrap to a ceiling of almost 4 GiB.</source>
-        <translation>Le plafond d&apos;un transfert de presse-papiers. Lu avec strtoul&#xa0;: un nombre au-delà d&apos;INT_MAX donnait autrefois un plafond de près de 4 Gio.</translation>
+        <translation>Le plafond d'un transfert de presse-papiers. Lu avec strtoul : un nombre au-delà d'INT_MAX donnait autrefois un plafond de près de 4 Gio.</translation>
     </message>
     <message>
         <source>Strict frame parsing</source>
@@ -855,7 +965,7 @@ Audio, TEL QU&apos;ACCORDÉ&#xa0;: %12 Hz, %13 bits, codec %14
     </message>
     <message>
         <source>A clipboard frame that does not parse exactly is dropped. Off accepts what the lenient parser can recover.</source>
-        <translation>Une trame de presse-papiers qui ne s&apos;analyse pas exactement est rejetée. Désactivé, on accepte ce que l&apos;analyseur tolérant parvient à récupérer.</translation>
+        <translation>Une trame de presse-papiers qui ne s'analyse pas exactement est rejetée. Désactivé, on accepte ce que l'analyseur tolérant parvient à récupérer.</translation>
     </message>
     <message>
         <source>File transfer</source>
@@ -867,11 +977,11 @@ Audio, TEL QU&apos;ACCORDÉ&#xa0;: %12 Hz, %13 bits, codec %14
     </message>
     <message>
         <source>Write the SFTP credential to a file</source>
-        <translation>Écrire l&apos;identifiant SFTP dans un fichier</translation>
+        <translation>Écrire l'identifiant SFTP dans un fichier</translation>
     </message>
     <message>
-        <source>Writes halyard-data/sftp.txt and sftp_password.bin for the session. THE PASSWORD GRANTS READ AND WRITE ON THE VM&apos;S WHOLE FILESYSTEM. Both files are removed when the session ends cleanly; a crash leaves them. No third-party client can use it: it is a 395-byte PEM, newlines included, used as a password (FT5).</source>
-        <translation>Écrit halyard-data/sftp.txt et sftp_password.bin pour la session. LE MOT DE PASSE DONNE LECTURE ET ÉCRITURE SUR TOUT LE SYSTÈME DE FICHIERS DE LA VM. Les deux fichiers sont supprimés quand la session se termine proprement&#xa0;; un plantage les laisse. Aucun client tiers ne peut s&apos;en servir&#xa0;: c&apos;est un PEM de 395 octets, retours à la ligne compris, utilisé comme mot de passe (FT5).</translation>
+        <source>Writes halyard-data/sftp.txt and sftp_password.bin for the session. THE PASSWORD GRANTS READ AND WRITE ON THE VM'S WHOLE FILESYSTEM. Both files are removed when the session ends cleanly; a crash leaves them. No third-party client can use it: it is a 395-byte PEM, newlines included, used as a password (FT5).</source>
+        <translation>Écrit halyard-data/sftp.txt et sftp_password.bin pour la session. LE MOT DE PASSE DONNE LECTURE ET ÉCRITURE SUR TOUT LE SYSTÈME DE FICHIERS DE LA VM. Les deux fichiers sont supprimés quand la session se termine proprement ; un plantage les laisse. Aucun client tiers ne peut s'en servir : c'est un PEM de 395 octets, retours à la ligne compris, utilisé comme mot de passe (FT5).</translation>
     </message>
     <message>
         <source>Allow absolute remote paths</source>
@@ -879,7 +989,7 @@ Audio, TEL QU&apos;ACCORDÉ&#xa0;: %12 Hz, %13 bits, codec %14
     </message>
     <message>
         <source>The session log says so when it is on. Absolute paths reach anywhere the credential can - which is everywhere.</source>
-        <translation>Le journal de session le signale quand c&apos;est activé. Les chemins absolus atteignent tout ce que l&apos;identifiant permet - c&apos;est-à-dire tout.</translation>
+        <translation>Le journal de session le signale quand c'est activé. Les chemins absolus atteignent tout ce que l'identifiant permet - c'est-à-dire tout.</translation>
     </message>
     <message>
         <source>Resilience</source>
@@ -895,7 +1005,7 @@ Audio, TEL QU&apos;ACCORDÉ&#xa0;: %12 Hz, %13 bits, codec %14
     </message>
     <message>
         <source>A missing video chunk is requested again rather than waited out until the next keyframe.</source>
-        <translation>Un fragment vidéo manquant est redemandé plutôt qu&apos;attendu jusqu&apos;à la prochaine image clé.</translation>
+        <translation>Un fragment vidéo manquant est redemandé plutôt qu'attendu jusqu'à la prochaine image clé.</translation>
     </message>
     <message>
         <source>Wait for late chunks</source>
@@ -911,7 +1021,7 @@ Audio, TEL QU&apos;ACCORDÉ&#xa0;: %12 Hz, %13 bits, codec %14
     </message>
     <message>
         <source>A frame still missing chunks when the next one begins is given to the decoder instead of being discarded. Off is the earlier behaviour, which the test suite runs as the defective counter-case.</source>
-        <translation>Une image à laquelle il manque encore des fragments quand la suivante commence est transmise au décodeur au lieu d&apos;être jetée. Désactivé, c&apos;est l&apos;ancien comportement, que la suite de tests exécute comme contre-exemple défectueux.</translation>
+        <translation>Une image à laquelle il manque encore des fragments quand la suivante commence est transmise au décodeur au lieu d'être jetée. Désactivé, c'est l'ancien comportement, que la suite de tests exécute comme contre-exemple défectueux.</translation>
     </message>
     <message>
         <source>Keyframes and stalls</source>
@@ -922,8 +1032,8 @@ Audio, TEL QU&apos;ACCORDÉ&#xa0;: %12 Hz, %13 bits, codec %14
         <translation>Demander une image clé en cas de perte</translation>
     </message>
     <message>
-        <source>A damaged frame propagates into every frame that references it, so without this a lost chunk smears until the server&apos;s next scheduled keyframe.</source>
-        <translation>Une image abîmée se propage dans toutes celles qui y font référence&#xa0;: sans ce réglage, un fragment perdu laisse une traînée jusqu&apos;à la prochaine image clé programmée par le serveur.</translation>
+        <source>A damaged frame propagates into every frame that references it, so without this a lost chunk smears until the server's next scheduled keyframe.</source>
+        <translation>Une image abîmée se propage dans toutes celles qui y font référence : sans ce réglage, un fragment perdu laisse une traînée jusqu'à la prochaine image clé programmée par le serveur.</translation>
     </message>
     <message>
         <source>Request a keyframe on a stall</source>
@@ -931,7 +1041,7 @@ Audio, TEL QU&apos;ACCORDÉ&#xa0;: %12 Hz, %13 bits, codec %14
     </message>
     <message>
         <source>The same for a stream that goes QUIET rather than lossy - the case the loss path cannot see, because nothing arrives to measure losses in.</source>
-        <translation>La même chose pour un flux qui devient SILENCIEUX plutôt que lacunaire - le cas que la détection de pertes ne peut pas voir, puisque rien n&apos;arrive sur quoi mesurer des pertes.</translation>
+        <translation>La même chose pour un flux qui devient SILENCIEUX plutôt que lacunaire - le cas que la détection de pertes ne peut pas voir, puisque rien n'arrive sur quoi mesurer des pertes.</translation>
     </message>
     <message>
         <source>Drop an incomplete keyframe</source>
@@ -939,7 +1049,7 @@ Audio, TEL QU&apos;ACCORDÉ&#xa0;: %12 Hz, %13 bits, codec %14
     </message>
     <message>
         <source>Every later frame references the keyframe, so a damaged one damages them all; dropping it costs a freeze until the next.</source>
-        <translation>Toutes les images suivantes font référence à l&apos;image clé&#xa0;: une image clé abîmée les abîme toutes&#xa0;; la jeter coûte un gel jusqu&apos;à la suivante.</translation>
+        <translation>Toutes les images suivantes font référence à l'image clé : une image clé abîmée les abîme toutes ; la jeter coûte un gel jusqu'à la suivante.</translation>
     </message>
     <message>
         <source>Stall after</source>
@@ -963,7 +1073,7 @@ Audio, TEL QU&apos;ACCORDÉ&#xa0;: %12 Hz, %13 bits, codec %14
     </message>
     <message>
         <source>Debug adds periodic measurements; Trace logs per packet and per frame and is unreadable and expensive. The variable keeps its old French name: env.txt files in the wild use it.</source>
-        <translation>Débogage ajoute des mesures périodiques&#xa0;; Trace journalise à chaque paquet et chaque image, illisible et coûteux. La variable garde son ancien nom français&#xa0;: des fichiers env.txt existants l&apos;utilisent.</translation>
+        <translation>Débogage ajoute des mesures périodiques ; Trace journalise à chaque paquet et chaque image, illisible et coûteux. La variable garde son ancien nom français : des fichiers env.txt existants l'utilisent.</translation>
     </message>
     <message>
         <source>Errors only</source>
@@ -990,8 +1100,8 @@ Audio, TEL QU&apos;ACCORDÉ&#xa0;: %12 Hz, %13 bits, codec %14
         <translation>Catégories journalisées</translation>
     </message>
     <message>
-        <source>Written as a bitmask in journal.h&apos;s order. Unchecking everything means all of them again: core ignores an empty mask rather than logging nothing.</source>
-        <translation>Écrit comme un masque de bits dans l&apos;ordre de journal.h. Tout décocher revient à toutes les catégories&#xa0;: le cœur ignore un masque vide plutôt que de ne rien journaliser.</translation>
+        <source>Written as a bitmask in journal.h's order. Unchecking everything means all of them again: core ignores an empty mask rather than logging nothing.</source>
+        <translation>Écrit comme un masque de bits dans l'ordre de journal.h. Tout décocher revient à toutes les catégories : le cœur ignore un masque vide plutôt que de ne rien journaliser.</translation>
     </message>
     <message>
         <source>Legacy</source>
@@ -1019,7 +1129,7 @@ Audio, TEL QU&apos;ACCORDÉ&#xa0;: %12 Hz, %13 bits, codec %14
     </message>
     <message>
         <source>Logs contain live credentials (SECURITY.md), so every extra one kept is another copy of them on disk.</source>
-        <translation>Les journaux contiennent des identifiants actifs (SECURITY.md)&#xa0;: chaque journal conservé en plus est une copie de plus sur le disque.</translation>
+        <translation>Les journaux contiennent des identifiants actifs (SECURITY.md) : chaque journal conservé en plus est une copie de plus sur le disque.</translation>
     </message>
     <message>
         <source>Trace HTTP requests</source>
@@ -1027,7 +1137,7 @@ Audio, TEL QU&apos;ACCORDÉ&#xa0;: %12 Hz, %13 bits, codec %14
     </message>
     <message>
         <source>Its PRESENCE enables it, whatever the value - which is why off removes the variable instead of writing 0. The trace includes request headers: treat it as containing credentials.</source>
-        <translation>Sa PRÉSENCE l&apos;active, quelle que soit sa valeur - c&apos;est pourquoi désactiver supprime la variable au lieu d&apos;écrire 0. La trace contient les en-têtes des requêtes&#xa0;: considérez qu&apos;elle contient des identifiants.</translation>
+        <translation>Sa PRÉSENCE l'active, quelle que soit sa valeur - c'est pourquoi désactiver supprime la variable au lieu d'écrire 0. La trace contient les en-têtes des requêtes : considérez qu'elle contient des identifiants.</translation>
     </message>
     <message>
         <source>Tests and probes</source>
@@ -1070,15 +1180,15 @@ Audio, TEL QU&apos;ACCORDÉ&#xa0;: %12 Hz, %13 bits, codec %14
         <translation>Empreinte de chaque image</translation>
     </message>
     <message>
-        <source>A hash of each decoded frame&apos;s luma, to find the first frame where the live decode parts ways with an offline decode of the same stream. A full pass over the luma per frame: a measurement tool.</source>
-        <translation>Une empreinte de la luminance de chaque image décodée, pour trouver la première image où le décodage en direct diverge d&apos;un décodage hors ligne du même flux. Un passage complet sur la luminance à chaque image&#xa0;: un outil de mesure.</translation>
+        <source>A hash of each decoded frame's luma, to find the first frame where the live decode parts ways with an offline decode of the same stream. A full pass over the luma per frame: a measurement tool.</source>
+        <translation>Une empreinte de la luminance de chaque image décodée, pour trouver la première image où le décodage en direct diverge d'un décodage hors ligne du même flux. Un passage complet sur la luminance à chaque image : un outil de mesure.</translation>
     </message>
 </context>
 <context>
     <name>SettingsWindow</name>
     <message>
         <source>The environment variable this row writes - what the log and env.txt call it.</source>
-        <translation>La variable d&apos;environnement que cette ligne écrit - le nom qu&apos;utilisent le journal et env.txt.</translation>
+        <translation>La variable d'environnement que cette ligne écrit - le nom qu'utilisent le journal et env.txt.</translation>
     </message>
     <message>
         <source>On</source>
@@ -1098,7 +1208,7 @@ Audio, TEL QU&apos;ACCORDÉ&#xa0;: %12 Hz, %13 bits, codec %14
     </message>
     <message>
         <source>Search - a setting, a variable name, or a word from a description</source>
-        <translation>Rechercher - un réglage, un nom de variable ou un mot d&apos;une description</translation>
+        <translation>Rechercher - un réglage, un nom de variable ou un mot d'une description</translation>
     </message>
     <message>
         <source>General</source>
@@ -1114,19 +1224,19 @@ Audio, TEL QU&apos;ACCORDÉ&#xa0;: %12 Hz, %13 bits, codec %14
     </message>
     <message>
         <source>Set outside the application (environment or env.txt) - this window cannot change it.</source>
-        <translation>Défini hors de l&apos;application (environnement ou env.txt) - cette fenêtre ne peut pas le modifier.</translation>
+        <translation>Défini hors de l'application (environnement ou env.txt) - cette fenêtre ne peut pas le modifier.</translation>
     </message>
     <message>
         <source>Default: %1</source>
-        <translation>Par défaut&#xa0;: %1</translation>
+        <translation>Par défaut : %1</translation>
     </message>
     <message>
         <source>applies immediately</source>
-        <translation>s&apos;applique immédiatement</translation>
+        <translation>s'applique immédiatement</translation>
     </message>
     <message>
         <source>applies on the next session</source>
-        <translation>s&apos;applique à la prochaine session</translation>
+        <translation>s'applique à la prochaine session</translation>
     </message>
     <message>
         <source>%1 (default)</source>
@@ -1134,7 +1244,7 @@ Audio, TEL QU&apos;ACCORDÉ&#xa0;: %12 Hz, %13 bits, codec %14
     </message>
     <message>
         <source>Custom: %1</source>
-        <translation>Personnalisé&#xa0;: %1</translation>
+        <translation>Personnalisé : %1</translation>
     </message>
     <message>
         <source>Automatic</source>
@@ -1154,11 +1264,11 @@ Audio, TEL QU&apos;ACCORDÉ&#xa0;: %12 Hz, %13 bits, codec %14
     </message>
     <message>
         <source>Set outside the application - the environment has priority over this window.</source>
-        <translation>Défini hors de l&apos;application - l&apos;environnement est prioritaire sur cette fenêtre.</translation>
+        <translation>Défini hors de l'application - l'environnement est prioritaire sur cette fenêtre.</translation>
     </message>
     <message>
         <source>Settings are saved and restored at the next launch. Most are read when a session starts, so they take effect the next time you connect; each row says which. A variable set outside the application always wins over this window.</source>
-        <translation>Les réglages sont enregistrés et restaurés au prochain lancement. La plupart sont lus au démarrage d&apos;une session&#xa0;: ils prennent effet à la prochaine connexion, et chaque ligne le précise. Une variable définie hors de l&apos;application l&apos;emporte toujours sur cette fenêtre.</translation>
+        <translation>Les réglages sont enregistrés et restaurés au prochain lancement. La plupart sont lus au démarrage d'une session : ils prennent effet à la prochaine connexion, et chaque ligne le précise. Une variable définie hors de l'application l'emporte toujours sur cette fenêtre.</translation>
     </message>
     <message>
         <source>Language</source>
@@ -1170,11 +1280,11 @@ Audio, TEL QU&apos;ACCORDÉ&#xa0;: %12 Hz, %13 bits, codec %14
     </message>
     <message>
         <source>Interface language</source>
-        <translation>Langue de l&apos;interface</translation>
+        <translation>Langue de l'interface</translation>
     </message>
     <message>
         <source>Applies immediately to every window. Translations cover the interface and the settings; the session log stays in English, because it is what gets attached to a report.</source>
-        <translation>S&apos;applique immédiatement à toutes les fenêtres. Les traductions couvrent l&apos;interface et les paramètres&#xa0;; le journal de session reste en anglais, car c&apos;est lui qu&apos;on joint à un signalement.</translation>
+        <translation>S'applique immédiatement à toutes les fenêtres. Les traductions couvrent l'interface et les paramètres ; le journal de session reste en anglais, car c'est lui qu'on joint à un signalement.</translation>
     </message>
     <message>
         <source>Defaults</source>
@@ -1186,7 +1296,7 @@ Audio, TEL QU&apos;ACCORDÉ&#xa0;: %12 Hz, %13 bits, codec %14
     </message>
     <message>
         <source>Removes every variable this window has set, so core uses its own defaults again. Variables set outside the application are not touched.</source>
-        <translation>Supprime toutes les variables que cette fenêtre a définies, pour que le cœur reprenne ses propres valeurs par défaut. Les variables définies hors de l&apos;application ne sont pas touchées.</translation>
+        <translation>Supprime toutes les variables que cette fenêtre a définies, pour que le cœur reprenne ses propres valeurs par défaut. Les variables définies hors de l'application ne sont pas touchées.</translation>
     </message>
     <message>
         <source>Restore all defaults</source>
@@ -1194,7 +1304,7 @@ Audio, TEL QU&apos;ACCORDÉ&#xa0;: %12 Hz, %13 bits, codec %14
     </message>
     <message>
         <source>Remove every setting made in this window? Variables set outside the application are kept.</source>
-        <translation>Supprimer tous les réglages faits dans cette fenêtre&#xa0;? Les variables définies hors de l&apos;application sont conservées.</translation>
+        <translation>Supprimer tous les réglages faits dans cette fenêtre ? Les variables définies hors de l'application sont conservées.</translation>
     </message>
 </context>
 <context>
@@ -1243,7 +1353,7 @@ Audio, TEL QU&apos;ACCORDÉ&#xa0;: %12 Hz, %13 bits, codec %14
     </message>
     <message>
         <source>An unofficial client, not affiliated with or endorsed by the operator of the Shadow service. The streaming protocol is reimplemented from observation; nothing here is supported by anyone but its authors.</source>
-        <translation>Un client non officiel, ni affilié ni approuvé par l&apos;opérateur du service Shadow. Le protocole de diffusion est réimplémenté par observation&#xa0;; rien ici n&apos;est pris en charge par qui que ce soit d&apos;autre que ses auteurs.</translation>
+        <translation>Un client non officiel, ni affilié ni approuvé par l'opérateur du service Shadow. Le protocole de diffusion est réimplémenté par observation ; rien ici n'est pris en charge par qui que ce soit d'autre que ses auteurs.</translation>
     </message>
     <message>
         <source>Version</source>
@@ -1284,6 +1394,89 @@ Audio, TEL QU&apos;ACCORDÉ&#xa0;: %12 Hz, %13 bits, codec %14
     <message>
         <source>Everything a defect report needs, as one block.</source>
         <translation>Tout ce dont un signalement a besoin, en un seul bloc.</translation>
+    </message>
+</context>
+<context>
+    <name>halyard::FtWorker</name>
+    <message>
+        <source>No file-transfer channel on this session. Connect to a machine first - the channel is granted during the stream's bootstrap.</source>
+        <translation>Aucun canal de transfert de fichiers sur cette session. Connectez-vous d'abord à une machine - le canal est accordé pendant l'amorçage du flux.</translation>
+    </message>
+    <message>
+        <source>The session granted no file-transfer credential.</source>
+        <translation>La session n'a accordé aucun identifiant de transfert de fichiers.</translation>
+    </message>
+    <message>
+        <source>This build has no file-transfer support. Rebuild with -DSHADOW_FILETRANSFER=ON (it needs libssh).</source>
+        <translation>Cette version ne gère pas le transfert de fichiers. Recompilez avec -DSHADOW_FILETRANSFER=ON (il faut libssh).</translation>
+    </message>
+    <message>
+        <source>Could not open the channel: %1</source>
+        <translation>Impossible d'ouvrir le canal : %1</translation>
+    </message>
+    <message>
+        <source>Connected to the VM over SFTP on port %1.</source>
+        <translation>Connecté à la VM en SFTP sur le port %1.</translation>
+    </message>
+    <message>
+        <source>Not connected.</source>
+        <translation>Non connecté.</translation>
+    </message>
+    <message>
+        <source>Could not list %1: %2</source>
+        <translation>Impossible de lister %1 : %2</translation>
+    </message>
+    <message>
+        <source>Sending %1</source>
+        <translation>Envoi de %1</translation>
+    </message>
+    <message>
+        <source>Sent %1</source>
+        <translation>%1 envoyé</translation>
+    </message>
+    <message>
+        <source>Cancelled.</source>
+        <translation>Annulé.</translation>
+    </message>
+    <message>
+        <source>Send failed: %1</source>
+        <translation>Échec de l'envoi : %1</translation>
+    </message>
+    <message>
+        <source>Receiving %1</source>
+        <translation>Réception de %1</translation>
+    </message>
+    <message>
+        <source>Received %1</source>
+        <translation>%1 reçu</translation>
+    </message>
+    <message>
+        <source>Receive failed: %1</source>
+        <translation>Échec de la réception : %1</translation>
+    </message>
+    <message>
+        <source>Created %1</source>
+        <translation>%1 créé</translation>
+    </message>
+    <message>
+        <source>Could not create the folder: %1</source>
+        <translation>Impossible de créer le dossier : %1</translation>
+    </message>
+    <message>
+        <source>Deleted.</source>
+        <translation>Supprimé.</translation>
+    </message>
+    <message>
+        <source>Could not delete: %1</source>
+        <translation>Impossible de supprimer : %1</translation>
+    </message>
+    <message>
+        <source>Renamed.</source>
+        <translation>Renommé.</translation>
+    </message>
+    <message>
+        <source>Could not rename: %1</source>
+        <translation>Impossible de renommer : %1</translation>
     </message>
 </context>
 </TS>

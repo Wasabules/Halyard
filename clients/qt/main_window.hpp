@@ -51,6 +51,7 @@ class VideoWidget;
 class StepListWidget;
 class SettingsWindow;
 class MetricsWindow;
+class FileManagerWindow;
 
 class MainWindow : public QMainWindow
 {
@@ -65,6 +66,9 @@ public slots:
      * command-line flags alike. Two paths would be two things to test. */
     void openSettings();
     void openMetrics();
+    void openFileManager();
+    /* Opens it with no session, for `--files`: see main.cpp. */
+    void openFileManagerForced();
     void openAbout();
 
 private slots:
@@ -100,6 +104,7 @@ private:
     QMenu   *help_menu_      = nullptr;
     QAction *act_settings_   = nullptr;
     QAction *act_metrics_    = nullptr;
+    QAction *act_files_      = nullptr;
     QAction *act_about_      = nullptr;
     QStringList machine_ids_;
 
@@ -125,6 +130,7 @@ private:
      * delete is needed. */
     SettingsWindow *settings_ = nullptr;
     MetricsWindow  *metrics_  = nullptr;
+    FileManagerWindow *file_manager_ = nullptr;
 
     bool session_live_ = false;
 };

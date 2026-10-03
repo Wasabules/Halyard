@@ -818,8 +818,14 @@ static audio_out_win *win_open(unsigned attempt, uint32_t *period)
     audio_out_win_info inf;
     long hr = 0;
     const int64_t t0 = win_now_ms();
+    /* AUD-DEV1 2026-10-03 - `SHADOW_WIN_AUDIO_DEVICE` names the endpoint (its
+     * IMMDevice ID, which is what the Qt client's settings page writes). Read
+     * at EVERY open and not cached: a device chosen mid-session is then used
+     * by the next reopen, and no session inherits the first one's choice from
+     * a static. Unset = the default endpoint, the behaviour before this. */
+    const char *dev = getenv("SHADOW_WIN_AUDIO_DEVICE");
     audio_out_win *o = audio_out_win_open(AUDIO_SAMPLE_RATE, AUDIO_CHANNELS,
-                                          WIN_OUT_BUFFER_MS, &inf, &hr);
+                                          WIN_OUT_BUFFER_MS, dev, &inf, &hr);
     const int dt = (int)(win_now_ms() - t0);
     if (!o) {
         if (attempt == 0)
@@ -838,6 +844,11 @@ static audio_out_win *win_open(unsigned attempt, uint32_t *period)
          (double)inf.min_period_frames * 1000.0 / AUDIO_SAMPLE_RATE,
          (double)inf.stream_latency_frames * 1000.0 / AUDIO_SAMPLE_RATE,
          (unsigned)inf.mix_rate, (unsigned)inf.mix_channels);
+    if (inf.device_requested && !inf.device_found && attempt == 0)
+        alog("[AUD-DEV1] the chosen output device is not available (unplugged, "
+             "or its ID changed) - playing on the DEFAULT device instead");
+    else if (inf.device_requested && attempt == 0)
+        alog("[AUD-DEV1] playing on the output device chosen in the settings");
     if (period) *period = inf.period_frames;
     return o;
 }

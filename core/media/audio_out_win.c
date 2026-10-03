@@ -93,6 +93,7 @@ static uint32_t hns_to_frames(REFERENCE_TIME hns, uint32_t rate)
 }
 
 audio_out_win *audio_out_win_open(uint32_t rate, uint32_t channels, uint32_t buffer_ms,
+                                  const char *device_id,
                                   audio_out_win_info *info, long *hr_out)
 {
     HRESULT hr = E_OUTOFMEMORY;
@@ -103,8 +104,23 @@ audio_out_win *audio_out_win_open(uint32_t rate, uint32_t channels, uint32_t buf
     hr = CoCreateInstance(&k_clsid_mmdevice_enumerator, NULL, CLSCTX_ALL,
                           &k_iid_immdevice_enumerator, (void **)&o->en);
     if (FAILED(hr)) goto fail;
-    hr = IMMDeviceEnumerator_GetDefaultAudioEndpoint(o->en, eRender, eConsole, &o->dev);
-    if (FAILED(hr)) goto fail;
+    /* AUD-DEV1 - the chosen endpoint first, the default when it does not
+     * resolve (see the header). */
+    if (device_id && device_id[0]) {
+        if (info) info->device_requested = true;
+        wchar_t wid[512];
+        if (MultiByteToWideChar(CP_UTF8, 0, device_id, -1, wid,
+                                (int)(sizeof wid / sizeof wid[0])) > 0
+            && SUCCEEDED(IMMDeviceEnumerator_GetDevice(o->en, wid, &o->dev))) {
+            if (info) info->device_found = true;
+        } else {
+            o->dev = NULL;
+        }
+    }
+    if (!o->dev) {
+        hr = IMMDeviceEnumerator_GetDefaultAudioEndpoint(o->en, eRender, eConsole, &o->dev);
+        if (FAILED(hr)) goto fail;
+    }
     hr = IMMDevice_Activate(o->dev, &k_iid_iaudio_client, CLSCTX_ALL, NULL, (void **)&o->ac);
     if (FAILED(hr)) goto fail;
 

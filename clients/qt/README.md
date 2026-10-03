@@ -134,12 +134,36 @@ cmake --build build_qt --target halyard_lupdate   # extract into clients/qt/i18n
 | `i18n.{hpp,cpp}`, `i18n_match.hpp`, `i18n/*.ts` | the translation engine, the language choice, the catalogues |
 | `theme.{hpp,cpp}` | every colour, spacing and font, derived from the palette; the drawn app mark |
 | `about_dialog`, `metrics_window`, `step_list_widget` | identity and build info, live grants, bootstrap progress |
+| `ft_worker.{hpp,cpp}`, `file_manager_window.{hpp,cpp}` | the SFTP worker thread and the two-pane file manager |
 | `core_scope.hpp`, `plane_copy.hpp` | RAII over core's `_free()` functions; the stride-aware plane copy |
+
+## File transfer
+
+`View > File transfer` (Ctrl+T, live only during a session) opens a two-pane
+manager - this PC on the left, the VM on the right - with Send and Receive
+between them. It is the answer to FT5: no third-party client can use the SFTP
+credential (a 395-byte PEM used as a password, which no GUI box accepts), so
+this is the client that can, calling libssh through core rather than pasting a
+credential anywhere. The channel and the credential exist only during a
+session, so the menu entry greys out and the window closes when the stream
+ends; the worker runs on its own thread (the handle is single-threaded and
+transfers block), and the credential never leaves core's memory (fetched,
+passed to `shadow_ft_open`, zeroed). Needs `-DSHADOW_FILETRANSFER=ON`, which
+the Qt desktop build turns on by default (it is the "future desktop client"
+`filetransfer.h` was written for). `--files` opens it with no session, to check
+the layout.
+
+## Audio output (Windows)
+
+Settings > General > Audio output lists the WASAPI endpoints
+(`QMediaDevices`) and writes the chosen one to `SHADOW_WIN_AUDIO_DEVICE`
+(AUD-DEV1); core opens it on the next session and falls back to the default if
+it is gone. Not a settings-table row, because the device list is discovered at
+runtime, but persisted and overridden by env.txt the same way.
 
 ## What is deliberately NOT here yet
 
-No pause menu and no input forwarding yet; no integrated file manager (the
-answer to SFTP, since no third-party client can use the credential - FT5), no
-audio device selection, no shortcut editor. The measurement the choice of
-framework hangs on also still stands: end-to-end latency of this path against
-what the Borealis client does today.
+No pause menu and no input forwarding yet; no audio INPUT (microphone) device
+selection; no keyboard-shortcut editor. The measurement the choice of framework
+hangs on also still stands: end-to-end latency of this path against what the
+Borealis client does today.

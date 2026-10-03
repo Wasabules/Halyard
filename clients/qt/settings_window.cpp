@@ -19,6 +19,8 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
+#include <QMediaDevices>
+#include <QAudioDevice>
 #include <QMessageBox>
 #include <QPushButton>
 #include <QScrollArea>
@@ -526,6 +528,47 @@ QWidget *SettingsWindow::buildGeneralPage(QWidget *parent)
                "because it is what gets attached to a report."), page));
     }
 
+    /* --- Audio output (Windows) ---------------------------------------- *
+     *
+     * Not a row of the settings table, because the choices are discovered at
+     * runtime: the table is static data, and the list of output devices is
+     * whatever is plugged in right now. It writes the same variable core reads
+     * (SHADOW_WIN_AUDIO_DEVICE, AUD-DEV1), through the same store, so it
+     * persists and is overridden by env.txt exactly like every other setting.
+     *
+     * Windows only: the variable only steers the WASAPI path. QMediaDevices'
+     * id() on Windows is the WASAPI endpoint ID, which is the string core hands
+     * to IMMDeviceEnumerator::GetDevice - so the two line up without a mapping. */
+#ifdef Q_OS_WIN
+    section(tr("Audio output"));
+    {
+        auto *form = new QFormLayout;
+        form->setHorizontalSpacing(theme::SpaceGroup);
+        auto *box = new QComboBox(page);
+        box->setSizeAdjustPolicy(QComboBox::AdjustToContents);
+
+        const bool forced = env_override_active("SHADOW_WIN_AUDIO_DEVICE") != 0;
+        box->addItem(tr("System default"), QString());
+        for (const QAudioDevice &d : QMediaDevices::audioOutputs())
+            box->addItem(d.description(), QString::fromUtf8(d.id()));
+
+        const char *cur = std::getenv("SHADOW_WIN_AUDIO_DEVICE");
+        const int sel = cur ? box->findData(QString::fromUtf8(cur)) : 0;
+        box->setCurrentIndex(sel >= 0 ? sel : 0);
+        box->setEnabled(!forced);
+        connect(box, &QComboBox::currentIndexChanged, this, [this, box](int i) {
+            writeRaw(QStringLiteral("SHADOW_WIN_AUDIO_DEVICE"),
+                     box->itemData(i).toString());
+        });
+        form->addRow(tr("Play sound through"), box);
+        col->addLayout(form);
+        col->addWidget(mutedLabel(
+            tr("Applies on the next session - the output is opened when a stream "
+               "starts. A device that is unplugged later falls back to the system "
+               "default rather than going silent."), page));
+    }
+#endif
+
     /* --- Defaults ------------------------------------------------------- */
     section(tr("Defaults"));
     {
@@ -543,6 +586,20 @@ QWidget *SettingsWindow::buildGeneralPage(QWidget *parent)
 
     col->addStretch(1);
     return page;
+}
+
+/* A runtime setting that is NOT a row of the table (the audio device, whose
+ * choices are discovered live). Same store, same env.txt precedence, so it
+ * persists and is overridden exactly like a table row - it just has no `Setting`
+ * to look up. */
+void SettingsWindow::writeRaw(const QString &env, const QString &value)
+{
+    const QByteArray key = env.toUtf8();
+    if (env_override_active(key.constData()) != 0) return;
+    if (value.isEmpty()) unsetenv(key.constData());
+    else { const QByteArray v = value.toUtf8(); setenv(key.constData(), v.constData(), 1); }
+    halyard::store::saveVariable(env, value);
+    emit settingChanged(env, value, false);
 }
 
 void SettingsWindow::restoreDefaults()

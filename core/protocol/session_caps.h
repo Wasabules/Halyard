@@ -108,6 +108,22 @@ bool ctrl_session_caps(shadow_session_caps *out);
  */
 bool ctrl_session_file_transfer_secret(char *out, size_t cap, size_t *n);
 
+/* === FM1 2026-10-03 - host and port for a client that opens the channel ======
+ *
+ * `shadow_ft_open()` takes (host, port, secret). The secret has its own guarded
+ * accessor above; this hands over the other two, which are NOT a credential -
+ * the host name is "the half that a crash dump may carry" (ctrl_session.c), the
+ * port is already in the caps snapshot. They are together here so a file-manager
+ * worker makes ONE call for the pair rather than reaching into the snapshot for
+ * the port and finding nowhere to get the host.
+ *
+ * Writes the VM host (NUL-terminated, the `ipv6-` prefix stripped so it is a
+ * dialable address) into `host`/`host_cap` and the absolute port into `*port`.
+ * Returns false when there is no session or file transfer was not granted, and
+ * writes an empty host and port 0 in that case. */
+bool ctrl_session_file_transfer_endpoint(char *host, size_t host_cap,
+                                         uint16_t *port);
+
 /* === FT4 2026-10-02 - THE SAME ACCESS, AS ONE CLICKABLE URI ================
  *
  * `sftp://shadow:PASSWORD@host:port/` - what WinSCP, FileZilla or `sftp` need,

@@ -15,20 +15,34 @@ namespace {
 const QString kGroup = QStringLiteral("env");
 }
 
+/* Keys the window persists that are NOT rows of the settings table because
+ * their choices are discovered at runtime (the audio output device, AUD-DEV1).
+ * An allowlist and not "load everything under [env]" on purpose: a stale file
+ * from another build must not be able to switch on a campaign instrument the
+ * window never shows. */
+static const char *const kExtraKeys[] = {
+    "SHADOW_WIN_AUDIO_DEVICE",
+};
+
+static int loadKey(QSettings &st, const char *env, int *applied)
+{
+    const QString key = QString::fromUtf8(env);
+    if (!st.contains(key)) return 0;
+    if (env_override_active(env) != 0) return 0;         /* outside wins */
+    const QByteArray v = st.value(key).toString().toUtf8();
+    if (v.isEmpty()) return 0;
+    setenv(env, v.constData(), 1);
+    (*applied)++;
+    return 1;
+}
+
 int loadIntoEnvironment()
 {
     QSettings st;
     st.beginGroup(kGroup);
     int applied = 0;
-    for (const Setting &s : settings()) {
-        const QString key = QString::fromUtf8(s.env);
-        if (!st.contains(key)) continue;
-        if (env_override_active(s.env) != 0) continue;   /* outside wins */
-        const QByteArray v = st.value(key).toString().toUtf8();
-        if (v.isEmpty()) continue;
-        setenv(s.env, v.constData(), 1);
-        applied++;
-    }
+    for (const Setting &s : settings()) loadKey(st, s.env, &applied);
+    for (const char *k : kExtraKeys)    loadKey(st, k, &applied);
     st.endGroup();
     return applied;
 }

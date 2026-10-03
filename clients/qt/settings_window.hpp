@@ -79,6 +79,7 @@ private:
     QWidget *buildGeneralPage(QWidget *parent);
 
     void write(const QString &env, const QString &value);
+    void writeRaw(const QString &env, const QString &value);
     void applyFilter(const QString &needle);
     void restoreDefaults();
 

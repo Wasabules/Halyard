@@ -102,6 +102,10 @@ int main(int argc, char **argv)
     const QStringList args = QApplication::arguments();
     if (args.contains(QStringLiteral("--settings"))) win.openSettings();
     if (args.contains(QStringLiteral("--metrics")))  win.openMetrics();
+    /* `--files` forces the file manager open with no session, which is the only
+     * way to check its layout and its "not connected" path without a VM. In
+     * normal use the menu entry is disabled until a session grants the channel. */
+    if (args.contains(QStringLiteral("--files")))    win.openFileManagerForced();
 
     return app.exec();
 }
