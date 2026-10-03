@@ -128,6 +128,7 @@ private:
      * column of them (2560x1440 source, crop + 1/10 downscale + upscale), so
      * twice a second is ~1.5 ms of CPU per second. Per paint it would run on
      * every mouse move during a drag. */
+    void stackDefaults();   /* HUD3 */
     void rebuildGlass();
     std::function<QImage()> frameSource_;
     QImage  glass_;        /* the blurred picture behind the whole HUD */
@@ -142,6 +143,7 @@ private:
     /* A block: a section (title + rows) or one chart. */
     struct Blk {
         QString   id;
+        bool      placed = false;   /* HUD3 - moved by the user */
         int       section = 0;          /* 0 for a chart block */
         int       chartBit = 0;         /* 0 for a section block */
         QWidget  *card = nullptr;

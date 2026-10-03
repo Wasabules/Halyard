@@ -17,6 +17,7 @@
 #include "i18n.hpp"
 #include "main_window.hpp"
 #include "probe.hpp"
+#include "shots.hpp"
 #include "settings_store.hpp"
 #include "theme.hpp"
 
@@ -137,6 +138,16 @@ int main(int argc, char **argv)
      * Placed AFTER the environment and settings are loaded, so a probe sees
      * the same `SHADOW_*` the real client would - and before the window, so
      * nothing is drawn on the way. */
+    /* SHOT1 - `--shots <dir>` renders the UI to PNGs and exits. Offscreen,
+     * no session, no account: the loop a layout is written in. */
+    {
+        const QStringList a = QApplication::arguments();
+        const int at = a.indexOf(QStringLiteral("--shots"));
+        if (at >= 0)
+            return halyard::shots::run(at + 1 < a.size() ? a.at(at + 1)
+                                                         : QStringLiteral("shots"));
+    }
+
     {
         const QStringList a = QApplication::arguments();
         const int at = a.indexOf(QStringLiteral("--probe"));

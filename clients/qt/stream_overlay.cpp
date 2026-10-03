@@ -253,7 +253,9 @@ void StreamHud::rebuild()
                 b.rows.append(r);
             }
         }
-        b.ax = 1.0; b.ay = qMin(0.92, 0.07 * n++);
+        /* The anchor is set properly by `stackDefaults()` once the blocks
+         * have been measured; 0 here just keeps it in range. */
+        b.ax = 1.0; b.ay = 0.0; (void)n++;
         blocks_.append(b);
     }
 
@@ -275,7 +277,7 @@ void StreamHud::rebuild()
         h->addWidget(b.chart.value);
         h->addWidget(b.chart.spark, 1);
         b.body->addWidget(host);
-        b.ax = 1.0; b.ay = qMin(0.92, 0.07 * n++);
+        b.ax = 1.0; b.ay = 0.0; (void)n++;
         blocks_.append(b);
     }
 
@@ -298,6 +300,7 @@ void StreamHud::rebuild()
 
     applyStyle();
     updateDetachButtons();
+    stackDefaults();   /* HUD3 - before the first layout, with real heights */
     layoutBlocks();
 }
 
@@ -324,6 +327,39 @@ QRect StreamHud::usableRect(const QSize &bs) const
     const int w = qMax(0, width()  - 2 * kMargin - bs.width());
     const int h = qMax(0, height() - 2 * kMargin - bs.height());
     return QRect(kMargin, kMargin, w, h);
+}
+
+/* === HUD3 2026-10-03 — THE DEFAULT COLUMN, STACKED BY HEIGHT ============
+ *
+ * The first version spaced the default blocks by 7 % of the window height
+ * each, whatever they contained: at 720 px that is 50 px between blocks that
+ * are 90 to 140 px tall, so the default HUD came up with every section
+ * written on top of the one above it. It was invisible in review because
+ * nobody had looked at the default layout since the sections grew - which is
+ * exactly what `--shots` now makes impossible.
+ *
+ * Measured heights, a fixed gap, and the column stops growing at the bottom
+ * edge rather than running off it. Only blocks the user has never moved are
+ * touched: an anchor that was saved is theirs. */
+void StreamHud::stackDefaults()
+{
+    const QRect u = usableRect(QSize(0, 0));
+    if (u.height() <= 0) return;
+
+    int y = 0;
+    const int gap = 10;
+    for (Blk &b : blocks_) {
+        if (!b.card || b.card->isHidden()) continue;
+        if (b.placed) continue;            /* the user put this one somewhere */
+        b.card->adjustSize();
+        const int h = b.card->height();
+        const QRect ub = usableRect(b.card->size());
+        if (ub.height() <= 0) continue;
+        if (y + h > ub.height()) break;    /* the column is full */
+        b.ay = double(y) / double(ub.height());
+        b.ax = 1.0;
+        y += h + gap;
+    }
 }
 
 void StreamHud::layoutBlocks()
@@ -551,7 +587,12 @@ void StreamHud::paintEvent(QPaintEvent *e)
 
     p.setPen(Qt::NoPen);
     for (const Blk &b : blocks_) {
-        if (!b.card || !b.card->isVisible()) continue;
+        /* `isHidden()` and not `!isVisible()`: a child reports itself
+         * invisible whenever its top-level is not on screen, so the bubbles
+         * vanished the moment the HUD was rendered offscreen - which is how
+         * `--shots` photographs it. What this test actually means is "the
+         * user turned this block off", and that is `isHidden`. */
+        if (!b.card || b.card->isHidden()) continue;
         const QRect r = b.card->geometry().adjusted(-8, -6, 8, 6);
         const int rad = halyard::hud::radius();
 
@@ -584,7 +625,7 @@ void StreamHud::paintEvent(QPaintEvent *e)
     /* Edit mode: outline each bubble, and say what the gestures are. */
     p.setBrush(Qt::NoBrush);
     for (const Blk &b : blocks_) {
-        if (!b.card || !b.card->isVisible()) continue;
+        if (!b.card || b.card->isHidden()) continue;
         const bool grouped = !b.leader.isEmpty() || isLeader(b.id);
         QColor oc = halyard::hud::primary();
         oc.setAlpha(grouped ? 230 : 130);
@@ -618,6 +659,7 @@ void StreamHud::setLayoutString(const QString &s)
         if (f.size() < 2) continue;
         const int i = blockIndex(id);
         if (i < 0) continue;
+        blocks_[i].placed = true;   /* HUD3 - the user's, do not restack */
         blocks_[i].ax = qBound(0.0, f[0].toDouble(), 1.0);
         blocks_[i].ay = qBound(0.0, f[1].toDouble(), 1.0);
         blocks_[i].leader = f.size() > 2 ? f[2] : QString();
@@ -719,6 +761,16 @@ void StreamHud::refresh()
             }
         }
     }
+    /* HUD3 - restack the blocks the user has never moved, every tick.
+     *
+     * An anchor is a fraction of (the window minus the block), so it maps to
+     * a different pixel the moment the block's height changes - and heights
+     * DO change: the latency section discovers its stages at runtime and the
+     * numbers gain digits. Computing the default column once at build time
+     * therefore came apart on the first refresh, which is what put three
+     * sections on top of each other. Recomputing is a few integer
+     * divisions over a handful of blocks and it is self-correcting. */
+    stackDefaults();
     layoutBlocks();   /* content changes size; anchors keep the placement */
 }
 
