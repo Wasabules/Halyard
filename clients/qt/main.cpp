@@ -61,7 +61,7 @@ int main(int argc, char **argv)
     /* Set on the application and not only on each window: a dialog created
      * without an explicit icon inherits this one, so the About box and every
      * future window are right without remembering to ask. */
-    QApplication::setWindowIcon(halyard::theme::appIcon());
+    QApplication::setWindowIcon(halyard::theme::appTileIcon());
 
     /* === UI1 — ONE STYLE, ONE SHEET, BEFORE THE FIRST WIDGET ==============
      *

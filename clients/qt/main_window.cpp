@@ -91,7 +91,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
 {
     g_main_window = this;
     setWindowTitle(str(SHADOW_APP_NAME));
-    setWindowIcon(halyard::theme::appIcon());
+    setWindowIcon(halyard::theme::appTileIcon());
     resize(1280, 760);
 
     /* === D1 2026-10-03 — ONE HEADER, NOT THREE TOPS ======================
@@ -121,7 +121,9 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
         hl->setSpacing(halyard::theme::SpaceRow);
 
         auto *mark = new QLabel(header_);
-        mark->setPixmap(halyard::theme::appIcon().pixmap(22, 22));
+        /* ICON1 - the tile, not the strokes: at 22 px three palette-grey
+         * lines were the same smudge the taskbar was showing. */
+        mark->setPixmap(halyard::theme::appTileIcon().pixmap(22, 22));
 
         header_title_ = new QLabel(header_);
         header_title_->setProperty("h2", true);

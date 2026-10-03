@@ -314,4 +314,88 @@ QIcon appIcon()
     return appIcon(QGuiApplication::palette().color(QPalette::WindowText));
 }
 
+/* See the header (ICON1). */
+QIcon appTileIcon()
+{
+    /* The brand blue, fixed and NOT palette-derived: this icon is composited
+     * by the desktop onto surfaces we cannot see, so there is no palette whose
+     * answer would be the right one. The hue is the same 210 the in-app accent
+     * uses, at a lightness that holds up on both a light and a dark taskbar. */
+    const QColor top = QColor::fromHsl(210, 170, 120);
+    const QColor bot = QColor::fromHsl(210, 175,  86);
+
+    QIcon icon;
+    for (int px : { 16, 20, 24, 32, 40, 48, 64, 128, 256 }) {
+        QPixmap pm(px, px);
+        pm.fill(Qt::transparent);
+
+        QPainter p(&pm);
+        p.setRenderHint(QPainter::Antialiasing, true);
+
+        const qreal s = px;
+        /* A hair of inset so the antialiased corner is not clipped by the
+         * pixmap edge, and 22% radius - the squircle proportion Windows 11 and
+         * macOS both land near, so the tile does not look foreign in a row of
+         * system icons. */
+        const QRectF tile = QRectF(0.5, 0.5, s - 1, s - 1);
+        QLinearGradient g(tile.topLeft(), tile.bottomLeft());
+        g.setColorAt(0.0, top);
+        g.setColorAt(1.0, bot);
+        p.setPen(Qt::NoPen);
+        p.setBrush(g);
+        p.drawRoundedRect(tile, s * 0.22, s * 0.22);
+
+        /* === THE MARK, IN TILE FRACTIONS ==================================
+         *
+         * Two shapes only - a mast and a hoisted sail. `appIcon` draws three,
+         * the third being the halyard itself, and that one is dropped here:
+         * at 16px, which is the size the taskbar actually uses, a hairline
+         * curve running down the mast antialiases into a smudge, and the
+         * smudge is most of what made the old icon look like scratches.
+         *
+         * The numbers are chosen so the INK is centred, not the box: the sail
+         * is all on one side of the mast, so a mark laid out symmetrically
+         * about the tile's middle sits visibly to the right. Left edge of the
+         * mast 0.30, right edge of the sail 0.74, so the ink spans 0.30..0.74
+         * and its centre is 0.52 - shifted by -0.02 below to land on 0.50. */
+        /* Below 24px the mast and the sail are drawn TOUCHING, as one glyph.
+         * Separated, the gap between them is one pixel, antialiasing turns
+         * that pixel into grey, and the result is the soft smear this whole
+         * icon exists to get away from. Joined, it is a solid white shape
+         * that survives 16 pixels - the detail is lost either way, so the
+         * choice is between losing it cleanly and losing it as mud. */
+        const bool tiny = px < 24;
+
+        const qreal dx   = -0.02 * s;
+        const qreal mastX = 0.33 * s + dx;
+        const qreal mastW = qMax<qreal>(1.5, (tiny ? 0.10 : 0.065) * s);
+        const qreal topY  = 0.18 * s;
+        const qreal botY  = 0.82 * s;
+
+        p.setPen(Qt::NoPen);
+        p.setBrush(QColor(255, 255, 255));
+
+        /* The sail: a filled triangle, not an outline. At 16px an outlined
+         * triangle is three grey lines and a filled one is a shape - and a
+         * shape is the only thing that survives being 16 pixels wide. */
+        const qreal gap = tiny ? 0.0 : qMax<qreal>(1.0, 0.045 * s);
+        QPainterPath sail;
+        sail.moveTo(mastX + mastW / 2 + gap, topY + 0.03 * s);
+        sail.lineTo(mastX + mastW / 2 + gap, botY - 0.05 * s);
+        sail.lineTo(0.76 * s + dx,           botY - 0.05 * s);
+        sail.closeSubpath();
+        p.drawPath(sail);
+
+        /* The mast, drawn after the sail so its cap is not cut by it. A
+         * rounded rectangle rather than a line: a line's round cap at 16px
+         * rounds to a square anyway, and a rect is exact at every size. */
+        p.drawRoundedRect(QRectF(mastX - mastW / 2, topY, mastW, botY - topY),
+                          mastW / 2, mastW / 2);
+
+        p.end();
+        icon.addPixmap(pm);
+    }
+    return icon;
+}
+
 }  // namespace halyard::theme

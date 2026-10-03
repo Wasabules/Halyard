@@ -57,7 +57,7 @@ QString tr_m(const char *s) { return QCoreApplication::translate("Metrics", s); 
 
 MetricsWindow::MetricsWindow(QWidget *parent) : QWidget(parent, Qt::Window)
 {
-    setWindowIcon(theme::appIcon());
+    setWindowIcon(theme::appTileIcon());
     resize(560, 680);
     timer_ = new QTimer(this);
     timer_->setInterval(500);   /* MET1 - the Borealis HUD's cadence */

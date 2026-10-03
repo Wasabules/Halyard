@@ -38,7 +38,7 @@ QLabel *valueLabel(const QString &text, bool mono, QWidget *parent)
 AboutDialog::AboutDialog(QWidget *parent) : QDialog(parent)
 {
     setWindowTitle(tr("About %1").arg(QString::fromUtf8(SHADOW_APP_NAME)));
-    setWindowIcon(theme::appIcon());
+    setWindowIcon(theme::appTileIcon());
     setModal(true);
 
     auto *root = new QVBoxLayout(this);

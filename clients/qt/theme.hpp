@@ -144,4 +144,25 @@ QGraphicsDropShadowEffect *elevation(QWidget *on, int radius = 18);
 QIcon appIcon();
 QIcon appIcon(const QColor &ink);
 
+/* === ICON1 2026-10-03 — THE TASKBAR WANTS A TILE, NOT A DRAWING ===========
+ *
+ * `appIcon` is three strokes in the FOREGROUND colour on transparency. Inside
+ * the application that is exactly right - it sits on our own surfaces and
+ * follows a light or dark theme. In the taskbar it is wrong, and was reported
+ * as "a weird grey striped thing": next to every other application's solid,
+ * coloured, full-bleed icon, three thin palette-grey lines on nothing do not
+ * read as a logo at all. They do not even read as a shape.
+ *
+ * So the window and application icon is a TILE: a rounded square filled with
+ * the brand colour, the mark on it in white. Self-contained, so it owes
+ * nothing to the desktop's theme - which is the right call for an icon that
+ * Windows will also composite onto a light taskbar, a dark one, a jump list
+ * and an alt-tab panel without telling us which.
+ *
+ * The mark is SIMPLIFIED below 32px: the halyard's curve is a hairline that
+ * turns to mud at 16px, which is the size the taskbar actually uses. Under
+ * that threshold the sail and the mast carry the mark alone.
+ */
+QIcon appTileIcon();
+
 }  // namespace halyard::theme

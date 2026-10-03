@@ -46,7 +46,7 @@ enum { RoleIsDir = Qt::UserRole + 1, RoleSize = Qt::UserRole + 2 };
 FileManagerWindow::FileManagerWindow(QWidget *parent)
     : QWidget(parent, Qt::Window)
 {
-    setWindowIcon(theme::appIcon());
+    setWindowIcon(theme::appTileIcon());
     resize(1080, 680);
 
     qRegisterMetaType<QList<halyard::FtEntry>>();

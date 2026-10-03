@@ -135,7 +135,7 @@ QString defaultText(const Setting &s)
 SettingsWindow::SettingsWindow(QWidget *parent)
     : QWidget(parent, Qt::Window)
 {
-    setWindowIcon(theme::appIcon());
+    setWindowIcon(theme::appTileIcon());
     resize(1000, 720);
     root_ = new QVBoxLayout(this);
     root_->setContentsMargins(0, 0, 0, 0);

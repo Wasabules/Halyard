@@ -832,6 +832,45 @@ if (SHADOW_BUILD_QT AND PLATFORM_DESKTOP)
     # fifteen positional fields is how two of them end up swapped unseen.
     set_target_properties(halyard-qt PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
 
+    # === ICON1 2026-10-03 - THE EXECUTABLE'S OWN ICON =======================
+    #
+    # `setWindowIcon` dresses the window of a RUNNING application and nothing
+    # else: Explorer, a pinned shortcut and the file's thumbnail read the icon
+    # resource compiled into the .exe, which this binary did not have - so next
+    # to other applications it showed Windows' "no icon" placeholder.
+    #
+    # The .ico is GENERATED from `theme::appTileIcon()` rather than committed.
+    # A committed binary would be a second source of truth for the mark, and
+    # the first edit to the drawing would leave the two disagreeing with
+    # nothing to catch it. `tools/qt_icon_gen.cpp` says the rest.
+    #
+    # Desktop-only and Windows-only: the consoles have their own icon paths
+    # (the NACP for Switch, the LiveArea for Vita), and on Linux the desktop
+    # entry points at a PNG rather than at the binary.
+    if (WIN32)
+        add_executable(halyard-icongen tools/qt_icon_gen.cpp clients/qt/theme.cpp)
+        target_include_directories(halyard-icongen PRIVATE clients/qt ${CMAKE_SOURCE_DIR})
+        target_link_libraries(halyard-icongen PRIVATE Qt6::Widgets)
+        set_target_properties(halyard-icongen PROPERTIES
+            CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON AUTOMOC ON)
+
+        set(HALYARD_ICO "${CMAKE_BINARY_DIR}/halyard.ico")
+        add_custom_command(
+            OUTPUT  "${HALYARD_ICO}"
+            COMMAND halyard-icongen "${HALYARD_ICO}"
+            DEPENDS halyard-icongen
+            COMMENT "Drawing halyard.ico from theme::appTileIcon()"
+            VERBATIM)
+
+        # The .rc is written here rather than kept as a file: it is two lines,
+        # and one of them is a path that only CMake knows.
+        file(WRITE "${CMAKE_BINARY_DIR}/halyard_qt_icon.rc"
+             "IDI_ICON1 ICON \"halyard.ico\"\n")
+        set_source_files_properties("${CMAKE_BINARY_DIR}/halyard_qt_icon.rc"
+            PROPERTIES OBJECT_DEPENDS "${HALYARD_ICO}")
+        target_sources(halyard-qt PRIVATE "${CMAKE_BINARY_DIR}/halyard_qt_icon.rc")
+    endif ()
+
     # === QT5 2026-10-03 - TRANSLATIONS =======================================
     #
     # Qt Linguist's standard path: `lupdate` extracts tr() and QT_TRANSLATE_NOOP
