@@ -70,6 +70,7 @@ public slots:
     /* Opens it with no session, for `--files`: see main.cpp. */
     void openFileManagerForced();
     void openAbout();
+    void toggleFullscreen();
 
     /* IN2 - true when a keystroke should go to the VM, read by the Windows
      * system-shortcut hook through the halyard_ui_keys_blocked weak symbol. */

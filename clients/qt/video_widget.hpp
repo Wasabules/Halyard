@@ -60,20 +60,42 @@ public slots:
     /* A line of text over the video, for the bootstrap steps. */
     void setStatus(const QString &text);
 
+    /* The overlay reflects the window's state so its label is right. */
+    void setFullscreenState(bool on);
+
+signals:
+    /* IN3 - the overlay's actions. The main window owns the window state and the
+     * session, so it does the fullscreen toggle and the disconnect; this widget
+     * only asks. The menu is always reachable with the mouse, which is the
+     * guaranteed way out when the key hook (IN2) is swallowing Alt+Tab. */
+    void requestFullscreenToggle();
+    void requestDisconnect();
+    void requestSettings();
+    void requestFiles();
+
 protected:
     bool eventFilter(QObject *obj, QEvent *ev) override;
     void keyPressEvent(QKeyEvent *e) override;
     void keyReleaseEvent(QKeyEvent *e) override;
+    void resizeEvent(QResizeEvent *e) override;
 
 private:
     /* Widget point -> decoded-frame point, accounting for the letterbox. Returns
      * false when the point is on a black bar (outside the video). */
     bool mapToFrame(const QPointF &widgetPt, int &fx, int &fy) const;
     void postKey(QKeyEvent *e, bool pressed);
+    void placeOverlay();
 
     QVideoWidget *video_ = nullptr;
     QVideoSink   *sink_  = nullptr;
     QLabel       *status_ = nullptr;
+
+    /* IN3 - the overlay. `menuBtn_` is pinned top-right, always clickable;
+     * `overlay_` is the panel it shows. Children of `this`, stacked ABOVE the
+     * video child, so they are never hidden by it. */
+    class QWidget     *overlay_ = nullptr;
+    class QToolButton *menuBtn_ = nullptr;
+    class QPushButton *fsBtn_   = nullptr;
 
     int frameW_ = 0, frameH_ = 0;   /* last decoded size, for the coord map */
 

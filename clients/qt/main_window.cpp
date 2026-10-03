@@ -140,6 +140,17 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
     video_ = new VideoWidget(this);
     stack_->addWidget(video_);
 
+    /* IN3 - the stream overlay's actions. Disconnect raises the session's abort
+     * flag; the `finished` signal then does the teardown, the same path as a
+     * server-side end, so there is one cleanup and not two. */
+    connect(video_, &VideoWidget::requestFullscreenToggle, this,
+            &MainWindow::toggleFullscreen);
+    connect(video_, &VideoWidget::requestSettings, this, &MainWindow::openSettings);
+    connect(video_, &VideoWidget::requestFiles, this, &MainWindow::openFileManager);
+    connect(video_, &VideoWidget::requestDisconnect, this, [this] {
+        if (session_live_ && sess_) sess_->requestStop();
+    });
+
     /* === QT3 - the menu bar, which is the point of leaving a console UI ====
      *
      * On console everything had to be inside one screen stack. Here the
@@ -256,6 +267,8 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
                  * menu entry until the next session grants a fresh channel. */
                 act_files_->setEnabled(false);
                 if (file_manager_) file_manager_->close();
+                /* IN3 - do not strand the machine list in fullscreen. */
+                if (isFullScreen()) { showNormal(); if (video_) video_->setFullscreenState(false); }
                 setPage(PageMachines);
                 connect_->setEnabled(machines_->currentRow() >= 0);
             }, Qt::QueuedConnection);
@@ -367,6 +380,17 @@ void MainWindow::openFileManager()
     file_manager_->show();
     file_manager_->raise();
     file_manager_->activateWindow();
+}
+
+void MainWindow::toggleFullscreen()
+{
+    /* IN3 - whole-window fullscreen. The menu bar goes with it; the stream's
+     * own overlay menu stays reachable, which is the way back out (plus F11,
+     * which the hook never swallows). Only meaningful while streaming. */
+    const bool goFull = !isFullScreen();
+    if (goFull) showFullScreen();
+    else        showNormal();
+    if (video_) video_->setFullscreenState(goFull);
 }
 
 void MainWindow::openAbout()

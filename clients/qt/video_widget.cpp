@@ -7,6 +7,9 @@
 #include <QKeyEvent>
 #include <QLabel>
 #include <QMouseEvent>
+#include <QPushButton>
+#include <QResizeEvent>
+#include <QToolButton>
 #include <QVBoxLayout>
 #include <QVideoSink>
 #include <QVideoWidget>
@@ -41,6 +44,74 @@ VideoWidget::VideoWidget(QWidget *parent) : QWidget(parent)
     video_->setFocusPolicy(Qt::NoFocus);     /* keys stay with us */
     video_->setMouseTracking(true);
     video_->installEventFilter(this);
+
+    /* === IN3 - the overlay menu ========================================= *
+     *
+     * A hamburger button pinned top-right, always clickable, and the panel it
+     * shows. Children of `this` (not of the QVideoWidget), raised above it, so
+     * the video never covers them. This is the guaranteed way out when IN2's
+     * hook is swallowing Alt+Tab: the mouse is never captured, so the button is
+     * always reachable. */
+    menuBtn_ = new QToolButton(this);
+    menuBtn_->setText(QStringLiteral("☰"));   /* ☰ */
+    menuBtn_->setToolTip(tr("Stream menu"));
+    menuBtn_->setAutoRaise(false);
+    menuBtn_->setFixedSize(34, 28);
+
+    overlay_ = new QWidget(this);
+    overlay_->setVisible(false);
+    overlay_->setStyleSheet(QStringLiteral(
+        "background: rgba(20,20,22,230); border-radius: 8px;"));
+    auto *ol = new QVBoxLayout(overlay_);
+    ol->setContentsMargins(10, 10, 10, 10);
+    ol->setSpacing(6);
+    fsBtn_ = new QPushButton(tr("Fullscreen"), overlay_);
+    auto *setBtn = new QPushButton(tr("Settings"), overlay_);
+    auto *filBtn = new QPushButton(tr("File transfer"), overlay_);
+    auto *discBtn = new QPushButton(tr("Disconnect"), overlay_);
+    for (QPushButton *b : { fsBtn_, setBtn, filBtn, discBtn }) {
+        b->setMinimumWidth(160);
+        ol->addWidget(b);
+    }
+    overlay_->adjustSize();
+
+    connect(menuBtn_, &QToolButton::clicked, this, [this] {
+        overlay_->setVisible(!overlay_->isVisible());
+        if (overlay_->isVisible()) { placeOverlay(); overlay_->raise(); }
+    });
+    auto hideThen = [this](auto fn) {
+        return [this, fn] { overlay_->setVisible(false); fn(); };
+    };
+    connect(fsBtn_,  &QPushButton::clicked, this,
+            hideThen([this] { emit requestFullscreenToggle(); }));
+    connect(setBtn,  &QPushButton::clicked, this,
+            hideThen([this] { emit requestSettings(); }));
+    connect(filBtn,  &QPushButton::clicked, this,
+            hideThen([this] { emit requestFiles(); }));
+    connect(discBtn, &QPushButton::clicked, this,
+            hideThen([this] { emit requestDisconnect(); }));
+}
+
+void VideoWidget::resizeEvent(QResizeEvent *e)
+{
+    QWidget::resizeEvent(e);
+    placeOverlay();
+}
+
+void VideoWidget::placeOverlay()
+{
+    if (menuBtn_) menuBtn_->move(width() - menuBtn_->width() - 12, 12);
+    if (overlay_ && overlay_->isVisible()) {
+        overlay_->adjustSize();
+        overlay_->move(width() - overlay_->width() - 12,
+                       12 + (menuBtn_ ? menuBtn_->height() + 6 : 0));
+    }
+    if (menuBtn_) menuBtn_->raise();
+}
+
+void VideoWidget::setFullscreenState(bool on)
+{
+    if (fsBtn_) fsBtn_->setText(on ? tr("Leave fullscreen") : tr("Fullscreen"));
 }
 
 void VideoWidget::presentFrame(const QVideoFrame &frame)
@@ -160,5 +231,17 @@ void VideoWidget::postKey(QKeyEvent *e, bool pressed)
     if (ev) shadow_input_post_scancode((uint16_t)ev, pressed);
 }
 
-void VideoWidget::keyPressEvent(QKeyEvent *e)   { postKey(e, true); }
-void VideoWidget::keyReleaseEvent(QKeyEvent *e) { postKey(e, false); }
+void VideoWidget::keyPressEvent(QKeyEvent *e)
+{
+    /* IN3 - F11 is a LOCAL command (fullscreen), never forwarded. Intercepting
+     * it here is also what keeps a guaranteed, hook-proof way out of fullscreen:
+     * F11 is not one of the keys IN2's hook swallows, so it always reaches us. */
+    if (e->key() == Qt::Key_F11) { emit requestFullscreenToggle(); return; }
+    postKey(e, true);
+}
+
+void VideoWidget::keyReleaseEvent(QKeyEvent *e)
+{
+    if (e->key() == Qt::Key_F11) return;   /* its press was consumed locally */
+    postKey(e, false);
+}

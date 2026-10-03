@@ -1287,6 +1287,22 @@ Audio, TEL QU'ACCORDÉ : %12 Hz, %13 bits, codec %14
         <translation>S'applique immédiatement à toutes les fenêtres. Les traductions couvrent l'interface et les paramètres ; le journal de session reste en anglais, car c'est lui qu'on joint à un signalement.</translation>
     </message>
     <message>
+        <source>Audio output</source>
+        <translation>Sortie audio</translation>
+    </message>
+    <message>
+        <source>System default</source>
+        <translation>Périphérique par défaut</translation>
+    </message>
+    <message>
+        <source>Play sound through</source>
+        <translation>Jouer le son via</translation>
+    </message>
+    <message>
+        <source>Applies on the next session - the output is opened when a stream starts. A device that is unplugged later falls back to the system default rather than going silent.</source>
+        <translation>S'applique à la prochaine session - la sortie est ouverte au démarrage d'un flux. Un périphérique débranché ensuite retombe sur le défaut du système plutôt que de devenir muet.</translation>
+    </message>
+    <message>
         <source>Defaults</source>
         <translation>Valeurs par défaut</translation>
     </message>
@@ -1343,6 +1359,30 @@ Audio, TEL QU'ACCORDÉ : %12 Hz, %13 bits, codec %14
     <message>
         <source>idle</source>
         <translation>inactif</translation>
+    </message>
+    <message>
+        <source>Stream menu</source>
+        <translation>Menu du flux</translation>
+    </message>
+    <message>
+        <source>Fullscreen</source>
+        <translation>Plein écran</translation>
+    </message>
+    <message>
+        <source>Settings</source>
+        <translation>Paramètres</translation>
+    </message>
+    <message>
+        <source>File transfer</source>
+        <translation>Transfert de fichiers</translation>
+    </message>
+    <message>
+        <source>Disconnect</source>
+        <translation>Déconnecter</translation>
+    </message>
+    <message>
+        <source>Leave fullscreen</source>
+        <translation>Quitter le plein écran</translation>
     </message>
 </context>
 <context>
