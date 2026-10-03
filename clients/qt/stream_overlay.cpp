@@ -61,7 +61,10 @@ constexpr int kSnapGrabPx = 18;
 constexpr int kMagnetPx = 26;
 /* Pull a member this far and it leaves its group. */
 constexpr int kDetachPx = 70;
-constexpr int kMargin   = 14;
+/* HUD5 - 14 was not enough: the bubble is drawn 8 px wider than its card on
+ * each side, so a block anchored at the right edge put its panel 8 px past
+ * the picture. The margin covers the inflation plus a visible breath. */
+constexpr int kMargin   = 22;
 }  // namespace
 
 /* === OV10 2026-10-03 — NO WindowStaysOnTopHint, AND WHY ====================
@@ -108,6 +111,10 @@ void StreamHud::setRefreshMs(int ms)
 void StreamHud::setScalePercent(int p)
 {
     scalePct_ = qBound(60, p, 200);
+    /* HUD5 - the column width is scaled like the type, or the slider would
+     * grow the numbers inside a box that stayed put. */
+    const int w = qRound(272.0 * scalePct_ / 100.0);
+    for (const Blk &b : blocks_) if (b.card) b.card->setFixedWidth(w);
     applyStyle();
     layoutBlocks();
 }
@@ -139,11 +146,24 @@ void StreamHud::applyStyle()
         "QFrame#blk { background:transparent; }"
         "QLabel { color:%2; font-size:%1px; }"
         "QToolButton { border:none; background:%3; border-radius:8px;"
-        "              color:%4; }")
+        "              color:%4; }"
+        /* HUD4 - the tiles. A filled surface each, a 2 px gutter between
+         * them, and the number at a size that reads from a chair. */
+        "QWidget#tile { background:%5; border-radius:9px; }"
+        "QLabel#tilecap { color:%6; font-size:10px; font-weight:600; }"
+        "QLabel#tileval { color:%4; font-size:25px; font-weight:600; }"
+        "QLabel#tileunit { color:%6; font-size:11px; }"
+        /* HUD4 - the quota lines. */
+        "QLabel#qcap { color:%6; font-size:11px; }"
+        "QLabel#qval { color:%4; font-size:13px; font-weight:600; }"
+        "QWidget#qbar { background:%7; border-radius:3px; }")
         .arg(fs)
         .arg(halyard::hud::text().name(),
              halyard::hud::surf3().name(),
-             halyard::hud::text().name());
+             halyard::hud::text().name(),
+             halyard::hud::surf2().name(),
+             halyard::hud::muted().name(),
+             halyard::hud::surf3().name());
     bubbleAlpha_ = alpha;
     for (const Blk &b : blocks_) if (b.card) b.card->setStyleSheet(css);
 }
@@ -166,6 +186,202 @@ void StreamHud::setEditing(bool on)
 
 /* --------------------------------------------------------------- build --- */
 
+/* === HUD4 — FOUR TILES INSTEAD OF A LIST ==============================
+ *
+ * The four readings people actually watch, at a size you can read from a
+ * chair, in a 2x2 grid. The old Performance block had them as four rows
+ * among twenty, in the same weight as "orphan chunks" - a debug dump rather
+ * than a HUD.
+ *
+ * Each tile is its own filled surface with a 2 px gutter between them: the
+ * flat language's way of separating things, with no border anywhere. */
+QWidget *StreamHud::buildTiles(Blk &b)
+{
+    auto *host = new QWidget(b.card);
+    auto *g = new QGridLayout(host);
+    g->setContentsMargins(0, 2, 0, 0);
+    g->setHorizontalSpacing(2);
+    g->setVerticalSpacing(2);
+    g->setColumnStretch(0, 1);
+    g->setColumnStretch(1, 1);
+
+    static const char *kUnits[4] = { "/s", "ms", "Mb/s", "%" };
+    for (int i = 0; i < 4; i++) {
+        auto *tile = new QWidget(host);
+        tile->setObjectName(QStringLiteral("tile"));
+        /* HUD5 - "0.0 %" came out as "0.[". A tile sized to its content
+         * clips the moment the number gains a digit, and these numbers gain
+         * digits constantly. Equal columns, and the value elides nothing. */
+        tile->setMinimumWidth(0);
+        auto *v = new QVBoxLayout(tile);
+        v->setContentsMargins(11, 9, 11, 9);
+        v->setSpacing(3);
+
+        auto *cap = new QLabel(tile);
+        cap->setObjectName(QStringLiteral("tilecap"));
+        static const char *kCaps[4] = {
+            QT_TR_NOOP("Frames"), QT_TR_NOOP("Latency"),
+            QT_TR_NOOP("Bitrate"), QT_TR_NOOP("Loss") };
+        cap->setText(tr(kCaps[i]));
+
+        auto *row = new QWidget(tile);
+        auto *rl = new QHBoxLayout(row);
+        rl->setContentsMargins(0, 0, 0, 0);
+        rl->setSpacing(4);
+
+        Blk::Tile t;
+        t.value = new QLabel(QStringLiteral("—"), row);
+        t.value->setObjectName(QStringLiteral("tileval"));
+        t.unit = new QLabel(QString::fromUtf8(kUnits[i]), row);
+        t.unit->setObjectName(QStringLiteral("tileunit"));
+        t.value->setMinimumWidth(0);
+        rl->addWidget(t.value, 0);
+        rl->addWidget(t.unit, 0, Qt::AlignBottom);
+        rl->addStretch(1);
+
+        v->addWidget(cap);
+        v->addWidget(row);
+        g->addWidget(tile, i / 2, i % 2);
+        b.tiles.append(t);
+    }
+    return host;
+}
+
+/* === HUD4 — THE QUOTAS, IN THE STREAM =================================
+ *
+ * The client has known both figures since CAPS2 and showed them only in a
+ * window nobody opens mid-game. "How long have I got" is the question a
+ * person asks WHILE playing, which is where the answer belongs.
+ *
+ * A bar and a figure each, nothing else: the Account window is where the
+ * renewal date and the percentages live. */
+QWidget *StreamHud::buildQuota(Blk &b)
+{
+    auto *host = new QWidget(b.card);
+    auto *v = new QVBoxLayout(host);
+    v->setContentsMargins(0, 2, 0, 0);
+    v->setSpacing(9);
+
+    const auto line = [&](QLabel *&text, QWidget *&bar, QWidget *&fill,
+                          const QString &caption) {
+        auto *w = new QWidget(host);
+        auto *wl = new QVBoxLayout(w);
+        wl->setContentsMargins(0, 0, 0, 0);
+        wl->setSpacing(5);
+
+        auto *top = new QWidget(w);
+        auto *tl = new QHBoxLayout(top);
+        tl->setContentsMargins(0, 0, 0, 0);
+        auto *cap = new QLabel(caption, top);
+        cap->setObjectName(QStringLiteral("qcap"));
+        text = new QLabel(QStringLiteral("—"), top);
+        text->setObjectName(QStringLiteral("qval"));
+        tl->addWidget(cap);
+        tl->addStretch(1);
+        tl->addWidget(text);
+
+        bar = new QWidget(w);
+        bar->setObjectName(QStringLiteral("qbar"));
+        bar->setFixedHeight(6);
+        auto *bl = new QHBoxLayout(bar);
+        bl->setContentsMargins(0, 0, 0, 0);
+        bl->setSpacing(0);
+        fill = new QWidget(bar);
+        fill->setObjectName(QStringLiteral("qfill"));
+        /* HUD5 - the fill is sized by STRETCH, not by setFixedWidth(bar
+         * ->width() * frac): the bar has no width until it has been laid
+         * out, so the first version computed every fill as zero and the
+         * bars came out empty. Two stretch factors always add up. */
+        bl->addWidget(fill, 0);
+        bl->addStretch(1000);
+
+        wl->addWidget(top);
+        wl->addWidget(bar);
+        v->addWidget(w);
+    };
+    line(b.quota.sessionText, b.quota.sessionBar, b.quota.sessionFill,
+         tr("This session"));
+    line(b.quota.monthText, b.quota.monthBar, b.quota.monthFill, tr("This month"));
+    return host;
+}
+
+void StreamHud::setQuotas(int sessionCeilingSec, int sessionElapsedSec,
+                          int periodAllowanceSec, int periodUsedSec)
+{
+    qSessionCeil_ = sessionCeilingSec;
+    qSessionUsed_ = sessionElapsedSec;
+    qPeriodCeil_  = periodAllowanceSec;
+    qPeriodUsed_  = periodUsedSec;
+}
+
+static QString hudHours(int sec)
+{
+    if (sec <= 0) return QStringLiteral("—");
+    const int h = sec / 3600, m = (sec % 3600) / 60;
+    return h > 0 ? QStringLiteral("%1 h %2").arg(h).arg(m, 2, 10, QLatin1Char('0'))
+                 : QStringLiteral("%1 min").arg(m);
+}
+
+void StreamHud::refreshQuota(Blk &b)
+{
+    const auto one = [](QLabel *text, QWidget *bar, QWidget *fill,
+                        int used, int ceiling, const QColor &warnAt) {
+        if (!text || !bar || !fill) return;
+        if (ceiling <= 0) {
+            text->setText(QStringLiteral("—"));
+            fill->setFixedWidth(0);
+            return;
+        }
+        const int left = qMax(0, ceiling - used);
+        text->setText(hudHours(left));
+        const double frac = qBound(0.0, double(left) / double(ceiling), 1.0);
+        if (auto *bl = qobject_cast<QHBoxLayout *>(bar->layout())) {
+            bl->setStretch(0, qRound(frac * 1000.0));
+            bl->setStretch(1, qRound((1.0 - frac) * 1000.0));
+        }
+        /* The bar is the colour of how much is LEFT, not of how much is
+         * gone: the reader is being told what they still have. */
+        const QColor c = frac < 0.12 ? halyard::hud::bad()
+                       : frac < 0.30 ? warnAt
+                                     : halyard::hud::good();
+        fill->setStyleSheet(QStringLiteral("background:%1; border-radius:3px;")
+                                .arg(c.name()));
+    };
+    one(b.quota.sessionText, b.quota.sessionBar, b.quota.sessionFill,
+        qSessionUsed_, qSessionCeil_, halyard::hud::warn());
+    one(b.quota.monthText, b.quota.monthBar, b.quota.monthFill,
+        qPeriodUsed_, qPeriodCeil_, halyard::hud::warn());
+}
+
+void StreamHud::refreshTiles(Blk &b, const HudSnap &snap)
+{
+    if (b.tiles.size() < 4) return;
+    const double vals[4] = { snap.fpsDecoded, snap.rttMs, snap.mbps, snap.lossPct };
+    const Grade grades[4] = {
+        gradeHi(snap.fpsDecoded, 24, 50),
+        snap.s.ctrl_rtt_us ? gradeLo(snap.rttMs, grade::kRttWarnMs,
+                                     grade::kRttGoodMs) : Grade::Neutral,
+        Grade::Neutral,
+        snap.s.chunks_expected ? gradeLo(snap.lossPct, grade::kLossWarnPct,
+                                         grade::kLossGoodPct) : Grade::Neutral,
+    };
+    for (int i = 0; i < 4; i++) {
+        /* One decimal for the two that move in fractions, none for the two
+         * that do not: "60.0 fps" is a digit of noise on a number that is
+         * either 60 or a problem. */
+        const int dec = (i == 0 || i == 1) ? 0 : (i == 3 ? 1 : 0);
+        b.tiles[i].value->setText(QString::number(vals[i], 'f', dec));
+        QColor c = halyard::hud::text();
+        switch (grades[i]) {
+        case Grade::Good: c = halyard::hud::good(); break;
+        case Grade::Warn: c = halyard::hud::warn(); break;
+        case Grade::Bad:  c = halyard::hud::bad();  break;
+        case Grade::Neutral: break;
+        }
+        b.tiles[i].value->setStyleSheet(QStringLiteral("color:%1;").arg(c.name()));
+    }
+}
+
 void StreamHud::rebuild()
 {
     /* Keep the anchors of blocks that survive the mask change. */
@@ -179,6 +395,11 @@ void StreamHud::rebuild()
         b.id = id;
         b.card = new QFrame(this);
         b.card->setObjectName(QStringLiteral("blk"));
+        /* HUD5 - ONE width for every block. Letting each size itself gave a
+         * ragged right edge where the design has a column, and a block that
+         * grew a digit shifted while its neighbours did not. Scaled with the
+         * user's size slider so it stays one column at any scale. */
+        b.card->setFixedWidth(qRound(272.0 * scalePct_ / 100.0));
         auto *v = new QVBoxLayout(b.card);
         v->setContentsMargins(10, 7, 10, 7);
         v->setSpacing(2);
@@ -220,6 +441,18 @@ void StreamHud::rebuild()
         return b;
     };
 
+    /* HUD4 - the quotas come FIRST, above everything: "how long have I got"
+     * outranks "how many frames per second" for someone in a session. It is
+     * tied to the Performance bit rather than given a bit of its own, so no
+     * saved selection mask has to grow a field. */
+    if (secMask_ & SecPerf) {
+        Blk q = newCard(QStringLiteral("quota"), tr("Time left"));
+        q.section = 0;
+        q.body->addWidget(buildQuota(q));
+        q.ax = 1.0; q.ay = 0.0;
+        blocks_.append(q);
+    }
+
     static const int kSections[] = { SecPerf, SecLatency, SecNet, SecVideo,
                                      SecInput, SecAudio, SecAdvanced };
     int n = 0;
@@ -228,7 +461,10 @@ void StreamHud::rebuild()
         Blk b = newCard(QStringLiteral("sec%1").arg(sec),
                         QCoreApplication::translate("Hud", hudSectionName(sec)));
         b.section = sec;
-        if (sec == SecLatency) {
+        if (sec == SecPerf) {
+            /* HUD4 - the tiles replace this section's rows entirely. */
+            b.body->addWidget(buildTiles(b));
+        } else if (sec == SecLatency) {
             auto *host = new QWidget(b.card);
             b.latLay = new QVBoxLayout(host);
             b.latLay->setContentsMargins(0, 0, 0, 0);
@@ -347,7 +583,11 @@ void StreamHud::stackDefaults()
     if (u.height() <= 0) return;
 
     int y = 0;
-    const int gap = 10;
+    /* HUD5 - the gap has to clear the bubble's own inflation on BOTH sides
+     * or the cards merge into one continuous slab: the bubble is drawn 6 px
+     * taller than its card at each end, so anything under 12 px of gap
+     * overlaps. 18 leaves 6 px of actual space between two panels. */
+    const int gap = 18;
     for (Blk &b : blocks_) {
         if (!b.card || b.card->isHidden()) continue;
         if (b.placed) continue;            /* the user put this one somewhere */
@@ -593,6 +833,8 @@ void StreamHud::paintEvent(QPaintEvent *e)
          * `--shots` photographs it. What this test actually means is "the
          * user turned this block off", and that is `isHidden`. */
         if (!b.card || b.card->isHidden()) continue;
+        /* The inflation is horizontal only now. Vertically the cards are
+         * spaced by `stackDefaults`' gap and an inflated bubble ate it. */
         const QRect r = b.card->geometry().adjusted(-8, -6, 8, 6);
         const int rad = halyard::hud::radius();
 
@@ -702,6 +944,10 @@ void StreamHud::refresh()
     const HudSnap h = hudSample(meters_, presented);
 
     for (Blk &b : blocks_) {
+        /* HUD4 - the two new block kinds. */
+        if (!b.tiles.isEmpty()) refreshTiles(b, h);
+        if (b.quota.sessionText)  refreshQuota(b);
+
         for (const RowW &r : b.rows) {
             const bool vis = !r.spec->visible || r.spec->visible(h);
             r.host->setVisible(vis);

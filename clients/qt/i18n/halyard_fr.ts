@@ -2691,8 +2691,36 @@ Audio, TEL QU&apos;ACCORDÉ&#xa0;: %12 Hz, %13 bits, codec %14
 <context>
     <name>halyard::StreamHud</name>
     <message>
+        <source>Frames</source>
+        <translation>Images</translation>
+    </message>
+    <message>
+        <source>Latency</source>
+        <translation>Latence</translation>
+    </message>
+    <message>
+        <source>Bitrate</source>
+        <translation>Débit</translation>
+    </message>
+    <message>
+        <source>Loss</source>
+        <translation>Perte</translation>
+    </message>
+    <message>
+        <source>This session</source>
+        <translation>Cette session</translation>
+    </message>
+    <message>
+        <source>This month</source>
+        <translation>Ce mois</translation>
+    </message>
+    <message>
         <source>Detach this block</source>
         <translation>Détacher ce bloc</translation>
+    </message>
+    <message>
+        <source>Time left</source>
+        <translation>Temps restant</translation>
     </message>
     <message>
         <source>Drag a block to move it · drop it against another to join them · pull it away (or use ✕) to detach</source>

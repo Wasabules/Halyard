@@ -97,6 +97,10 @@ int run(const QString &dir)
         hud->setFrameSource([frame] { return frame; });
         hud->setPresentedCounter([] { return quint64(0); });
         hud->setMasks(SecPerf | SecNet | SecLatency, ChDecoded | ChBitrate);
+        /* The quota figures measured on a real account (6 h a session, 210 h
+         * a period), at a point where the session bar is amber and the month
+         * is green - the two states worth seeing side by side. */
+        hud->setQuotas(6 * 3600, 5 * 3600 + 12 * 60, 210 * 3600, 42 * 3600);
         hud->resize(1280, 720);
         hud->ensurePolished();
         /* SHOT1 - the HUD lays its blocks out and computes its glass on the

@@ -56,7 +56,13 @@ static sse_event_kind kind_of(const char *s)
     if (strcmp(s, "vm-reachable") == 0)   return SSE_EV_VM_REACHABLE;
     if (strcmp(s, "bsod") == 0)           return SSE_EV_BSOD;
     if (strcmp(s, "shadow-manager") == 0) return SSE_EV_SHADOW_MANAGER;
+    /* BOTH spellings, and the hyphenless one is the REAL one: the taxonomy
+     * was read off the display binary's handler name
+     * (`handleSSEDataEventGetOut`), from which `get-out` was inferred - and a
+     * live session logs `{"type":"event","event":"getout",...}`. The guess
+     * was wrong and only a capture could say so. */
     if (strcmp(s, "get-out") == 0)        return SSE_EV_GET_OUT;
+    if (strcmp(s, "getout") == 0)         return SSE_EV_GET_OUT;
     /* BOTH spellings. The RE of the display binary names the handler
      * `handleSSEDataEventStatusChanged` for `status-changed`, while
      * `launcher.c`'s own note about the machine list writes

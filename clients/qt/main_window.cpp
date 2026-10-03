@@ -761,9 +761,14 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
      * them would be a notification for "the encoder is ready". */
     connect(boot_, &BootstrapWorker::vmEvent, this,
             [this](const QString &kind, const QString &sub, const QString &detail) {
-                qInfo("[SSE1] %s%s%s%s%s", qPrintable(kind),
-                      sub.isEmpty() ? "" : ".", qPrintable(sub),
-                      detail.isEmpty() ? "" : " = ", qPrintable(detail));
+                /* stderr, not qInfo: a real session produced ZERO qInfo
+                 * lines in a log that captured every fprintf around them,
+                 * so every `[SSE1]`, `[S51]` and `[ftui]` line written that
+                 * way has been invisible since it was added. */
+                fprintf(stderr, "[SSE1] %s%s%s%s%s\n", qPrintable(kind),
+                        sub.isEmpty() ? "" : ".", qPrintable(sub),
+                        detail.isEmpty() ? "" : " = ", qPrintable(detail));
+                fflush(stderr);
 
                 if (kind == QStringLiteral("bsod")) {
                     showToast(tr("The machine has crashed (blue screen). "

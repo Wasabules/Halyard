@@ -212,13 +212,14 @@ void SessionWorker::runSession(const BootstrapWorker::Ready &r)
             if (!r.mainClientId.isEmpty() && !r.mainJwt.isEmpty()) {
                 const QByteArray j = r.mainJwt.toUtf8(), id = r.mainClientId.toUtf8();
                 (void)proximus_delete_client(url, j, id, &st);
-                qInfo("[S51] main client deleted (HTTP %ld)", st);
+                fprintf(stderr, "[S51] main client deleted (HTTP %ld)\n", st);
             }
             if (!r.launcherClientId.isEmpty() && !r.launcherJwt.isEmpty()) {
                 const QByteArray j = r.launcherJwt.toUtf8(),
                                  id = r.launcherClientId.toUtf8();
                 (void)proximus_delete_client(url, j, id, &st);
-                qInfo("[S51] launcher client deleted (HTTP %ld)", st);
+                fprintf(stderr, "[S51] launcher client deleted (HTTP %ld)\n", st);
+                fflush(stderr);
             }
         }
     } clients{r};

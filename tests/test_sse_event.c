@@ -64,6 +64,28 @@ int main(void)
            "get-out parses");
         ok(e.event == SSE_EV_GET_OUT, "get-out is recognised");
     }
+    {
+        /* THE SPELLING THE SERVER ACTUALLY USES, from a live session:
+         *   {"type": "event", "event": "getout", "data": "removing client, get out !"}
+         * `get-out` was inferred from the handler name
+         * `handleSSEDataEventGetOut` and was simply wrong. A guess about a
+         * name is worth exactly one capture. */
+        ok(sse_event_parse("{\"type\": \"event\", \"event\": \"getout\","
+                           " \"data\": \"removing client, get out !\"}", 0, &e),
+           "the captured getout parses");
+        ok(e.event == SSE_EV_GET_OUT, "getout, as the server spells it");
+        eqs(e.detail, "removing client, get out !", "a scalar data becomes the detail");
+    }
+    {
+        /* Also from the same session: the one the RE had seen, and it is
+         * `acquisition_is_ready`, not the `encoding_is_ready` the note
+         * recorded. */
+        ok(sse_event_parse("{\"type\": \"event\", \"event\": \"shadow-manager\","
+                           " \"data\": {\"target\": \"VMP\", \"sender\": \"ShadowManager\","
+                           " \"type\": \"acquisition_is_ready\"}}", 0, &e),
+           "the captured shadow-manager parses");
+        eqs(e.sub, "acquisition_is_ready", "its sub-type is acquisition_is_ready");
+    }
 
     /* --- the machine's run state ----------------------------------------- *
      *

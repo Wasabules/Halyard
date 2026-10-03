@@ -90,6 +90,12 @@ public:
      * no picture yet, and the HUD then falls back to a flat fill. */
     void setFrameSource(std::function<QImage()> fn) { frameSource_ = std::move(fn); }
 
+    /* HUD4 - the two quota figures, from `/vms/{id}/capabilities` by way of
+     * the window. Seconds; 0 means the server did not say and the block then
+     * says nothing rather than inventing a ceiling. */
+    void setQuotas(int sessionCeilingSec, int sessionElapsedSec,
+                   int periodAllowanceSec, int periodUsedSec);
+
     /* The HUD covers this rectangle; blocks are placed inside it. */
     void placeOver(const QRect &videoGlobalRect);
 
@@ -132,6 +138,8 @@ private:
     void rebuildGlass();
     std::function<QImage()> frameSource_;
     QImage  glass_;        /* the blurred picture behind the whole HUD */
+    int     qSessionCeil_ = 0, qSessionUsed_ = 0;   /* HUD4 */
+    int     qPeriodCeil_ = 0,  qPeriodUsed_ = 0;
     QRect   glassRect_;    /* where in the video it was taken from */
 
 private:
@@ -151,10 +159,35 @@ private:
         QVector<RowW> rows;
         ChartW    chart;
         QVBoxLayout *latLay = nullptr;  /* the latency block builds per tick */
+
+        /* === HUD4 2026-10-03 — THE BLOCKS THE DESIGN ASKED FOR ==========
+         *
+         * The HUD was a label/value list for every section, which is a
+         * debug dump: four readings people actually watch - frames, latency,
+         * bitrate, loss - were four rows among twenty, in the same size and
+         * the same weight as "orphan chunks".
+         *
+         * `tiles` is the Performance block rebuilt as four big numbers, and
+         * `quota` is new: the session countdown and the period's allowance,
+         * which the client has known since CAPS2 and never showed in the
+         * stream. */
+        struct Tile { QLabel *value = nullptr; QLabel *unit = nullptr; };
+        QVector<Tile> tiles;
+        struct Quota {
+            QLabel *sessionText = nullptr, *monthText = nullptr;
+            QWidget *sessionBar = nullptr, *monthBar = nullptr;
+            QWidget *sessionFill = nullptr, *monthFill = nullptr;
+        } quota;
         QToolButton *detach = nullptr;
         double    ax = 0.0, ay = 0.0;
         QString   leader;               /* empty = standalone */
     };
+
+    /* HUD4 - declared after `Blk`, which they take by reference. */
+    QWidget *buildTiles(Blk &b);
+    QWidget *buildQuota(Blk &b);
+    void     refreshTiles(Blk &b, const HudSnap &s);
+    void     refreshQuota(Blk &b);
 
     void rebuild();
     void layoutBlocks();
