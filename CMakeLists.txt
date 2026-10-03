@@ -810,6 +810,7 @@ if (SHADOW_BUILD_QT AND PLATFORM_DESKTOP)
         clients/qt/core_scope.hpp
         clients/qt/settings_model.hpp
         clients/qt/plane_copy.hpp
+        clients/qt/qt_input_map.hpp
     )
     # FM1 2026-10-03 - the file manager needs the SFTP channel, which is core's
     # `filetransfer.c` behind -DSHADOW_FILETRANSFER=ON (libssh). A desktop

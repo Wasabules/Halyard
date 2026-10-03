@@ -460,6 +460,9 @@ void MainWindow::onBootstrapReady(const BootstrapWorker::Ready &r)
      * enabling here rather than waiting for a caps signal we do not have is
      * safe. */
     act_files_->setEnabled(true);
+    /* IN1 - the video surface takes the keyboard as soon as the stream shows,
+     * so the first keystroke is forwarded without a click to focus it first. */
+    video_->setFocus(Qt::OtherFocusReason);
 
     /* The SSE keepalives travel with it, and the session stops them - see
      * SessionWorker::runSession. */

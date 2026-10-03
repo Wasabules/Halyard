@@ -1,4 +1,5 @@
-/* VideoWidget - the decoded picture on screen, converted on the GPU.
+/* VideoWidget - the decoded picture on screen, converted on the GPU, and the
+ * surface the keyboard and mouse are forwarded from.
  *
  * === WHY QVideoSink AND NOT A SHADER OF OUR OWN (YET) ======================
  *
@@ -18,6 +19,22 @@
  * primaries the VM reports oddly cannot be corrected the way SHADOW_COLOR_MATRIX
  * corrects it today. If that turns out to matter, the fix is the existing
  * shader in a QOpenGLWidget, not a patch here.
+ *
+ * === IN1 2026-10-03 — INPUT FORWARDING =====================================
+ *
+ * The keyboard and mouse reach the VM through core's `shadow_input` queue, the
+ * same one the Borealis stream view posts to; core's session thread drains it.
+ * This widget posts and never touches the socket.
+ *
+ *   - Mouse coordinates are mapped into the DECODED resolution, because that is
+ *     the space core clamps to (`shadow_input_set_bounds`, set here from each
+ *     frame). The video is letterboxed inside the widget, so the map subtracts
+ *     the black bars - a click on a bar is dropped rather than sent at the edge.
+ *   - Keys go through `qt_input_map.hpp` (physical, not the character - see
+ *     there). Auto-repeat is dropped: the VM runs its own.
+ *   - The mouse events arrive on the child `QVideoWidget`, which takes them
+ *     first, so this installs an event filter on it rather than overriding the
+ *     handlers of a widget it does not own.
  */
 #pragma once
 
@@ -43,10 +60,22 @@ public slots:
     /* A line of text over the video, for the bootstrap steps. */
     void setStatus(const QString &text);
 
+protected:
+    bool eventFilter(QObject *obj, QEvent *ev) override;
+    void keyPressEvent(QKeyEvent *e) override;
+    void keyReleaseEvent(QKeyEvent *e) override;
+
 private:
+    /* Widget point -> decoded-frame point, accounting for the letterbox. Returns
+     * false when the point is on a black bar (outside the video). */
+    bool mapToFrame(const QPointF &widgetPt, int &fx, int &fy) const;
+    void postKey(QKeyEvent *e, bool pressed);
+
     QVideoWidget *video_ = nullptr;
     QVideoSink   *sink_  = nullptr;
     QLabel       *status_ = nullptr;
+
+    int frameW_ = 0, frameH_ = 0;   /* last decoded size, for the coord map */
 
     /* Counted, because "the window is black" and "no picture ever arrived" are
      * different problems and the first thing to ask is which one it is. */

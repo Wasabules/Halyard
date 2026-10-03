@@ -168,6 +168,7 @@ run_cpp test_qt_planes test_qt_planes.cpp
 if pkg-config --exists Qt6Core 2>/dev/null; then
     run_cpp test_qt_settings test_qt_settings.cpp -std=c++20 $(pkg-config --cflags --libs Qt6Core)
     run_cpp test_qt_i18n     test_qt_i18n.cpp     -std=c++20 $(pkg-config --cflags --libs Qt6Core)
+    run_cpp test_qt_input_map test_qt_input_map.cpp -std=c++20 $(pkg-config --cflags --libs Qt6Core)
 else
     echo "== the Qt settings table / language choice: SKIPPED ==  (no Qt6Core through pkg-config)"
 fi
