@@ -10,11 +10,16 @@
 #include "metrics_window.hpp"
 #include "file_manager_window.hpp"
 #include "about_dialog.hpp"
+#include "machine_card.hpp"
+#include "stream_overlay.hpp"
 #include "theme.hpp"
 
 extern "C" {
 #include "core/version.h"
 #include "core/input/kbd_hook_win.h"
+#include "core/services/stats.h"
+#include "core/protocol/session_caps.h"
+#include "core/session/ctrl_session_glue.h"
 }
 
 /* === IN2 2026-10-03 — THE WINDOWS SYSTEM-SHORTCUT HOOK =====================
@@ -37,19 +42,38 @@ static MainWindow *g_main_window = nullptr;
 #include <QStackedWidget>
 #include <QThread>
 #include <QLabel>
-#include <QListWidget>
+#include <QApplication>
+#include <QGraphicsOpacityEffect>
+#include <QPropertyAnimation>
+#include <QEasingCurve>
+#include <QGraphicsDropShadowEffect>
+#include <QScrollArea>
+#include <QFrame>
 #include <QPushButton>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QFont>
 #include <QClipboard>
 #include <QGuiApplication>
+#include <QWindow>
 #include <QStatusBar>
 #include <QMessageBox>
 #include <QtConcurrent>
 #include <QMenuBar>
 #include <QKeySequence>
+#include <QShortcut>
+#include <QSettings>
+#include <QTimer>
+#include <QMoveEvent>
+#include <QStandardPaths>
+#include <QDateTime>
+#include <QDir>
+#include <QImage>
+#include <QSignalBlocker>
+#include <QGuiApplication>
 #include <QEvent>
+#include <QDesktopServices>
+#include <QUrl>
 
 using halyard::str;
 
@@ -68,69 +92,161 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
     stack_ = new QStackedWidget(this);
     setCentralWidget(stack_);
 
-    /* ---------------------------------------------------- page 1: pairing */
+    /* ---------------------------------------------------- page 1: pairing
+     *
+     * UI1 - the sign-in screen as a centred card: the mark and the name, then
+     * the code in large spaced type with its two actions. The card is what
+     * gives the code a place of its own instead of floating in the window. */
     {
         auto *page = new QWidget(this);
-        auto *lay = new QVBoxLayout(page);
+        auto *outer = new QVBoxLayout(page);
+        outer->setAlignment(Qt::AlignCenter);
+
+        auto *card = new QFrame(page);
+        card->setProperty("card", true);
+        card->setGraphicsEffect(halyard::theme::elevation(card, 24));
+        card->setMaximumWidth(520);
+        auto *lay = new QVBoxLayout(card);
+        lay->setContentsMargins(36, 30, 36, 30);
+        lay->setSpacing(halyard::theme::SpaceRow);
         lay->setAlignment(Qt::AlignCenter);
 
-        auto *title = new QLabel(tr("Halyard"), page);
-        QFont tf = title->font();
-        tf.setPointSize(tf.pointSize() + 14);
-        tf.setBold(true);
-        title->setFont(tf);
+        auto *mark = new QLabel(card);
+        mark->setPixmap(halyard::theme::appIcon().pixmap(56, 56));
+        mark->setAlignment(Qt::AlignCenter);
+
+        auto *title = new QLabel(str(SHADOW_APP_NAME), card);
+        title->setProperty("h1", true);
         title->setAlignment(Qt::AlignCenter);
 
-        pair_hint_ = new QLabel(tr("signing in..."), page);
+        pair_hint_ = new QLabel(tr("signing in..."), card);
         pair_hint_->setAlignment(Qt::AlignCenter);
         pair_hint_->setWordWrap(true);
+        /* The hint carries the sign-in URL as a real link: rich text, opened in
+         * the system browser. Without TextBrowserInteraction + openExternalLinks
+         * an <a href> renders as blue text that does nothing. */
+        pair_hint_->setTextFormat(Qt::RichText);
+        pair_hint_->setTextInteractionFlags(Qt::TextBrowserInteraction);
+        pair_hint_->setOpenExternalLinks(true);
 
-        pair_code_ = new QLabel(QString(), page);
+        /* The code sits on its own surface: it is the one thing to read and to
+         * retype, so it gets the contrast. */
+        pair_code_ = new QLabel(QString(), card);
         QFont cf = pair_code_->font();
-        cf.setPointSize(cf.pointSize() + 20);
+        cf.setPointSize(cf.pointSize() + 18);
         cf.setBold(true);
-        cf.setLetterSpacing(QFont::AbsoluteSpacing, 6);
+        cf.setLetterSpacing(QFont::AbsoluteSpacing, 8);
         pair_code_->setFont(cf);
         pair_code_->setAlignment(Qt::AlignCenter);
         pair_code_->setTextInteractionFlags(Qt::TextSelectableByMouse);
+        pair_code_->setStyleSheet(
+            QStringLiteral("background:%1; border-radius:10px; padding:14px;")
+                .arg(halyard::theme::surfaceAlt(card).name()));
+        pair_code_->setVisible(false);
 
+        /* === UI2 — THE DEADLINE, AND A WAY BACK FROM IT ====================
+         *
+         * A device code is good for 600 s and then the grant is dead. Two
+         * things were missing, both of them reported: the deadline was only in
+         * the status bar, where nobody looking at a code sees it; and when it
+         * passed, the card said "sign-in failed" and that was the end - the
+         * only way to try again was to kill the application.
+         *
+         * So the remaining time sits under the code, and the failure gets a
+         * button. `AuthWorker::signIn` keeps no state across calls (it clears
+         * its own stop flag and every handle is scoped), so a retry is the same
+         * call the constructor makes - not a second code path. */
+        pair_countdown_ = new QLabel(QString(), card);
+        pair_countdown_->setAlignment(Qt::AlignCenter);
+        pair_countdown_->setProperty("dim", true);
+        pair_countdown_->setVisible(false);
+
+        copy_code_btn_ = new QPushButton(card);
+        open_page_btn_ = new QPushButton(card);
+        open_page_btn_->setProperty("accent", true);
+        retry_btn_     = new QPushButton(card);
+        retry_btn_->setProperty("accent", true);
+        copy_code_btn_->setVisible(false);
+        open_page_btn_->setVisible(false);
+        retry_btn_->setVisible(false);
+        auto *btnRow = new QHBoxLayout;
+        btnRow->setSpacing(halyard::theme::SpaceRow);
+        btnRow->addStretch(1);
+        btnRow->addWidget(copy_code_btn_);
+        btnRow->addWidget(open_page_btn_);
+        btnRow->addWidget(retry_btn_);
+        btnRow->addStretch(1);
+
+        connect(retry_btn_, &QPushButton::clicked, this, &MainWindow::restartSignIn);
+
+        connect(copy_code_btn_, &QPushButton::clicked, this, [this] {
+            if (QClipboard *cb = QGuiApplication::clipboard())
+                cb->setText(pair_user_code_);
+            statusBar()->showMessage(tr("Code copied to the clipboard."), 4000);
+        });
+        connect(open_page_btn_, &QPushButton::clicked, this, [this] {
+            const QString u = !pair_uri_complete_.isEmpty() ? pair_uri_complete_
+                                                            : pair_uri_;
+            if (!u.isEmpty()) QDesktopServices::openUrl(QUrl(u));
+        });
+
+        lay->addWidget(mark);
         lay->addWidget(title);
-        lay->addSpacing(24);
+        lay->addSpacing(6);
         lay->addWidget(pair_hint_);
-        lay->addSpacing(16);
+        lay->addSpacing(10);
         lay->addWidget(pair_code_);
+        lay->addWidget(pair_countdown_);
+        lay->addSpacing(6);
+        lay->addLayout(btnRow);
+        outer->addWidget(card);
         stack_->addWidget(page);
     }
 
-    /* --------------------------------------------------- page 2: machines */
+    /* --------------------------------------------------- page 2: machines
+     *
+     * UI1 - one card per machine in a scroll area, with the state as a pill and
+     * Connect on the card itself. The old shared button at the bottom made you
+     * infer its target from the selection. */
     {
         auto *page = new QWidget(this);
         auto *lay = new QVBoxLayout(page);
+        lay->setContentsMargins(halyard::theme::SpacePage, halyard::theme::SpaceGroup,
+                                halyard::theme::SpacePage, halyard::theme::SpaceGroup);
+        lay->setSpacing(halyard::theme::SpaceRow);
+
+        auto *head = new QHBoxLayout;
         machines_title_ = new QLabel(page);
-        QFont lf = machines_title_->font();
-        lf.setPointSize(lf.pointSize() + 6);
-        machines_title_->setFont(lf);
+        machines_title_->setProperty("h1", true);
+        machines_subtitle_ = new QLabel(page);
+        machines_subtitle_->setProperty("dim", true);
+        head->addWidget(machines_title_);
+        head->addStretch(1);
+        head->addWidget(machines_subtitle_);
+        lay->addLayout(head);
 
-        machines_ = new QListWidget(page);
-        connect_ = new QPushButton(page);
-        connect_->setEnabled(false);
+        auto *scroll = new QScrollArea(page);
+        scroll->setWidgetResizable(true);
+        scroll->setFrameShape(QFrame::NoFrame);
+        machines_host_ = new QWidget(scroll);
+        machines_lay_ = new QVBoxLayout(machines_host_);
+        machines_lay_->setContentsMargins(0, 0, 0, 0);
+        machines_lay_->setSpacing(halyard::theme::SpaceRow);
+        machines_lay_->addStretch(1);
+        scroll->setWidget(machines_host_);
+        lay->addWidget(scroll, 1);
 
-        auto *row = new QHBoxLayout;
-        row->addStretch(1);
-        row->addWidget(connect_);
+        /* The two states a list can be in besides "full", said plainly rather
+         * than left as an empty rectangle. */
+        machines_empty_ = new QLabel(page);
+        machines_empty_->setAlignment(Qt::AlignCenter);
+        machines_empty_->setProperty("dim", true);
+        machines_empty_->setWordWrap(true);
+        lay->addWidget(machines_empty_);
 
-        lay->addWidget(machines_title_);
-        lay->addWidget(machines_, 1);
-        lay->addLayout(row);
         stack_->addWidget(page);
-
-        connect(machines_, &QListWidget::currentRowChanged, this, [this](int r) {
-            connect_->setEnabled(r >= 0 && !session_live_);
-        });
-        connect(machines_, &QListWidget::itemDoubleClicked, this,
-                [this] { connectSelected(); });
-        connect(connect_, &QPushButton::clicked, this, &MainWindow::connectSelected);
     }
+
 
     /* ------------------------------------------------- page 3: connecting */
     steps_ = new StepListWidget(this);
@@ -150,6 +266,121 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
     connect(video_, &VideoWidget::requestDisconnect, this, [this] {
         if (session_live_ && sess_) sess_->requestStop();
     });
+
+    /* === OV1 - the in-stream overlay (HUD + menu) ======================== *
+     *
+     * Two frameless top-level windows over the video (see stream_overlay.hpp for
+     * why not children). Created once; shown and positioned while streaming. */
+    {
+        QSettings st;
+        const int secMask = st.value(QStringLiteral("ui/hud_sections"),
+                                     (int)halyard::SecDefault).toInt();
+        const int chMask  = st.value(QStringLiteral("ui/hud_charts"),
+                                     (int)halyard::ChDefault).toInt();
+        stream_hud_ = new halyard::StreamHud(this);
+        stream_hud_->setMasks(secMask, chMask);
+        /* The one number core cannot know: what this client has actually put on
+         * screen. Read through a callback so the HUD never holds the widget. */
+        stream_hud_->setPresentedCounter([this] {
+            return video_ ? video_->framesPresented() : 0;
+        });
+        /* OV7 - presentation and the saved block layout. */
+        const int hudMs    = st.value(QStringLiteral("ui/hud_refresh_ms"), 500).toInt();
+        const int hudScale = st.value(QStringLiteral("ui/hud_scale"), 100).toInt();
+        const int hudOpac  = st.value(QStringLiteral("ui/hud_opacity"), 100).toInt();
+        stream_hud_->setRefreshMs(hudMs);
+        stream_hud_->setScalePercent(hudScale);
+        stream_hud_->setOpacityPercent(hudOpac);
+        stream_hud_->setLayoutString(
+            st.value(QStringLiteral("ui/hud_layout")).toString());
+        connect(stream_hud_, &halyard::StreamHud::layoutChanged, this, [this] {
+            QSettings().setValue(QStringLiteral("ui/hud_layout"),
+                                 stream_hud_->layoutString());
+        });
+
+        stream_overlay_ = new halyard::StreamOverlay(this);
+        stream_overlay_->setInitialHud(secMask, chMask);
+        stream_overlay_->setHudPresentation(hudMs, hudScale, hudOpac);
+        connect(stream_overlay_, &halyard::StreamOverlay::hudRefreshChanged, this,
+                [this](int ms) {
+                    QSettings().setValue(QStringLiteral("ui/hud_refresh_ms"), ms);
+                    stream_hud_->setRefreshMs(ms);
+                });
+        connect(stream_overlay_, &halyard::StreamOverlay::hudScaleChanged, this,
+                [this](int p) {
+                    QSettings().setValue(QStringLiteral("ui/hud_scale"), p);
+                    stream_hud_->setScalePercent(p);
+                });
+        connect(stream_overlay_, &halyard::StreamOverlay::hudOpacityChanged, this,
+                [this](int p) {
+                    QSettings().setValue(QStringLiteral("ui/hud_opacity"), p);
+                    stream_hud_->setOpacityPercent(p);
+                });
+        connect(stream_overlay_, &halyard::StreamOverlay::hudLayoutReset, this,
+                [this] { stream_hud_->resetLayout(); });
+        /* Edit mode: the HUD takes the mouse, so the overlay menu steps aside
+         * and a toast says how to come back. */
+        connect(stream_overlay_, &halyard::StreamOverlay::hudEditToggled, this,
+                [this](bool on) {
+                    stream_hud_->setEditing(on);
+                    if (on) showToast(tr("Editing the HUD — press %1 to finish.")
+                                          .arg(overlay_shortcut_->key()
+                                                   .toString(QKeySequence::NativeText)));
+                });
+        connect(stream_overlay_, &halyard::StreamOverlay::hudMasksChanged, this,
+                [this](int sec, int ch) {
+                    QSettings s2;
+                    s2.setValue(QStringLiteral("ui/hud_sections"), sec);
+                    s2.setValue(QStringLiteral("ui/hud_charts"), ch);
+                    stream_hud_->setMasks(sec, ch);
+                    updateOverlayVisibility();
+                });
+        connect(stream_overlay_, &halyard::StreamOverlay::requestFullscreenToggle,
+                this, &MainWindow::toggleFullscreen);
+        connect(stream_overlay_, &halyard::StreamOverlay::requestDisconnect, this,
+                [this] { if (session_live_ && sess_) sess_->requestStop(); });
+        connect(stream_overlay_, &halyard::StreamOverlay::requestFiles, this,
+                &MainWindow::openFileManager);
+        connect(stream_overlay_, &halyard::StreamOverlay::requestMetrics, this,
+                &MainWindow::openMetrics);
+        connect(stream_overlay_, &halyard::StreamOverlay::requestSettings, this,
+                &MainWindow::openSettings);
+        connect(stream_overlay_, &halyard::StreamOverlay::requestScreenshot, this,
+                &MainWindow::takeScreenshot);
+        connect(stream_overlay_, &halyard::StreamOverlay::requestCopyDiagnostics,
+                this, &MainWindow::copyDiagnostics);
+        connect(stream_overlay_, &halyard::StreamOverlay::cursorSourceChanged, this,
+                [this](int src) {
+                    if (video_) video_->setCursorSource(src);
+                    if (act_hide_cursor_) {
+                        QSignalBlocker b(act_hide_cursor_);
+                        act_hide_cursor_->setChecked(src == VideoWidget::CursorNone);
+                    }
+                });
+        connect(stream_overlay_, &halyard::StreamOverlay::toast, this,
+                &MainWindow::showToast);
+
+        /* The hotkey is an application shortcut: it fires before the key reaches
+         * the video surface, so it is NOT forwarded to the VM. Configurable in
+         * Settings > General; rebuilt by applyOverlayHotkey(). */
+        overlay_shortcut_ = new QShortcut(this);
+        overlay_shortcut_->setContext(Qt::ApplicationShortcut);
+        connect(overlay_shortcut_, &QShortcut::activated, this,
+                &MainWindow::toggleOverlay);
+        applyOverlayHotkey();
+
+        /* OV3 - the overlays follow the APPLICATION's activity: alt-tab away
+         * and they go, come back and they return. */
+        connect(qApp, &QGuiApplication::applicationStateChanged, this,
+                [this](Qt::ApplicationState st) {
+                    app_active_ = (st == Qt::ApplicationActive);
+                    updateOverlayVisibility();
+                });
+        /* OV9 - re-evaluate whenever the focused window changes, so opening the
+         * settings takes the HUD away at once and closing them brings it back. */
+        connect(qApp, &QGuiApplication::focusWindowChanged, this,
+                [this](QWindow *) { updateOverlayVisibility(); });
+    }
 
     /* === QT3 - the menu bar, which is the point of leaving a console UI ====
      *
@@ -175,6 +406,29 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
         QAction *act_metrics = act_metrics_ = view_menu_->addAction(QString());
         act_metrics->setShortcut(QKeySequence(QStringLiteral("Ctrl+M")));
         connect(act_metrics, &QAction::triggered, this, &MainWindow::openMetrics);
+
+        /* IN4 - the "Stream" menu: the pause-menu tools, in the menu bar, shown
+         * only while a stream is open. The control bar on the video has the same
+         * actions for fullscreen use; this is the discoverable home for them and
+         * for the ones a bar has no room for (the pointer choice). */
+        stream_menu_ = menuBar()->addMenu(QString());
+        act_fs_ = stream_menu_->addAction(QString());
+        act_fs_->setShortcut(QKeySequence(QStringLiteral("F11")));
+        connect(act_fs_, &QAction::triggered, this, &MainWindow::toggleFullscreen);
+        act_hide_cursor_ = stream_menu_->addAction(QString());
+        act_hide_cursor_->setCheckable(true);
+        connect(act_hide_cursor_, &QAction::toggled, this, [this](bool on) {
+            if (video_) video_->setLocalCursorHidden(on);
+        });
+        stream_menu_->addSeparator();
+        act_stream_metrics_ = stream_menu_->addAction(QString());
+        connect(act_stream_metrics_, &QAction::triggered, this, &MainWindow::openMetrics);
+        stream_menu_->addSeparator();
+        act_disconnect_ = stream_menu_->addAction(QString());
+        connect(act_disconnect_, &QAction::triggered, this, [this] {
+            if (session_live_ && sess_) sess_->requestStop();
+        });
+        stream_menu_->menuAction()->setVisible(false);   /* until streaming */
 
         /* FM1 - the file manager. Enabled only while a session is live, because
          * the SFTP channel and its credential exist only then; `session_live_`
@@ -227,15 +481,12 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
     }, Qt::QueuedConnection);
     connect(auth_, &AuthWorker::pairingNeeded, this,
             &MainWindow::onPairingNeeded, Qt::QueuedConnection);
-    connect(auth_, &AuthWorker::pairingProgress, this, [this](int left) {
-        statusBar()->showMessage(tr("waiting for the browser - %1 s left").arg(left));
-    }, Qt::QueuedConnection);
+    connect(auth_, &AuthWorker::pairingProgress, this, &MainWindow::onPairingProgress,
+            Qt::QueuedConnection);
     connect(auth_, &AuthWorker::succeeded, this,
             &MainWindow::onSignedIn, Qt::QueuedConnection);
-    connect(auth_, &AuthWorker::failed, this, [this](const QString &why) {
-        pair_hint_->setText(tr("sign-in failed: %1").arg(why));
-        pair_code_->clear();
-    }, Qt::QueuedConnection);
+    connect(auth_, &AuthWorker::failed, this, &MainWindow::onSignInFailed,
+            Qt::QueuedConnection);
 
     connect(boot_, &BootstrapWorker::stepRunning, this, [this](int i, const QString &d) {
         steps_->setState(i, StepListWidget::State::Running, d);
@@ -246,7 +497,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
     connect(boot_, &BootstrapWorker::stepFailed, this, [this](int i, const QString &d) {
         steps_->setState(i, StepListWidget::State::Failed, d);
         session_live_ = false;
-        connect_->setEnabled(machines_->currentRow() >= 0);
+        setMachinesBusy(false);
     }, Qt::QueuedConnection);
     connect(boot_, &BootstrapWorker::ready, this,
             &MainWindow::onBootstrapReady, Qt::QueuedConnection);
@@ -266,11 +517,22 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
                  * manager is now pointing at nothing: close it and grey the
                  * menu entry until the next session grants a fresh channel. */
                 act_files_->setEnabled(false);
+                stream_menu_->menuAction()->setVisible(false);
+                updateOverlayVisibility();   /* OV3 - session over: all gone */
                 if (file_manager_) file_manager_->close();
-                /* IN3 - do not strand the machine list in fullscreen. */
-                if (isFullScreen()) { showNormal(); if (video_) video_->setFullscreenState(false); }
+                /* IN3/OV4 - do not strand the machine list in fullscreen, and
+                 * put back every piece of chrome the immersive mode hid. */
+                if (isFullScreen()) {
+                    showNormal();
+                    menuBar()->setVisible(true);
+                    statusBar()->setVisible(true);
+                    if (video_) {
+                        video_->setChromeVisible(true);
+                        video_->setFullscreenState(false);
+                    }
+                }
                 setPage(PageMachines);
-                connect_->setEnabled(machines_->currentRow() >= 0);
+                setMachinesBusy(false);
             }, Qt::QueuedConnection);
 
     auth_thread_->start();
@@ -316,11 +578,16 @@ MainWindow::~MainWindow()
 void MainWindow::retranslate()
 {
     machines_title_->setText(tr("Your machines"));
-    connect_->setText(tr("Connect"));
+    retry_btn_->setText(tr("Start over"));
     view_menu_->setTitle(tr("&View"));
     act_settings_->setText(tr("&Settings"));
     act_metrics_->setText(tr("&Metrics"));
     act_files_->setText(tr("&File transfer..."));
+    stream_menu_->setTitle(tr("&Stream"));
+    act_fs_->setText(tr("Fullscreen"));
+    act_hide_cursor_->setText(tr("Hide the local mouse pointer"));
+    act_stream_metrics_->setText(tr("Metrics..."));
+    act_disconnect_->setText(tr("Disconnect"));
     help_menu_->setTitle(tr("&Help"));
     act_about_->setText(tr("&About %1").arg(str(SHADOW_APP_NAME)));
 }
@@ -328,6 +595,9 @@ void MainWindow::retranslate()
 void MainWindow::changeEvent(QEvent *e)
 {
     if (e->type() == QEvent::LanguageChange) retranslate();
+    else if (e->type() == QEvent::WindowStateChange ||
+             e->type() == QEvent::ActivationChange)
+        updateOverlayVisibility();   /* OV3 - minimise / focus */
     QMainWindow::changeEvent(e);
 }
 
@@ -335,6 +605,8 @@ void MainWindow::openSettings()
 {
     if (!settings_) {
         settings_ = new SettingsWindow(this);
+        connect(settings_, &SettingsWindow::overlayHotkeyChanged, this,
+                &MainWindow::applyOverlayHotkey);
         connect(settings_, &SettingsWindow::settingChanged, this,
                 [this](const QString &env, const QString &v, bool live) {
                     const QString shown = v.isEmpty() ? tr("(unset)") : v;
@@ -388,9 +660,238 @@ void MainWindow::toggleFullscreen()
      * own overlay menu stays reachable, which is the way back out (plus F11,
      * which the hook never swallows). Only meaningful while streaming. */
     const bool goFull = !isFullScreen();
+
+    /* OV4 - a REAL fullscreen: every piece of chrome goes, not just the window
+     * frame. Menu bar, status bar and the stream's control bar all hide, so the
+     * picture is the screen. F11 and the overlay hotkey are the way back, and
+     * both still work because the video surface keeps the focus. */
+    menuBar()->setVisible(!goFull);
+    statusBar()->setVisible(!goFull);
+    if (video_) video_->setChromeVisible(!goFull);
+
     if (goFull) showFullScreen();
     else        showNormal();
-    if (video_) video_->setFullscreenState(goFull);
+    if (video_) {
+        video_->setFullscreenState(goFull);
+        video_->setFocus(Qt::OtherFocusReason);
+    }
+    if (goFull) {
+        /* Deferred: the new geometry is not final until the event loop has
+         * processed the state change, and the toast positions against it. */
+        const QString k = overlay_shortcut_->key().toString(QKeySequence::NativeText);
+        QTimer::singleShot(0, this, [this, k] {
+            showToast(tr("Fullscreen — F11 to leave, %1 for the menu.").arg(k));
+        });
+    }
+    /* The overlay windows are positioned in screen coordinates, so they must
+     * follow the window across the fullscreen change (deferred: the new geometry
+     * is not final until the event loop has processed the state change). */
+    QTimer::singleShot(0, this, [this] { repositionOverlays(); });
+}
+
+/* === OV1 - the overlay plumbing =========================================== */
+
+QRect MainWindow::videoGlobalRect() const
+{
+    if (!video_) return QRect();
+    return QRect(video_->mapToGlobal(QPoint(0, 0)), video_->size());
+}
+
+void MainWindow::repositionOverlays()
+{
+    const QRect r = videoGlobalRect();
+    if (r.isNull()) return;
+    if (stream_hud_ && stream_hud_->isVisible())     stream_hud_->placeOver(r);
+    if (stream_overlay_ && stream_overlay_->isVisible()) stream_overlay_->placeOver(r);
+}
+
+/* === OV3 - WHEN THE OVERLAY WINDOWS MAY BE ON SCREEN ======================
+ *
+ * They are `Qt::Tool` + always-on-top, which is what lets them sit over a
+ * fullscreen native video surface - and is also why they must be governed: left
+ * to themselves they float over every other application and outlive the stream,
+ * which is exactly what was reported.
+ *
+ * Four conditions, all required: a session is streaming, the streaming page is
+ * the one shown, the window is not minimised, and the APPLICATION is active.
+ * The last one is deliberately the application's state and not this window's:
+ * while the overlay menu has focus, the main window is NOT the active window,
+ * and testing that would hide the overlay the moment it opened. */
+/* OV10 - is one of our OTHER windows sitting over the picture?
+ *
+ * Dropping `WindowStaysOnTopHint` fixes the ordering, but ordering alone is not
+ * enough: the HUD is click-through, so a file manager underneath it is still
+ * usable yet partly unreadable, and a translucent HUD over a file list reads as
+ * a rendering fault. Overlap and not focus, because the window the person is
+ * reading is not always the focused one - and overlap is also what lets the
+ * file manager live on a second monitor with the HUD still up. */
+bool MainWindow::ownWindowOverVideo() const
+{
+    const QRect v = videoGlobalRect();
+    if (v.isNull()) return false;
+
+    for (QWidget *w : QApplication::topLevelWidgets()) {
+        if (!w || w == this || !w->isWindow() || !w->isVisible() || w->isMinimized())
+            continue;
+        /* Our own overlays are the thing being judged, not a judge of it; menus
+         * and tooltips come and go in a frame and must not flicker the HUD. */
+        if (w == stream_hud_ || w == stream_overlay_ || w == toast_) continue;
+        const Qt::WindowType t = w->windowType();
+        if (t == Qt::Popup || t == Qt::ToolTip || t == Qt::SplashScreen) continue;
+        if (w->frameGeometry().intersects(v)) return true;
+    }
+    return false;
+}
+
+bool MainWindow::overlaysAllowed() const
+{
+    return session_live_ && app_active_ && !isMinimized()
+        && stack_ && stack_->currentIndex() == PageStreaming
+        && !ownWindowOverVideo();
+}
+
+void MainWindow::updateOverlayVisibility()
+{
+    const bool ok = overlaysAllowed();
+
+    /* OV10 - a window can be dragged over the picture without any focus change,
+     * so poll while a session is on the stream page. One rectangle test per
+     * top-level, four times a second: cheaper than an application-wide event
+     * filter and it catches moves, resizes and another monitor going away. */
+    const bool watch = session_live_ && stack_ && stack_->currentIndex() == PageStreaming;
+    if (!overlay_watch_) {
+        overlay_watch_ = new QTimer(this);
+        overlay_watch_->setInterval(250);
+        connect(overlay_watch_, &QTimer::timeout, this,
+                &MainWindow::updateOverlayVisibility);
+    }
+    if (watch && !overlay_watch_->isActive())      overlay_watch_->start();
+    else if (!watch && overlay_watch_->isActive()) overlay_watch_->stop();
+    if (stream_hud_)
+        stream_hud_->setVisible(ok && stream_hud_->anything());
+    if (!ok) {
+        if (stream_overlay_) stream_overlay_->hide();
+        if (toast_)          toast_->hide();
+    }
+    if (ok) repositionOverlays();
+}
+
+void MainWindow::toggleOverlay()
+{
+    if (!stream_overlay_ || !overlaysAllowed()) return;
+    /* OV7 - while arranging the HUD the hotkey means "done", not "menu". */
+    if (stream_hud_ && stream_hud_->editing()) {
+        stream_hud_->setEditing(false);
+        stream_overlay_->setHudEditing(false);
+        return;
+    }
+    if (stream_overlay_->isVisible()) {
+        stream_overlay_->hide();
+    } else {
+        stream_overlay_->placeOver(videoGlobalRect());
+        stream_overlay_->show();
+        stream_overlay_->raise();
+        stream_overlay_->activateWindow();
+    }
+}
+
+void MainWindow::applyOverlayHotkey()
+{
+    const QString seq = QSettings()
+        .value(QStringLiteral("ui/overlay_hotkey"), QStringLiteral("F8")).toString();
+    overlay_shortcut_->setKey(QKeySequence(seq));
+}
+
+/* OV2 - a transient note over the stream. A frameless tool window rather than
+ * the status bar, because in fullscreen there is no status bar; it is
+ * click-through so it can never swallow a shot in a game. */
+void MainWindow::showToast(const QString &text)
+{
+    /* OV3 - never while the stream is not in front: these are always-on-top
+     * tool windows, and an unparented one floats over every other application
+     * for ever (reported). */
+    if (!overlaysAllowed()) return;
+    if (!toast_) {
+        /* Parented to the main window on purpose: a null parent makes it an
+         * independent top-level that Windows keeps alive and on top whatever
+         * has focus. */
+        /* OV10 - no `WindowStaysOnTopHint`: it means topmost over the whole
+         * desktop, our own other windows included. `Qt::Tool` + this parent is
+         * what puts it above the video's native child surface. */
+        toast_ = new QLabel(this, Qt::FramelessWindowHint | Qt::Tool |
+                                  Qt::WindowTransparentForInput);
+        toast_->setAttribute(Qt::WA_TranslucentBackground);
+        toast_->setAttribute(Qt::WA_ShowWithoutActivating);
+        toast_->setStyleSheet(QStringLiteral(
+            "color:#f2f2f2; background:rgba(20,20,24,225);"
+            "padding:9px 14px; border-radius:9px;"));
+        toast_timer_ = new QTimer(this);
+        toast_timer_->setSingleShot(true);
+        connect(toast_timer_, &QTimer::timeout, this,
+                [this] { if (toast_) toast_->hide(); });
+    }
+    toast_->setText(text);
+    toast_->adjustSize();
+    const QRect r = videoGlobalRect();
+    if (!r.isNull())
+        toast_->move(r.center().x() - toast_->width() / 2,
+                     r.bottom() - toast_->height() - 48);
+    toast_->show();
+    toast_->raise();
+    toast_timer_->start(2600);
+}
+
+/* OV2 - a PNG of exactly what the stream is showing, from the sink's current
+ * frame: the decoded picture, not a grab of the window, so no overlay or cursor
+ * lands in it. */
+void MainWindow::takeScreenshot()
+{
+    if (!video_) return;
+    const QImage img = video_->currentFrameImage();
+    if (img.isNull()) { showToast(tr("No picture to capture yet.")); return; }
+
+    const QString dir = QStandardPaths::writableLocation(QStandardPaths::PicturesLocation);
+    const QString path = QDir(dir).filePath(
+        QStringLiteral("halyard-%1.png")
+            .arg(QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd-HHmmss"))));
+    if (img.save(path)) showToast(tr("Screenshot saved: %1").arg(path));
+    else                showToast(tr("Could not save the screenshot."));
+}
+
+void MainWindow::copyDiagnostics()
+{
+    shadow_session_caps c;
+    const bool have = ctrl_session_caps(&c);
+    session_stats_t s;
+    session_stats_get(&s);
+    const QString txt = QStringLiteral(
+        "%1 %2 (%3)\n"
+        "session: %4 s, %5 channels granted\n"
+        "video: %6x%7, codec %8, %9 decoded, %10 decode errors\n"
+        "net: %11 pkts, loss %12/%13, rtt %14 ms\n"
+        "audio: %15 decoded, %16 lost")
+        .arg(str(SHADOW_APP_NAME), str(SHADOW_VERSION), str(SHADOW_BUILD_HASH))
+        .arg(s.session_seconds).arg(have ? c.n_granted : 0)
+        .arg(s.h264_width).arg(s.h264_height)
+        .arg(QString::fromUtf8(ctrl_session_glue_codec()))
+        .arg(s.h264_frames_decoded).arg(s.h264_decode_errors)
+        .arg(s.rtp_video_packets).arg(s.chunks_missing).arg(s.chunks_expected)
+        .arg(s.ctrl_rtt_us / 1000)
+        .arg(s.opus_decoded).arg(s.opus_lost);
+    QGuiApplication::clipboard()->setText(txt);
+    showToast(tr("Diagnostics copied to the clipboard."));
+}
+
+void MainWindow::moveEvent(QMoveEvent *e)
+{
+    QMainWindow::moveEvent(e);
+    repositionOverlays();
+}
+
+void MainWindow::resizeEvent(QResizeEvent *e)
+{
+    QMainWindow::resizeEvent(e);
+    repositionOverlays();
 }
 
 void MainWindow::openAbout()
@@ -402,35 +903,140 @@ void MainWindow::openAbout()
     dlg.exec();
 }
 
-void MainWindow::setPage(int index) { stack_->setCurrentIndex(index); }
+void MainWindow::setPage(int index)
+{
+    const int from = stack_->currentIndex();
+    stack_->setCurrentIndex(index);
+    updateOverlayVisibility();   /* OV3 - off the stream page, no overlays */
+
+    /* === UI1 — A 140 ms FADE IN ON THE PAGE THAT ARRIVES ==================
+     *
+     * The four pages are one window swapping its contents, and an instant swap
+     * reads as a flash with no direction: people lost track of whether the code
+     * screen had been replaced or the window had been redrawn.
+     *
+     * Only the INCOMING page animates, and only its opacity. Deliberately not
+     * a slide or a cross-fade: a cross-fade needs both pages rendered at once,
+     * which on the streaming page means compositing live video through a
+     * `QGraphicsOpacityEffect` - that forces the video widget off its native
+     * surface and cost ~11 ms a frame when tried (2026-10-03).
+     *
+     * The streaming page is therefore excluded outright, and the effect is
+     * REMOVED when the animation ends rather than left at opacity 1: an effect
+     * still installed keeps the widget on the slow path for every later
+     * repaint. `SHADOW_QT_ANIM=0` turns the transitions off. */
+    static const bool kAnim = qgetenv("SHADOW_QT_ANIM") != "0";
+    if (!kAnim || from == index || index == PageStreaming) return;
+
+    QWidget *page = stack_->widget(index);
+    if (!page) return;
+
+    auto *fx = new QGraphicsOpacityEffect(page);
+    fx->setOpacity(0.0);
+    page->setGraphicsEffect(fx);
+
+    auto *a = new QPropertyAnimation(fx, "opacity", page);
+    a->setDuration(140);
+    a->setStartValue(0.0);
+    a->setEndValue(1.0);
+    a->setEasingCurve(QEasingCurve::OutCubic);
+    connect(a, &QPropertyAnimation::finished, page, [page] {
+        page->setGraphicsEffect(nullptr);   /* deletes the effect */
+    });
+    a->start(QAbstractAnimation::DeleteWhenStopped);
+}
 
 void MainWindow::onPairingNeeded(const QString &userCode, const QString &uri,
                                  const QString &uriComplete, int expiresIn)
 {
     pair_code_->setText(userCode);
+    pair_user_code_ = userCode;
+    pair_uri_ = uri.isEmpty() ? QStringLiteral("https://shadow.tech/device") : uri;
+    pair_uri_complete_ = uriComplete;
 
     /* CLIP5, the same reasoning as the Borealis client: the code is eight
      * characters to retype into a browser ON THIS MACHINE, so it is copied and
-     * the screen SAYS so - a clipboard that changed without being asked is
-     * unsettling unless something accounts for it. Done here and not in the
-     * worker: this is the GUI thread, which is where clipboard calls belong. */
+     * the screen SAYS so. Done here and not in the worker: this is the GUI
+     * thread, which is where clipboard calls belong. */
     bool copied = false;
     if (QClipboard *cb = QGuiApplication::clipboard()) {
         cb->setText(userCode);
         copied = true;
     }
 
+    /* The URL as a real, clickable link (rich text). */
     pair_hint_->setText(
-        tr("Open %1 and enter this code.%2\nIt is valid for %3 s.")
-            .arg(uri.isEmpty() ? QStringLiteral("shadow.tech/device") : uri,
-                 copied ? tr("  The code is on your clipboard - paste it.")
+        tr("Open <a href=\"%1\">%1</a> and enter this code.%2<br>It is valid "
+           "for %3 s.")
+            .arg(pair_uri_.toHtmlEscaped(),
+                 copied ? tr("  The code is already on your clipboard.")
                         : QString(),
                  QString::number(expiresIn)));
 
-    /* The one-click form is OFFERED, not opened: launching a browser unasked
-     * is the kind of thing that startles people. */
-    if (!uriComplete.isEmpty())
-        statusBar()->showMessage(tr("one-click link: %1").arg(uriComplete));
+    copy_code_btn_->setText(copied ? tr("Code copied — copy again")
+                                   : tr("Copy the code"));
+    open_page_btn_->setText(pair_uri_complete_.isEmpty()
+                                ? tr("Open the sign-in page")
+                                : tr("Open the sign-in page (code prefilled)"));
+    pair_code_->setVisible(true);
+    copy_code_btn_->setVisible(true);
+    open_page_btn_->setVisible(true);
+    retry_btn_->setVisible(false);
+    pair_countdown_->setVisible(true);
+    onPairingProgress(expiresIn);
+}
+
+/* UI2 - the remaining validity, on the card. Written as m:ss and not as a bare
+ * second count: "417 s" is a number you have to divide before it means
+ * anything, and the only question being asked is "do I have time". */
+void MainWindow::onPairingProgress(int secondsLeft)
+{
+    if (secondsLeft < 0) secondsLeft = 0;
+    const QString mmss = QStringLiteral("%1:%2")
+                             .arg(secondsLeft / 60)
+                             .arg(secondsLeft % 60, 2, 10, QLatin1Char('0'));
+    pair_countdown_->setText(tr("this code expires in %1").arg(mmss));
+    /* Under a minute it stops being background information. */
+    pair_countdown_->setStyleSheet(
+        secondsLeft <= 60 ? halyard::theme::css(halyard::theme::warn(this)) : QString());
+    pair_countdown_->setVisible(true);
+    statusBar()->showMessage(tr("waiting for the browser - %1 left").arg(mmss));
+}
+
+void MainWindow::onSignInFailed(const QString &why)
+{
+    /* UI2 - a failure here is nearly always recoverable (the code ran out, the
+     * browser was never opened, the network blinked), so the screen offers the
+     * retry instead of ending at a sentence. The code and its two buttons go:
+     * that code is dead, and leaving it on screen invites retyping it. */
+    pair_hint_->setText(tr("Sign-in did not complete: %1").arg(why));
+    pair_code_->clear();
+    pair_code_->setVisible(false);
+    pair_countdown_->setVisible(false);
+    copy_code_btn_->setVisible(false);
+    open_page_btn_->setVisible(false);
+    retry_btn_->setVisible(true);
+    retry_btn_->setEnabled(true);
+    retry_btn_->setFocus();
+    statusBar()->showMessage(tr("sign-in failed"));
+}
+
+void MainWindow::restartSignIn()
+{
+    /* The same call the constructor makes. `AuthWorker::signIn` clears its own
+     * stop flag and holds every handle in a scope, so running it again is a
+     * fresh attempt and not a resumption of the dead one. */
+    retry_btn_->setEnabled(false);
+    retry_btn_->setVisible(false);
+    pair_code_->clear();
+    pair_code_->setVisible(false);
+    pair_countdown_->setVisible(false);
+    copy_code_btn_->setVisible(false);
+    open_page_btn_->setVisible(false);
+    pair_hint_->setText(tr("signing in..."));
+    setPage(PagePairing);
+    statusBar()->clearMessage();
+    QMetaObject::invokeMethod(auth_, "signIn", Qt::QueuedConnection);
 }
 
 void MainWindow::onSignedIn(const QString &bearer, const QString &launcherUrl)
@@ -454,7 +1060,7 @@ void MainWindow::listMachines()
     (void)QtConcurrent::run([this, base, tok] {
         halyard::ScopedVmPage page;
         long http = 0;
-        QStringList ids, labels;
+        QStringList ids, names, states;
         if (launcher_list_vms(base.constData(), tok.constData(), 0, 50,
                               page.out(), &http)) {
             for (int i = 0; i < page->count; i++) {
@@ -463,31 +1069,51 @@ void MainWindow::listMachines()
                 QString label = str(v.alias);
                 if (label.isEmpty()) label = str(v.name);
                 if (label.isEmpty()) label = str(v.id);
-                const QString st = str(v.state);
-                labels << (st.isEmpty() ? label
-                                        : QStringLiteral("%1   (%2)").arg(label, st));
+                names  << label;
+                states << str(v.state);
             }
         }
+        /* UI1 - the three fields separately: the card gives each its own place,
+         * so gluing them into one string here would only have to be undone. */
         QMetaObject::invokeMethod(this, "onMachinesFetched", Qt::QueuedConnection,
                                   Q_ARG(QStringList, ids),
-                                  Q_ARG(QStringList, labels));
+                                  Q_ARG(QStringList, names),
+                                  Q_ARG(QStringList, states));
     });
 }
 
-void MainWindow::onMachinesFetched(const QStringList &ids, const QStringList &labels)
+void MainWindow::onMachinesFetched(const QStringList &ids, const QStringList &names,
+                                   const QStringList &states)
 {
     machine_ids_ = ids;
-    machines_->clear();
-    machines_->addItems(labels);
-    statusBar()->showMessage(tr("%1 machine(s)").arg(ids.size()));
+    machine_names_ = names;
+    for (MachineCard *c : machine_cards_) { machines_lay_->removeWidget(c); delete c; }
+    machine_cards_.clear();
+
+    for (int i = 0; i < ids.size(); i++) {
+        auto *card = new MachineCard(ids[i], names.value(i), states.value(i),
+                                     QString(), machines_host_);
+        connect(card, &MachineCard::connectRequested, this, &MainWindow::connectTo);
+        /* Before the trailing stretch, so the cards stay at the top. */
+        machines_lay_->insertWidget(machines_lay_->count() - 1, card);
+        machine_cards_.append(card);
+    }
+    machines_empty_->setVisible(ids.isEmpty());
+    machines_empty_->setText(tr("No machine on this account."));
+    machines_subtitle_->setText(tr("%n machine(s)", "", ids.size()));
+    statusBar()->showMessage(tr("%n machine(s)", "", ids.size()));
     setPage(PageMachines);
-    if (!ids.isEmpty()) machines_->setCurrentRow(0);
 }
 
-void MainWindow::connectSelected()
+void MainWindow::setMachinesBusy(bool busy)
 {
-    const int row = machines_->currentRow();
-    if (row < 0 || row >= machine_ids_.size()) return;
+    for (MachineCard *c : machine_cards_) c->setBusy(busy);
+}
+
+void MainWindow::connectTo(const QString &id)
+{
+    const int row = machine_ids_.indexOf(id);
+    if (row < 0) return;
 
     /* Core's contract 1: one session per process. Refused here rather than
      * letting two worker threads into the same module state. */
@@ -498,16 +1124,16 @@ void MainWindow::connectSelected()
         return;
     }
     session_live_ = true;
-    connect_->setEnabled(false);
+    setMachinesBusy(true);
 
     steps_->reset();
-    steps_->setHeadline(tr("connecting to %1").arg(machines_->currentItem()->text()));
+    steps_->setHeadline(tr("connecting to %1").arg(machine_names_.value(row, id)));
     setPage(PageConnecting);
 
     QMetaObject::invokeMethod(boot_, "start", Qt::QueuedConnection,
                               Q_ARG(QString, launcher_url_),
                               Q_ARG(QString, bearer_),
-                              Q_ARG(QString, machine_ids_.at(row)));
+                              Q_ARG(QString, id));
 }
 
 void MainWindow::onBootstrapReady(const BootstrapWorker::Ready &r)
@@ -523,6 +1149,11 @@ void MainWindow::onBootstrapReady(const BootstrapWorker::Ready &r)
      * enabling here rather than waiting for a caps signal we do not have is
      * safe. */
     act_files_->setEnabled(true);
+    stream_menu_->menuAction()->setVisible(true);
+    /* OV1 - the corner HUD appears with the stream when any metric is selected;
+     * the overlay menu waits for its hotkey. Positioned after the page is shown
+     * so the video has its geometry. */
+    QTimer::singleShot(0, this, [this] { updateOverlayVisibility(); });
     /* IN1 - the video surface takes the keyboard as soon as the stream shows,
      * so the first keystroke is forwarded without a click to focus it first. */
     video_->setFocus(Qt::OtherFocusReason);

@@ -36,6 +36,7 @@
 #include <QString>
 
 class QWidget;
+class QGraphicsDropShadowEffect;
 
 namespace halyard::theme {
 
@@ -70,6 +71,31 @@ constexpr int SpacePage   = 28;
 QFont titleFont(const QWidget *context = nullptr);     /* a window's heading */
 QFont headingFont(const QWidget *context = nullptr);   /* a section */
 QFont monoFont(const QWidget *context = nullptr);      /* an identifier */
+
+/* ---------------------------------------------------------------- surfaces */
+
+/* === UI1 2026-10-03 — A DESIGN SYSTEM, NOT A PILE OF STYLE SHEETS =========
+ *
+ * The shell (sign-in, machines, connecting) was deliberately plain while the
+ * structure was being settled. Dressing it up one widget at a time is how a
+ * client ends up with six slightly different greys, so the surfaces and the one
+ * application-wide style sheet live HERE, derived from the palette like every
+ * other colour in this file - which is what keeps light and dark both right
+ * without a theme branch anywhere.
+ */
+QColor surface(const QWidget *context = nullptr);      /* a card */
+QColor surfaceAlt(const QWidget *context = nullptr);   /* a card's header */
+QColor border(const QWidget *context = nullptr);
+QColor accent(const QWidget *context = nullptr);       /* the one brand colour */
+
+/* The whole application's style sheet. Applied once to qApp; every screen then
+ * gets the same buttons, inputs and cards without repeating a rule. A widget
+ * opts into the card look with setProperty("card", true). */
+QString appStyleSheet(const QWidget *context = nullptr);
+
+/* A soft drop shadow for a card. Returns a new effect each call: a
+ * QGraphicsEffect belongs to exactly one widget. */
+QGraphicsDropShadowEffect *elevation(QWidget *on, int radius = 18);
 
 /* -------------------------------------------------------------------- mark */
 

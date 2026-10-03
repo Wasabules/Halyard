@@ -14,9 +14,14 @@
 #include <QVideoSink>
 #include <QVideoWidget>
 #include <QWheelEvent>
+#include <QCursor>
+#include <QPixmap>
+#include <QTimer>
+#include <cstring>
 
 extern "C" {
 #include "core/input/shadow_input.h"
+#include "core/protocol/cursor_state.h"
 }
 
 VideoWidget::VideoWidget(QWidget *parent) : QWidget(parent)
@@ -24,15 +29,36 @@ VideoWidget::VideoWidget(QWidget *parent) : QWidget(parent)
     video_ = new QVideoWidget(this);
     sink_  = video_->videoSink();
 
-    status_ = new QLabel(tr("idle"), this);
-    status_->setStyleSheet(QStringLiteral(
-        "color: #e8e8e8; background: rgba(0,0,0,140); padding: 6px;"));
-    status_->setAlignment(Qt::AlignLeft | Qt::AlignTop);
+    /* === IN3 - the control bar =========================================== *
+     *
+     * A real row in the layout ABOVE the video, not a widget floating over it.
+     * On Windows QVideoWidget is a NATIVE child: it paints over any non-native
+     * sibling whatever the Qt stacking order, so a floated button sat half under
+     * the video and its clicks reached the video, not the button - exactly what
+     * was reported. A layout sibling never overlaps the video's rectangle, so it
+     * is always visible and always clickable, in a window and in fullscreen
+     * (where the menu bar is gone and this bar is the only control surface). */
+    bar_ = new QWidget(this);
+    QWidget *bar = bar_;
+    bar->setStyleSheet(QStringLiteral("background: rgba(20,20,22,235);"));
+    auto *barLay = new QHBoxLayout(bar);
+    barLay->setContentsMargins(8, 4, 8, 4);
+    barLay->setSpacing(8);
+
+    status_ = new QLabel(tr("idle"), bar);
+    status_->setStyleSheet(QStringLiteral("color: #e8e8e8;"));
+    barLay->addWidget(status_, 1);
+
+    fsBtn_ = new QPushButton(tr("Fullscreen"), bar);
+    auto *setBtn  = new QPushButton(tr("Settings"), bar);
+    auto *filBtn  = new QPushButton(tr("File transfer"), bar);
+    auto *discBtn = new QPushButton(tr("Disconnect"), bar);
+    for (QPushButton *b : { fsBtn_, setBtn, filBtn, discBtn }) barLay->addWidget(b);
 
     auto *lay = new QVBoxLayout(this);
     lay->setContentsMargins(0, 0, 0, 0);
     lay->setSpacing(0);
-    lay->addWidget(status_, 0);
+    lay->addWidget(bar, 0);
     lay->addWidget(video_, 1);
 
     setMinimumSize(640, 360);
@@ -45,73 +71,91 @@ VideoWidget::VideoWidget(QWidget *parent) : QWidget(parent)
     video_->setMouseTracking(true);
     video_->installEventFilter(this);
 
-    /* === IN3 - the overlay menu ========================================= *
-     *
-     * A hamburger button pinned top-right, always clickable, and the panel it
-     * shows. Children of `this` (not of the QVideoWidget), raised above it, so
-     * the video never covers them. This is the guaranteed way out when IN2's
-     * hook is swallowing Alt+Tab: the mouse is never captured, so the button is
-     * always reachable. */
-    menuBtn_ = new QToolButton(this);
-    menuBtn_->setText(QStringLiteral("☰"));   /* ☰ */
-    menuBtn_->setToolTip(tr("Stream menu"));
-    menuBtn_->setAutoRaise(false);
-    menuBtn_->setFixedSize(34, 28);
-
-    overlay_ = new QWidget(this);
-    overlay_->setVisible(false);
-    overlay_->setStyleSheet(QStringLiteral(
-        "background: rgba(20,20,22,230); border-radius: 8px;"));
-    auto *ol = new QVBoxLayout(overlay_);
-    ol->setContentsMargins(10, 10, 10, 10);
-    ol->setSpacing(6);
-    fsBtn_ = new QPushButton(tr("Fullscreen"), overlay_);
-    auto *setBtn = new QPushButton(tr("Settings"), overlay_);
-    auto *filBtn = new QPushButton(tr("File transfer"), overlay_);
-    auto *discBtn = new QPushButton(tr("Disconnect"), overlay_);
-    for (QPushButton *b : { fsBtn_, setBtn, filBtn, discBtn }) {
-        b->setMinimumWidth(160);
-        ol->addWidget(b);
-    }
-    overlay_->adjustSize();
-
-    connect(menuBtn_, &QToolButton::clicked, this, [this] {
-        overlay_->setVisible(!overlay_->isVisible());
-        if (overlay_->isVisible()) { placeOverlay(); overlay_->raise(); }
-    });
-    auto hideThen = [this](auto fn) {
-        return [this, fn] { overlay_->setVisible(false); fn(); };
-    };
     connect(fsBtn_,  &QPushButton::clicked, this,
-            hideThen([this] { emit requestFullscreenToggle(); }));
+            [this] { emit requestFullscreenToggle(); });
     connect(setBtn,  &QPushButton::clicked, this,
-            hideThen([this] { emit requestSettings(); }));
+            [this] { emit requestSettings(); });
     connect(filBtn,  &QPushButton::clicked, this,
-            hideThen([this] { emit requestFiles(); }));
+            [this] { emit requestFiles(); });
     connect(discBtn, &QPushButton::clicked, this,
-            hideThen([this] { emit requestDisconnect(); }));
-}
-
-void VideoWidget::resizeEvent(QResizeEvent *e)
-{
-    QWidget::resizeEvent(e);
-    placeOverlay();
-}
-
-void VideoWidget::placeOverlay()
-{
-    if (menuBtn_) menuBtn_->move(width() - menuBtn_->width() - 12, 12);
-    if (overlay_ && overlay_->isVisible()) {
-        overlay_->adjustSize();
-        overlay_->move(width() - overlay_->width() - 12,
-                       12 + (menuBtn_ ? menuBtn_->height() + 6 : 0));
-    }
-    if (menuBtn_) menuBtn_->raise();
+            [this] { emit requestDisconnect(); });
 }
 
 void VideoWidget::setFullscreenState(bool on)
 {
     if (fsBtn_) fsBtn_->setText(on ? tr("Leave fullscreen") : tr("Fullscreen"));
+}
+
+/* OV4 - immersive fullscreen: the control bar goes away with the rest of the
+ * chrome, so the picture is the whole screen. The way back is F11 (consumed
+ * locally, never forwarded) and the overlay hotkey - both still reach us
+ * because this widget keeps the keyboard focus. */
+void VideoWidget::setChromeVisible(bool on)
+{
+    if (bar_) bar_->setVisible(on);
+}
+
+QImage VideoWidget::currentFrameImage() const
+{
+    if (!sink_) return QImage();
+    QVideoFrame f = sink_->videoFrame();
+    if (!f.isValid()) return QImage();
+    /* toImage() maps and converts; it returns a detached QImage, so the frame
+     * may be unmapped and recycled right after. */
+    return f.toImage();
+}
+
+void VideoWidget::setLocalCursorHidden(bool hidden)
+{
+    setCursorSource(hidden ? CursorNone : CursorLocal);
+}
+
+void VideoWidget::setCursorSource(int src)
+{
+    cursorSrc_ = src;
+    lastCursorSeq_ = 0;          /* force a refetch of the VM shape */
+    if (!cursorTimer_) {
+        /* The VM sends a shape every few seconds, not per frame, so polling the
+         * image counter at 1 Hz is enough and costs nothing. */
+        cursorTimer_ = new QTimer(this);
+        cursorTimer_->setInterval(1000);
+        connect(cursorTimer_, &QTimer::timeout, this, &VideoWidget::applyCursor);
+    }
+    if (src == CursorVmImage) cursorTimer_->start();
+    else                      cursorTimer_->stop();
+    applyCursor();
+}
+
+/* OV6 - turn the VM's BGRA bitmap into the widget's actual mouse cursor. Using
+ * a real QCursor rather than painting a sprite is what keeps it glued to the
+ * pointer: there is no second position to track, and no lag of our own. */
+void VideoWidget::applyCursor()
+{
+    if (!video_) return;
+    if (cursorSrc_ == CursorNone)  { video_->setCursor(Qt::BlankCursor); return; }
+    if (cursorSrc_ == CursorLocal) { video_->setCursor(Qt::ArrowCursor); return; }
+
+    uint32_t received = 0, hidden = 0;
+    cursor_state_get_image_stats(&received, &hidden);
+    if (received == lastCursorSeq_ && lastCursorSeq_ != 0) return;  /* unchanged */
+
+    cursor_image_t ci;
+    if (!cursor_state_get_image(&ci) || ci.format != 2 /* BGRA32 */
+        || ci.width == 0 || ci.height == 0 || !ci.pixels) {
+        /* Nothing usable yet: the local arrow rather than no pointer at all. */
+        video_->setCursor(Qt::ArrowCursor);
+        return;
+    }
+    /* QImage::Format_ARGB32 is 0xAARRGGBB in a uint32, i.e. B,G,R,A in memory
+     * on a little-endian machine - the wire's byte order exactly, so the rows
+     * copy straight across with no channel swap. */
+    QImage img((int)ci.width, (int)ci.height, QImage::Format_ARGB32);
+    for (uint32_t y = 0; y < ci.height; y++)
+        memcpy(img.scanLine((int)y), ci.pixels + (size_t)y * ci.stride,
+               (size_t)ci.width * 4);
+    video_->setCursor(QCursor(QPixmap::fromImage(img),
+                              (int)ci.hot_x, (int)ci.hot_y));
+    lastCursorSeq_ = received;
 }
 
 void VideoWidget::presentFrame(const QVideoFrame &frame)

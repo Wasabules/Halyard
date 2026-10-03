@@ -14,6 +14,17 @@ extern "C" {
 
 namespace halyard {
 
+/* The enum's generic phrase, plus the handle's server-side detail when there is
+ * one (FM4). "the VM answered an SFTP error" becomes "... (create the file on
+ * the VM: SFTP status 3 - permission denied)". Never carries the credential. */
+static QString ftError(shadow_ft *ft, shadow_ft_err e)
+{
+    QString msg = QString::fromUtf8(shadow_ft_strerror(e));
+    const char *d = ft ? shadow_ft_error_detail(ft) : "";
+    if (d && *d) msg += QStringLiteral(" (%1)").arg(QString::fromUtf8(d));
+    return msg;
+}
+
 FtWorker::FtWorker(QObject *parent) : QObject(parent) {}
 
 FtWorker::~FtWorker()
@@ -28,7 +39,7 @@ bool FtWorker::progressTrampoline(quint64 done, quint64 total, void *user)
 
 bool FtWorker::onProgress(quint64 done, quint64 total)
 {
-    emit progress((qint64)done, (qint64)total);
+    emit progress(current_id_, (qint64)done, (qint64)total);
     /* false aborts the transfer; core then returns SHADOW_FT_CANCELLED and
      * removes the partial file at both ends. */
     return !cancel_.load(std::memory_order_relaxed);
@@ -55,9 +66,11 @@ void FtWorker::connectToVm()
         return;
     }
 
+    qInfo("[ftui] opening SFTP to %s:%u (secret %zu bytes)", host, port, sn);
     const shadow_ft_err e = shadow_ft_open(&ft_, host, port, secret, sn);
     for (size_t z = 0; z < sizeof secret; z++)
         ((volatile char *)secret)[z] = 0;
+    qInfo("[ftui] open result = %d (%s)", (int)e, shadow_ft_strerror(e));
 
     if (e != SHADOW_FT_OK) {
         ft_ = nullptr;
@@ -91,8 +104,7 @@ void FtWorker::listRemote(const QString &dir)
                                            buf.size(), &total);
     if (e != SHADOW_FT_OK) {
         emit failed(tr("Could not list %1: %2").arg(
-            dir.isEmpty() ? QStringLiteral(".") : dir,
-            QString::fromUtf8(shadow_ft_strerror(e))));
+            dir.isEmpty() ? QStringLiteral(".") : dir, ftError(ft_, e)));
         return;
     }
     const size_t shown = qMin(total, buf.size());
@@ -106,48 +118,55 @@ void FtWorker::listRemote(const QString &dir)
     emit listed(dir, out, total > buf.size());
 }
 
-void FtWorker::upload(const QString &localPath, const QString &remoteDir)
+void FtWorker::upload(int id, const QString &localPath, const QString &remoteDir)
 {
-    if (!ft_) { emit transferDone(false, tr("Not connected.")); return; }
-    cancel_.store(false, std::memory_order_relaxed);
-
     const QString base = QFileInfo(localPath).fileName();
+    emit transferStarted(id, base, true);
+    if (!ft_) { emit transferDone(id, false, tr("Not connected.")); return; }
+    cancel_.store(false, std::memory_order_relaxed);
+    current_id_ = id;
+
     QString remote = remoteDir;
     if (!remote.isEmpty() && !remote.endsWith(QLatin1Char('/')))
         remote += QLatin1Char('/');
     remote += base;
 
-    emit transferStarted(tr("Sending %1").arg(base));
     const QByteArray lp = localPath.toUtf8();
     const QByteArray rp = remote.toUtf8();
+    qInfo("[ftui] put '%s' -> '%s'", lp.constData(), rp.constData());
     const shadow_ft_err e = shadow_ft_put(ft_, lp.constData(), rp.constData(),
                                           progressTrampoline, this);
-    if (e == SHADOW_FT_OK)        emit transferDone(true, tr("Sent %1").arg(base));
-    else if (e == SHADOW_FT_CANCELLED) emit transferDone(false, tr("Cancelled."));
-    else emit transferDone(false, tr("Send failed: %1")
-                                      .arg(QString::fromUtf8(shadow_ft_strerror(e))));
+    qInfo("[ftui] put result = %d (%s)%s%s", (int)e, shadow_ft_strerror(e),
+          *shadow_ft_error_detail(ft_) ? " | " : "", shadow_ft_error_detail(ft_));
+    current_id_ = -1;
+    if (e == SHADOW_FT_OK)        emit transferDone(id, true, tr("Sent"));
+    else if (e == SHADOW_FT_CANCELLED) emit transferDone(id, false, tr("Cancelled"));
+    else emit transferDone(id, false, ftError(ft_, e));
     listRemote(remoteDir);
 }
 
-void FtWorker::download(const QString &remotePath, const QString &localDir,
+void FtWorker::download(int id, const QString &remotePath, const QString &localDir,
                         quint64 knownSize)
 {
     (void)knownSize;
-    if (!ft_) { emit transferDone(false, tr("Not connected.")); return; }
-    cancel_.store(false, std::memory_order_relaxed);
-
     const QString base = remotePath.section(QLatin1Char('/'), -1);
-    const QString local = QDir(localDir).filePath(base);
+    emit transferStarted(id, base, false);
+    if (!ft_) { emit transferDone(id, false, tr("Not connected.")); return; }
+    cancel_.store(false, std::memory_order_relaxed);
+    current_id_ = id;
 
-    emit transferStarted(tr("Receiving %1").arg(base));
+    const QString local = QDir(localDir).filePath(base);
     const QByteArray rp = remotePath.toUtf8();
     const QByteArray lp = local.toUtf8();
+    qInfo("[ftui] get '%s' -> '%s'", rp.constData(), lp.constData());
     const shadow_ft_err e = shadow_ft_get(ft_, rp.constData(), lp.constData(),
                                           progressTrampoline, this);
-    if (e == SHADOW_FT_OK)        emit transferDone(true, tr("Received %1").arg(base));
-    else if (e == SHADOW_FT_CANCELLED) emit transferDone(false, tr("Cancelled."));
-    else emit transferDone(false, tr("Receive failed: %1")
-                                      .arg(QString::fromUtf8(shadow_ft_strerror(e))));
+    qInfo("[ftui] get result = %d (%s)%s%s", (int)e, shadow_ft_strerror(e),
+          *shadow_ft_error_detail(ft_) ? " | " : "", shadow_ft_error_detail(ft_));
+    current_id_ = -1;
+    if (e == SHADOW_FT_OK)        emit transferDone(id, true, tr("Received"));
+    else if (e == SHADOW_FT_CANCELLED) emit transferDone(id, false, tr("Cancelled"));
+    else emit transferDone(id, false, ftError(ft_, e));
 }
 
 void FtWorker::makeDir(const QString &remoteParent, const QString &name)
@@ -161,7 +180,7 @@ void FtWorker::makeDir(const QString &remoteParent, const QString &name)
     emit actionDone(e == SHADOW_FT_OK,
                     e == SHADOW_FT_OK ? tr("Created %1").arg(name)
                                       : tr("Could not create the folder: %1")
-                                            .arg(QString::fromUtf8(shadow_ft_strerror(e))));
+                                            .arg(ftError(ft_, e)));
     listRemote(remoteParent);
 }
 
@@ -175,8 +194,15 @@ void FtWorker::removeEntry(const QString &remotePath, bool isDir,
     emit actionDone(e == SHADOW_FT_OK,
                     e == SHADOW_FT_OK ? tr("Deleted.")
                                       : tr("Could not delete: %1")
-                                            .arg(QString::fromUtf8(shadow_ft_strerror(e))));
+                                            .arg(ftError(ft_, e)));
     listRemote(listAfter);
+}
+
+void FtWorker::setAllowAbsolute(bool on, const QString &then)
+{
+    if (!ft_) { emit actionDone(false, tr("Not connected.")); return; }
+    shadow_ft_allow_absolute(ft_, on);
+    listRemote(then);
 }
 
 void FtWorker::rename(const QString &fromPath, const QString &toPath,
@@ -188,7 +214,7 @@ void FtWorker::rename(const QString &fromPath, const QString &toPath,
     emit actionDone(e == SHADOW_FT_OK,
                     e == SHADOW_FT_OK ? tr("Renamed.")
                                       : tr("Could not rename: %1")
-                                            .arg(QString::fromUtf8(shadow_ft_strerror(e))));
+                                            .arg(ftError(ft_, e)));
     listRemote(listAfter);
 }
 

@@ -17,6 +17,7 @@
 #include <QGridLayout>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QKeySequenceEdit>
 #include <QLineEdit>
 #include <QListWidget>
 #include <QMediaDevices>
@@ -24,6 +25,7 @@
 #include <QMessageBox>
 #include <QPushButton>
 #include <QScrollArea>
+#include <QSettings>
 #include <QSignalBlocker>
 #include <QSpinBox>
 #include <QStackedWidget>
@@ -568,6 +570,31 @@ QWidget *SettingsWindow::buildGeneralPage(QWidget *parent)
                "default rather than going silent."), page));
     }
 #endif
+
+    /* --- In-stream overlay (OV1) --------------------------------------- */
+    section(tr("In-stream overlay"));
+    {
+        auto *form = new QFormLayout;
+        form->setHorizontalSpacing(theme::SpaceGroup);
+        auto *edit = new QKeySequenceEdit(page);
+        edit->setMaximumSequenceLength(1);   /* a single chord, like a game key */
+        QSettings st;
+        edit->setKeySequence(QKeySequence(
+            st.value(QStringLiteral("ui/overlay_hotkey"),
+                     QStringLiteral("F8")).toString()));
+        connect(edit, &QKeySequenceEdit::editingFinished, this, [this, edit] {
+            const QString seq = edit->keySequence().toString(QKeySequence::PortableText);
+            QSettings().setValue(QStringLiteral("ui/overlay_hotkey"),
+                                 seq.isEmpty() ? QStringLiteral("F8") : seq);
+            emit overlayHotkeyChanged();
+        });
+        form->addRow(tr("Open the overlay with"), edit);
+        col->addLayout(form);
+        col->addWidget(mutedLabel(
+            tr("A frameless menu over the stream: volume, equaliser, and which "
+               "metrics show in the corner. It takes the keyboard while open, so "
+               "its keys do not reach the VM. Default F8."), page));
+    }
 
     /* --- Defaults ------------------------------------------------------- */
     section(tr("Defaults"));

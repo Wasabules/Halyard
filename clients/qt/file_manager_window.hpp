@@ -31,6 +31,8 @@
 
 #include <QWidget>
 
+#include <QHash>
+
 #include "ft_worker.hpp"
 
 class QFileSystemModel;
@@ -57,9 +59,9 @@ private slots:
     void onConnected(bool ok, const QString &message);
     void onListed(const QString &dir, const QList<halyard::FtEntry> &entries,
                   bool truncated);
-    void onTransferStarted(const QString &what);
-    void onProgress(qint64 done, qint64 total);
-    void onTransferDone(bool ok, const QString &message);
+    void onTransferStarted(int id, const QString &name, bool upload);
+    void onProgress(int id, qint64 done, qint64 total);
+    void onTransferDone(int id, bool ok, const QString &message);
     void onActionDone(bool ok, const QString &message);
     void onFailed(const QString &message);
 
@@ -72,6 +74,10 @@ private slots:
     void newRemoteFolder();
     void deleteRemote();
     void refreshRemote();
+    void renameRemote();
+    void remoteContextMenu(const QPoint &pos);
+    void localContextMenu(const QPoint &pos);
+    void toggleWholeFs(bool on);
 
 private:
     void retranslate();
@@ -79,6 +85,8 @@ private:
     void setLocalDir(const QString &dir);
     QString localDir() const;
     QString remoteJoin(const QString &name) const;
+    QString remoteFloor() const { return absolute_ ? QStringLiteral("/") : QString(); }
+    int  enqueueRow(const QString &name, bool upload);   /* adds to the Active tab */
 
     QThread          *thread_ = nullptr;
     halyard::FtWorker *worker_ = nullptr;
@@ -91,8 +99,10 @@ private:
     QTreeWidget      *remoteView_ = nullptr;
     QLineEdit        *remotePath_ = nullptr;
     QToolButton      *remoteUp_   = nullptr;
+    class QCheckBox  *wholeFs_    = nullptr;
     QString           remoteDir_;
     bool              remoteReady_ = false;
+    bool              absolute_   = false;   /* FM2 - whole-FS browsing on */
 
     QPushButton      *sendBtn_    = nullptr;
     QPushButton      *recvBtn_    = nullptr;
@@ -100,10 +110,19 @@ private:
     QToolButton      *newFolderBtn_ = nullptr;
     QToolButton      *deleteBtn_  = nullptr;
 
-    QProgressBar     *progress_ = nullptr;
     QPushButton      *cancelBtn_ = nullptr;
     QPushButton      *reconnectBtn_ = nullptr;
     QLabel           *status_ = nullptr;
+
+    /* FM3 - the transfer panel: three tabs (active / failed / done), one row per
+     * transfer, keyed by the worker's id so progress and the result land on the
+     * right line. This is what replaces the single bar and the vague dialog. */
+    class QTabWidget *transfers_ = nullptr;
+    QTreeWidget      *txActive_ = nullptr;
+    QTreeWidget      *txFailed_ = nullptr;
+    QTreeWidget      *txDone_   = nullptr;
+    QHash<int, QTreeWidgetItem *> txItems_;
+    int               nextId_ = 1;
 
     bool              busy_ = false;
 

@@ -3,6 +3,7 @@
 
 #include "theme.hpp"
 
+#include <QCheckBox>
 #include <QDir>
 #include <QEvent>
 #include <QFileSystemModel>
@@ -11,9 +12,12 @@
 #include <QInputDialog>
 #include <QLabel>
 #include <QLineEdit>
+#include <QMenu>
 #include <QMessageBox>
 #include <QProgressBar>
 #include <QPushButton>
+#include <QSignalBlocker>
+#include <QTabWidget>
 #include <QStandardPaths>
 #include <QThread>
 #include <QToolButton>
@@ -73,6 +77,9 @@ FileManagerWindow::FileManagerWindow(QWidget *parent)
     remotePath_->setReadOnly(true);
     remoteUp_ = new QToolButton(this);
     remoteUp_->setText(QStringLiteral("↑"));
+    remoteView_->setContextMenuPolicy(Qt::CustomContextMenu);
+    localView_->setContextMenuPolicy(Qt::CustomContextMenu);
+    wholeFs_ = new QCheckBox(this);   /* FM2 - browse the whole VM filesystem */
 
     /* ---- the buttons between the panes ------------------------------- */
     sendBtn_ = new QPushButton(this);
@@ -81,15 +88,31 @@ FileManagerWindow::FileManagerWindow(QWidget *parent)
     newFolderBtn_ = new QToolButton(this);
     deleteBtn_ = new QToolButton(this);
 
-    /* ---- the progress row ------------------------------------------- */
-    progress_ = new QProgressBar(this);
-    progress_->setVisible(false);
+    /* ---- the transfer panel (FM3) ----------------------------------- */
     cancelBtn_ = new QPushButton(this);
     cancelBtn_->setVisible(false);
     reconnectBtn_ = new QPushButton(this);
     reconnectBtn_->setVisible(false);
     status_ = new QLabel(this);
     status_->setStyleSheet(theme::css(theme::muted(this)));
+
+    auto makeTxTab = [this] {
+        auto *t = new QTreeWidget(this);
+        t->setColumnCount(4);
+        t->setRootIsDecorated(false);
+        t->setUniformRowHeights(true);
+        t->setSelectionMode(QAbstractItemView::NoSelection);
+        t->setFocusPolicy(Qt::NoFocus);
+        return t;
+    };
+    txActive_ = makeTxTab();
+    txFailed_ = makeTxTab();
+    txDone_   = makeTxTab();
+    transfers_ = new QTabWidget(this);
+    transfers_->addTab(txActive_, QString());
+    transfers_->addTab(txFailed_, QString());
+    transfers_->addTab(txDone_, QString());
+    transfers_->setMinimumHeight(150);
 
     localHeading_ = new QLabel(this);
     localHeading_->setFont(theme::headingFont(this));
@@ -98,7 +121,7 @@ FileManagerWindow::FileManagerWindow(QWidget *parent)
 
     /* ---- layout ------------------------------------------------------ */
     auto paneColumn = [&](QLabel *head, QLineEdit *path, QToolButton *up,
-                          QWidget *view) {
+                          QWidget *view, QWidget *extra) {
         auto *col = new QVBoxLayout;
         col->setSpacing(theme::SpaceTight);
         col->addWidget(head);
@@ -107,6 +130,7 @@ FileManagerWindow::FileManagerWindow(QWidget *parent)
         bar->addWidget(up);
         col->addLayout(bar);
         col->addWidget(view, 1);
+        if (extra) col->addWidget(extra);
         return col;
     };
 
@@ -122,22 +146,22 @@ FileManagerWindow::FileManagerWindow(QWidget *parent)
 
     auto *panes = new QHBoxLayout;
     panes->setSpacing(theme::SpaceGroup);
-    panes->addLayout(paneColumn(localHeading_, localPath_, localUp_, localView_), 5);
+    panes->addLayout(paneColumn(localHeading_, localPath_, localUp_, localView_, nullptr), 5);
     panes->addLayout(mid, 0);
-    panes->addLayout(paneColumn(remoteHeading_, remotePath_, remoteUp_, remoteView_), 5);
+    panes->addLayout(paneColumn(remoteHeading_, remotePath_, remoteUp_, remoteView_, wholeFs_), 5);
 
-    auto *progressRow = new QHBoxLayout;
-    progressRow->addWidget(status_, 1);
-    progressRow->addWidget(reconnectBtn_);
-    progressRow->addWidget(progress_, 1);
-    progressRow->addWidget(cancelBtn_);
+    auto *statusRow = new QHBoxLayout;
+    statusRow->addWidget(status_, 1);
+    statusRow->addWidget(reconnectBtn_);
+    statusRow->addWidget(cancelBtn_);
 
     auto *root = new QVBoxLayout(this);
     root->setContentsMargins(theme::SpaceGroup, theme::SpaceGroup,
                              theme::SpaceGroup, theme::SpaceRow);
     root->setSpacing(theme::SpaceRow);
-    root->addLayout(panes, 1);
-    root->addLayout(progressRow);
+    root->addLayout(panes, 3);
+    root->addLayout(statusRow);
+    root->addWidget(transfers_, 1);
 
     /* ---- the worker on its own thread ------------------------------- */
     thread_ = new QThread(this);
@@ -163,6 +187,11 @@ FileManagerWindow::FileManagerWindow(QWidget *parent)
     connect(localUp_, &QToolButton::clicked, this, &FileManagerWindow::localUp);
     connect(remoteView_, &QTreeWidget::itemActivated, this, &FileManagerWindow::remoteActivated);
     connect(localView_, &QTreeView::activated, this, &FileManagerWindow::localActivated);
+    connect(remoteView_, &QWidget::customContextMenuRequested, this,
+            &FileManagerWindow::remoteContextMenu);
+    connect(localView_, &QWidget::customContextMenuRequested, this,
+            &FileManagerWindow::localContextMenu);
+    connect(wholeFs_, &QCheckBox::toggled, this, &FileManagerWindow::toggleWholeFs);
     connect(localPath_, &QLineEdit::returnPressed, this,
             [this] { setLocalDir(localPath_->text()); });
     connect(cancelBtn_, &QPushButton::clicked, this,
@@ -214,6 +243,19 @@ void FileManagerWindow::retranslate()
     remoteView_->setHeaderLabels({ tr("Name"), tr("Size"), tr("Type") });
     localUp_->setToolTip(tr("Parent folder"));
     remoteUp_->setToolTip(tr("Parent folder"));
+    wholeFs_->setText(tr("Browse the whole VM filesystem"));
+    wholeFs_->setToolTip(tr("Off, the VM side is confined to its Downloads "
+                            "folder. On, the entire filesystem - the credential "
+                            "already grants full read/write access to it."));
+
+    const QStringList txCols = { tr("Name"), tr("Direction"), tr("Progress"),
+                                 tr("Status") };
+    txActive_->setHeaderLabels(txCols);
+    txFailed_->setHeaderLabels(txCols);
+    txDone_->setHeaderLabels(txCols);
+    transfers_->setTabText(0, tr("In progress"));
+    transfers_->setTabText(1, tr("Failed"));
+    transfers_->setTabText(2, tr("Done"));
 }
 
 /* ====================================================== local pane ===== */
@@ -260,10 +302,22 @@ void FileManagerWindow::refreshRemote()
 
 void FileManagerWindow::remoteUp()
 {
-    if (remoteDir_.isEmpty()) return;
+    if (remoteDir_ == remoteFloor()) return;      /* already at the top */
     const int cut = remoteDir_.lastIndexOf(QLatin1Char('/'));
-    remoteDir_ = cut > 0 ? remoteDir_.left(cut) : QString();
+    remoteDir_ = cut > 0 ? remoteDir_.left(cut) : remoteFloor();
     refreshRemote();
+}
+
+void FileManagerWindow::toggleWholeFs(bool on)
+{
+    if (!remoteReady_) return;
+    absolute_ = on;
+    /* Jump to the right root for the new mode: "/" for the whole FS, the
+     * Downloads root ("") when confined again. The worker sets the mode in core
+     * and re-lists in one call, so the list and the confinement never disagree. */
+    const QString target = on ? QStringLiteral("/") : QString();
+    QMetaObject::invokeMethod(worker_, "setAllowAbsolute", Qt::QueuedConnection,
+                              Q_ARG(bool, on), Q_ARG(QString, target));
 }
 
 void FileManagerWindow::remoteActivated(QTreeWidgetItem *item, int)
@@ -277,9 +331,31 @@ void FileManagerWindow::remoteActivated(QTreeWidgetItem *item, int)
 
 /* ======================================================= transfers ===== */
 
+int FileManagerWindow::enqueueRow(const QString &name, bool upload)
+{
+    const int id = nextId_++;
+    auto *it = new QTreeWidgetItem(txActive_);
+    it->setText(0, name);
+    it->setText(1, upload ? tr("→ VM") : tr("← PC"));
+    it->setText(3, tr("Queued"));
+    it->setData(0, Qt::UserRole, id);
+    /* FM6 - a real bar in the Progress column, as a cell widget. It is owned by
+     * the item, so removing the row removes the bar with it. */
+    auto *bar = new QProgressBar(txActive_);
+    bar->setRange(0, 100);
+    bar->setValue(0);
+    bar->setTextVisible(true);
+    bar->setFormat(QStringLiteral("%p %"));
+    bar->setMaximumHeight(16);
+    txActive_->setItemWidget(it, 2, bar);
+    txItems_.insert(id, it);
+    transfers_->setCurrentWidget(txActive_);
+    return id;
+}
+
 void FileManagerWindow::sendToVm()
 {
-    if (busy_ || !remoteReady_) return;
+    if (!remoteReady_) return;
     const QModelIndexList sel = localView_->selectionModel()->selectedRows(0);
     QStringList files;
     for (const QModelIndex &i : sel)
@@ -289,18 +365,19 @@ void FileManagerWindow::sendToVm()
                             "sent yet - only files."));
         return;
     }
-    /* One queued call per file; the worker runs them in order on its thread and
-     * re-lists the remote dir after each, so the view fills as they land. */
-    for (const QString &f : files)
+    /* One queued call per file, each with its own id so the panel can follow it.
+     * The worker runs them in order and re-lists the remote dir after each. */
+    for (const QString &f : files) {
+        const int id = enqueueRow(QFileInfo(f).fileName(), true);
         QMetaObject::invokeMethod(worker_, "upload", Qt::QueuedConnection,
-                                  Q_ARG(QString, f), Q_ARG(QString, remoteDir_));
+                                  Q_ARG(int, id), Q_ARG(QString, f),
+                                  Q_ARG(QString, remoteDir_));
+    }
 }
 
 void FileManagerWindow::receiveFromVm()
 {
-    if (busy_ || !remoteReady_) return;
-    /* selectedItems() already returns one entry per selected ROW for a tree
-     * widget, so no dedupe is needed; keep only the files. */
+    if (!remoteReady_) return;
     QList<QTreeWidgetItem *> files;
     for (QTreeWidgetItem *it : remoteView_->selectedItems())
         if (!it->data(0, RoleIsDir).toBool()) files << it;
@@ -311,11 +388,14 @@ void FileManagerWindow::receiveFromVm()
         return;
     }
     const QString dir = localDir();
-    for (QTreeWidgetItem *it : files)
+    for (QTreeWidgetItem *it : files) {
+        const int id = enqueueRow(it->text(0), false);
         QMetaObject::invokeMethod(worker_, "download", Qt::QueuedConnection,
+                                  Q_ARG(int, id),
                                   Q_ARG(QString, remoteJoin(it->text(0))),
                                   Q_ARG(QString, dir),
                                   Q_ARG(quint64, it->data(0, RoleSize).toULongLong()));
+    }
 }
 
 void FileManagerWindow::newRemoteFolder()
@@ -332,9 +412,7 @@ void FileManagerWindow::newRemoteFolder()
 void FileManagerWindow::deleteRemote()
 {
     if (!remoteReady_) return;
-    QList<QTreeWidgetItem *> rows;
-    for (QTreeWidgetItem *it : remoteView_->selectedItems())
-        if (!rows.contains(it)) rows << it;
+    const QList<QTreeWidgetItem *> rows = remoteView_->selectedItems();
     if (rows.isEmpty()) return;
 
     const QString what = rows.size() == 1 ? rows.first()->text(0)
@@ -348,6 +426,59 @@ void FileManagerWindow::deleteRemote()
                                   Q_ARG(QString, remoteJoin(it->text(0))),
                                   Q_ARG(bool, it->data(0, RoleIsDir).toBool()),
                                   Q_ARG(QString, remoteDir_));
+}
+
+void FileManagerWindow::renameRemote()
+{
+    if (!remoteReady_) return;
+    QTreeWidgetItem *it = remoteView_->currentItem();
+    if (!it) return;
+    bool ok = false;
+    const QString to = QInputDialog::getText(this, tr("Rename"),
+        tr("New name:"), QLineEdit::Normal, it->text(0), &ok);
+    if (!ok || to.trimmed().isEmpty() || to == it->text(0)) return;
+    QString dst = remoteDir_;
+    if (!dst.isEmpty() && !dst.endsWith(QLatin1Char('/'))) dst += QLatin1Char('/');
+    dst += to.trimmed();
+    QMetaObject::invokeMethod(worker_, "rename", Qt::QueuedConnection,
+                              Q_ARG(QString, remoteJoin(it->text(0))),
+                              Q_ARG(QString, dst), Q_ARG(QString, remoteDir_));
+}
+
+/* === FM2 - the right-click menus ========================================= */
+
+void FileManagerWindow::remoteContextMenu(const QPoint &pos)
+{
+    if (!remoteReady_) return;
+    QTreeWidgetItem *it = remoteView_->itemAt(pos);
+    QMenu menu(this);
+    if (it) {
+        const bool isDir = it->data(0, RoleIsDir).toBool();
+        if (isDir)
+            menu.addAction(tr("Open"), this, [this, it] { remoteActivated(it, 0); });
+        else
+            menu.addAction(tr("Receive"), this, &FileManagerWindow::receiveFromVm);
+        menu.addAction(tr("Rename..."), this, &FileManagerWindow::renameRemote);
+        menu.addAction(tr("Delete"), this, &FileManagerWindow::deleteRemote);
+        menu.addSeparator();
+    }
+    menu.addAction(tr("New folder..."), this, &FileManagerWindow::newRemoteFolder);
+    menu.addAction(tr("Refresh"), this, &FileManagerWindow::refreshRemote);
+    if (!busy_) menu.exec(remoteView_->viewport()->mapToGlobal(pos));
+}
+
+void FileManagerWindow::localContextMenu(const QPoint &pos)
+{
+    const QModelIndex idx = localView_->indexAt(pos);
+    QMenu menu(this);
+    if (idx.isValid() && !localModel_->isDir(idx))
+        menu.addAction(tr("Send to the VM"), this, &FileManagerWindow::sendToVm);
+    if (idx.isValid() && localModel_->isDir(idx))
+        menu.addAction(tr("Open"), this,
+                       [this, idx] { setLocalDir(localModel_->filePath(idx)); });
+    menu.addSeparator();
+    menu.addAction(tr("Refresh"), this, [this] { setLocalDir(localDir()); });
+    menu.exec(localView_->viewport()->mapToGlobal(pos));
 }
 
 /* ========================================================= signals ===== */
@@ -365,7 +496,13 @@ void FileManagerWindow::onConnected(bool ok, const QString &message)
     newFolderBtn_->setEnabled(ok);
     deleteBtn_->setEnabled(ok);
     remoteUp_->setEnabled(ok);
+    wholeFs_->setEnabled(ok);
     if (ok) {
+        /* A reconnect starts confined again; the checkbox and core's mode must
+         * agree, so reset both rather than trust a stale tick. */
+        absolute_ = false;
+        const QSignalBlocker b(wholeFs_);
+        wholeFs_->setChecked(false);
         remoteDir_.clear();
         refreshRemote();
     }
@@ -376,8 +513,12 @@ void FileManagerWindow::onListed(const QString &dir,
                                  bool truncated)
 {
     remoteDir_ = dir;
-    remotePath_->setText(dir.isEmpty() ? QStringLiteral("/ (Downloads)")
-                                       : QStringLiteral("/") + dir);
+    /* Confined: "" is the Downloads root. Whole-FS: paths are already absolute
+     * (they start with "/"), so show them as-is and never double the slash. */
+    QString shown;
+    if (absolute_) shown = dir.isEmpty() ? QStringLiteral("/") : dir;
+    else shown = dir.isEmpty() ? tr("/ (Downloads)") : QLatin1Char('/') + dir;
+    remotePath_->setText(shown);
     remoteView_->setSortingEnabled(false);
     remoteView_->clear();
     for (const halyard::FtEntry &e : entries) {
@@ -398,35 +539,73 @@ void FileManagerWindow::onListed(const QString &dir,
     status_->setText(s);
 }
 
-void FileManagerWindow::onTransferStarted(const QString &what)
+void FileManagerWindow::onTransferStarted(int id, const QString &name, bool upload)
 {
     setBusy(true);
-    progress_->setRange(0, 0);     /* indeterminate until the first progress */
-    progress_->setFormat(what + QStringLiteral("  %p%"));
-    status_->setText(what);
+    QTreeWidgetItem *it = txItems_.value(id, nullptr);
+    if (!it) { id = enqueueRow(name, upload); it = txItems_.value(id); }
+    if (it) {
+        it->setText(3, tr("In progress"));
+        if (auto *bar = qobject_cast<QProgressBar *>(txActive_->itemWidget(it, 2)))
+            bar->setValue(0);
+    }
+    status_->setText(upload ? tr("Sending %1").arg(name)
+                            : tr("Receiving %1").arg(name));
 }
 
-void FileManagerWindow::onProgress(qint64 done, qint64 total)
+void FileManagerWindow::onProgress(int id, qint64 done, qint64 total)
 {
+    QTreeWidgetItem *it = txItems_.value(id, nullptr);
+    if (!it) return;
+    auto *bar = qobject_cast<QProgressBar *>(txActive_->itemWidget(it, 2));
+    if (!bar) return;
     if (total > 0) {
-        progress_->setRange(0, 100);
-        progress_->setValue((int)(done * 100 / total));
+        bar->setRange(0, 100);
+        bar->setValue((int)(done * 100 / total));
+        bar->setFormat(QStringLiteral("%1 / %2  (%p %)")
+                           .arg(humanSize((quint64)done), humanSize((quint64)total)));
     } else {
-        progress_->setRange(0, 0);
+        /* Size unknown: a busy bar rather than a figure that would be a guess. */
+        bar->setRange(0, 0);
+        bar->setFormat(humanSize((quint64)done));
     }
 }
 
-void FileManagerWindow::onTransferDone(bool ok, const QString &message)
+void FileManagerWindow::onTransferDone(int id, bool ok, const QString &message)
 {
-    setBusy(false);
-    status_->setText(message);
-    Q_UNUSED(ok);
+    QTreeWidgetItem *it = txItems_.take(id);
+    /* Move the row to its outcome tab, with the detail on it - this IS the error
+     * report the user asked for, kept in place instead of a one-shot dialog. */
+    if (it) {
+        /* Capture the texts BEFORE removing the row: takeTopLevelItem returns
+         * `it` itself, and deleting it then reading it->text() is a
+         * use-after-free - which crashed the client on the first failed put. */
+        const QString name = it->text(0);
+        const QString dir  = it->text(1);
+        QString prog;
+        if (auto *bar = qobject_cast<QProgressBar *>(txActive_->itemWidget(it, 2)))
+            prog = bar->maximum() > 0 ? QStringLiteral("%1 %").arg(bar->value())
+                                      : QString();
+        const int idx = txActive_->indexOfTopLevelItem(it);
+        if (idx >= 0) delete txActive_->takeTopLevelItem(idx);
+
+        auto *dst = ok ? txDone_ : txFailed_;
+        auto *row = new QTreeWidgetItem(dst);
+        row->setText(0, name);
+        row->setText(1, dir);
+        row->setText(2, ok ? QStringLiteral("100 %") : prog);
+        row->setText(3, message);
+        transfers_->setCurrentWidget(ok ? txDone_ : txFailed_);
+    }
+    /* busy only while something is still active. */
+    setBusy(txActive_->topLevelItemCount() > 0);
+    status_->setText(ok ? message
+                        : tr("Transfer failed — see the Failed tab for why."));
 }
 
 void FileManagerWindow::onActionDone(bool ok, const QString &message)
 {
     status_->setText(message);
-    Q_UNUSED(ok);
 }
 
 void FileManagerWindow::onFailed(const QString &message)
@@ -439,14 +618,8 @@ void FileManagerWindow::onFailed(const QString &message)
 void FileManagerWindow::setBusy(bool busy)
 {
     busy_ = busy;
-    progress_->setVisible(busy);
+    /* Cancel acts on the transfer in flight; the rest stays live, because more
+     * transfers just queue behind it and the panel follows each one. */
     cancelBtn_->setVisible(busy);
     cancelBtn_->setEnabled(busy);
-    /* A second transfer while one runs would be queued behind it on the worker,
-     * which is fine, but the two would share one progress bar and read as one -
-     * so the buttons wait. Navigation stays live. */
-    sendBtn_->setEnabled(!busy && remoteReady_);
-    recvBtn_->setEnabled(!busy && remoteReady_);
-    deleteBtn_->setEnabled(!busy && remoteReady_);
-    newFolderBtn_->setEnabled(!busy && remoteReady_);
 }

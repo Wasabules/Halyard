@@ -69,6 +69,9 @@ signals:
     /* Emitted when a value changed, so the main window can say "takes effect
      * on the next session" where that is true. */
     void settingChanged(const QString &env, const QString &value, bool live);
+    /* OV1 - the overlay hotkey was changed; the main window rebuilds its
+     * shortcut. A client preference (QSettings), not a core env var. */
+    void overlayHotkeyChanged();
 
 protected:
     void changeEvent(QEvent *e) override;

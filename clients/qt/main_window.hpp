@@ -34,13 +34,17 @@
 #pragma once
 
 #include <QMainWindow>
+#include <QRect>
+#include <QVector>
 
 #include "bootstrap_worker.hpp"
 
 class QStackedWidget;
 class QThread;
 class QLabel;
-class QListWidget;
+class QScrollArea;
+class QVBoxLayout;
+class MachineCard;
 class QPushButton;
 class QMenu;
 class QAction;
@@ -52,6 +56,10 @@ class StepListWidget;
 class SettingsWindow;
 class MetricsWindow;
 class FileManagerWindow;
+class QShortcut;
+class QMoveEvent;
+class QResizeEvent;
+namespace halyard { class StreamHud; class StreamOverlay; }
 
 class MainWindow : public QMainWindow
 {
@@ -71,6 +79,10 @@ public slots:
     void openFileManagerForced();
     void openAbout();
     void toggleFullscreen();
+    void toggleOverlay();
+    void showToast(const QString &text);
+    void takeScreenshot();
+    void copyDiagnostics();
 
     /* IN2 - true when a keystroke should go to the VM, read by the Windows
      * system-shortcut hook through the halyard_ui_keys_blocked weak symbol. */
@@ -80,15 +92,30 @@ private slots:
     void onPairingNeeded(const QString &userCode, const QString &uri,
                          const QString &uriComplete, int expiresIn);
     void onSignedIn(const QString &bearer, const QString &launcherUrl);
-    void onMachinesFetched(const QStringList &ids, const QStringList &labels);
+    void onMachinesFetched(const QStringList &ids, const QStringList &names,
+                           const QStringList &states);
+    void onPairingProgress(int secondsLeft);
+    void onSignInFailed(const QString &why);
+    /* UI2 - run the sign-in sequence again after it failed or expired. */
+    void restartSignIn();
     void onBootstrapReady(const BootstrapWorker::Ready &r);
-    void connectSelected();
+    void connectTo(const QString &id);
 
 protected:
     void changeEvent(QEvent *e) override;
+    void moveEvent(QMoveEvent *e) override;
+    void resizeEvent(QResizeEvent *e) override;
 
 private:
     void retranslate();
+    void setMachinesBusy(bool busy);
+    void repositionOverlays();
+    void updateOverlayVisibility();
+    bool overlaysAllowed() const;
+    /* OV10 - another of our windows is sitting over the picture. */
+    bool ownWindowOverVideo() const;
+    void applyOverlayHotkey();
+    QRect videoGlobalRect() const;
     void listMachines();
     void setPage(int index);
 
@@ -99,10 +126,20 @@ private:
     /* pairing */
     QLabel *pair_code_ = nullptr;
     QLabel *pair_hint_ = nullptr;
+    QPushButton *copy_code_btn_ = nullptr;
+    QLabel      *pair_countdown_ = nullptr;
+    QPushButton *retry_btn_      = nullptr;
+    QPushButton *open_page_btn_ = nullptr;
+    QString pair_user_code_, pair_uri_, pair_uri_complete_;
+
 
     /* machines */
-    QListWidget *machines_ = nullptr;
-    QPushButton *connect_  = nullptr;
+    QWidget     *machines_host_ = nullptr;
+    QVBoxLayout *machines_lay_  = nullptr;
+    QLabel      *machines_subtitle_ = nullptr;
+    QLabel      *machines_empty_ = nullptr;
+    QVector<MachineCard *> machine_cards_;
+    QStringList  machine_names_;
     /* QT5 - kept so retranslate() can re-label them. */
     QLabel  *machines_title_ = nullptr;
     QMenu   *view_menu_      = nullptr;
@@ -111,6 +148,12 @@ private:
     QAction *act_metrics_    = nullptr;
     QAction *act_files_      = nullptr;
     QAction *act_about_      = nullptr;
+    QMenu   *stream_menu_    = nullptr;
+    QAction *act_fs_         = nullptr;
+    QAction *act_hide_cursor_= nullptr;
+    QAction *act_disconnect_ = nullptr;
+    QAction *act_stream_metrics_ = nullptr;
+
     QStringList machine_ids_;
 
     /* connecting + streaming */
@@ -136,6 +179,13 @@ private:
     SettingsWindow *settings_ = nullptr;
     MetricsWindow  *metrics_  = nullptr;
     FileManagerWindow *file_manager_ = nullptr;
+    halyard::StreamHud     *stream_hud_ = nullptr;
+    halyard::StreamOverlay *stream_overlay_ = nullptr;
+    QShortcut              *overlay_shortcut_ = nullptr;
+    QTimer                 *overlay_watch_    = nullptr;  /* OV10 - overlap poll */
+    QLabel                 *toast_ = nullptr;
+    QTimer                 *toast_timer_ = nullptr;
+    bool                    app_active_ = true;
 
     bool session_live_ = false;
 };

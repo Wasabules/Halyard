@@ -11,6 +11,19 @@
  * useful part lives — the address for step 2, the HTTP code for a failure, and
  * the elapsed seconds while the machine boots. `17/30` of an internal retry
  * count is what UX12 removed from the Borealis client for saying nothing.
+ *
+ * === UI1 2026-10-03 — A DRAWN DOT, NOT A GLYPH =============================
+ *
+ * The state was a leading `·` / `…` / `✓` / `✗` inside the row's text. Three
+ * problems, all of them visible: the four glyphs have four different widths so
+ * the titles did not line up; `✓` and `✗` are missing from several fonts and
+ * came out as a box; and nothing moved, so a step that takes thirty seconds
+ * (the machine booting) looked identical to one that had hung.
+ *
+ * Each row now paints its own 18px mark - a ring, a rotating arc, a check, a
+ * cross - at a fixed width, and ONE timer drives the arc, running only while a
+ * step is running. The detail moves to its own right-aligned label, so a long
+ * address cannot push the title around.
  */
 #pragma once
 
@@ -18,7 +31,31 @@
 #include <QVector>
 
 class QLabel;
+class QTimer;
 class QVBoxLayout;
+
+/* The mark at the left of a step. Separate so it can repaint without the row's
+ * two labels relaying out on every animation frame. */
+class StepDot : public QWidget
+{
+    Q_OBJECT
+
+public:
+    enum class State { Pending, Running, Done, Failed };
+
+    explicit StepDot(QWidget *parent = nullptr);
+
+    void setState(State s);
+    State state() const { return state_; }
+    void setPhase(qreal t) { phase_ = t; if (state_ == State::Running) update(); }
+
+protected:
+    void paintEvent(QPaintEvent *e) override;
+
+private:
+    State state_ = State::Pending;
+    qreal phase_ = 0.0;   /* turns, [0,1) - the arc's start angle */
+};
 
 class StepListWidget : public QWidget
 {
@@ -41,9 +78,12 @@ protected:
 
 private:
     void refresh(int index);
+    void retimeAnimation();   /* the timer runs only while something is running */
 
     struct Row {
-        QLabel *label = nullptr;
+        QLabel  *label  = nullptr;
+        QLabel  *detailLabel = nullptr;
+        StepDot *dot    = nullptr;
         /* The SOURCE string, translated at every refresh rather than once at
          * construction - so a language switch re-labels the steps (QT5). */
         const char *title = nullptr;
@@ -52,4 +92,7 @@ private:
     };
     QVector<Row> rows_;
     QLabel *headline_ = nullptr;
+    QLabel *subhead_  = nullptr;
+    QTimer *anim_     = nullptr;
+    qreal   phase_    = 0.0;
 };

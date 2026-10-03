@@ -1,55 +1,211 @@
-/* MetricsWindow - see metrics_window.hpp on grants versus counters. */
+/* MetricsWindow - see the header: a live HUD tab + the grant snapshot tab. */
 #include "metrics_window.hpp"
 
+#include "theme.hpp"
+
+#include <QCoreApplication>
 #include <QEvent>
+#include <QFormLayout>
+#include <QGroupBox>
 #include <QHeaderView>
 #include <QLabel>
+#include <QScrollArea>
+#include <QTabWidget>
 #include <QTableWidget>
 #include <QTimer>
 #include <QVBoxLayout>
 
 extern "C" {
-#include "core/protocol/ctrl_session.h"
+#include "core/services/stats.h"
+#include "core/protocol/latency.h"
 #include "core/protocol/session_caps.h"
+#include "core/protocol/ctrl_gamepad.h"
+#include "core/session/ctrl_session_glue.h"
+#include "core/input/shadow_input.h"
 }
+
+namespace theme = halyard::theme;
+
+namespace {
+
+/* A friendly label per latency stage, in the enum's order. The enum's own
+ * `latency_stage_name` returns the log token (parsed by tooling); this is for a
+ * person. Indexed by latency_stage_t. */
+const char *stageLabel(int e)
+{
+    switch (e) {
+    case LAT_VID_BURST:     return QT_TRANSLATE_NOOP("Metrics", "Video burst (UDP chunks)");
+    case LAT_VID_HOLD:      return QT_TRANSLATE_NOOP("Metrics", "Picture hold");
+    case LAT_VID_DEC_QUEUE: return QT_TRANSLATE_NOOP("Metrics", "Wait for the decoder");
+    case LAT_VID_DECODE:    return QT_TRANSLATE_NOOP("Metrics", "Decode");
+    case LAT_VID_DISP_QUEUE:return QT_TRANSLATE_NOOP("Metrics", "Display wait");
+    case LAT_VID_UPLOAD:    return QT_TRANSLATE_NOOP("Metrics", "Render / upload");
+    case LAT_VID_CADENCE:   return QT_TRANSLATE_NOOP("Metrics", "Draw interval");
+    case LAT_VID_E2E:       return QT_TRANSLATE_NOOP("Metrics", "End to end (variation)");
+    case LAT_IN_SEND:       return QT_TRANSLATE_NOOP("Metrics", "Input send");
+    case LAT_IN_PAD:        return QT_TRANSLATE_NOOP("Metrics", "Gamepad send");
+    case LAT_IN_PAD_RATE:   return QT_TRANSLATE_NOOP("Metrics", "Gamepad read interval");
+    case LAT_AUD_QUEUE:     return QT_TRANSLATE_NOOP("Metrics", "Audio queue depth");
+    case LAT_RX_PASS:       return QT_TRANSLATE_NOOP("Metrics", "Receive-loop pass");
+    default:                return "";
+    }
+}
+
+QString tr_m(const char *s) { return QCoreApplication::translate("Metrics", s); }
+
+}  // namespace
 
 MetricsWindow::MetricsWindow(QWidget *parent) : QWidget(parent, Qt::Window)
 {
-    resize(640, 420);
+    setWindowIcon(theme::appIcon());
+    resize(560, 680);
+    timer_ = new QTimer(this);
+    timer_->setInterval(500);   /* MET1 - the Borealis HUD's cadence */
+    connect(timer_, &QTimer::timeout, this, &MetricsWindow::refresh);
+    build();
+}
 
-    summary_ = new QLabel(this);
+/* A value label added to a form, with a muted caption on the left. */
+static QLabel *addRow(QFormLayout *form, const QString &caption, QWidget *parent)
+{
+    auto *v = new QLabel(QStringLiteral("—"), parent);
+    v->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    auto *cap = new QLabel(caption, parent);
+    cap->setStyleSheet(theme::css(theme::muted(parent)));
+    form->addRow(cap, v);
+    return v;
+}
+
+void MetricsWindow::build()
+{
+    setWindowTitle(tr("Halyard metrics"));
+
+    /* Tear down a previous build (language switch). */
+    if (auto *old = layout()) {
+        QLayoutItem *it;
+        while ((it = old->takeAt(0))) { delete it->widget(); delete it; }
+        delete old;
+    }
+
+    auto *tabs = new QTabWidget(this);
+
+    /* ================================================= the LIVE tab ===== */
+    auto *liveTab = new QWidget(tabs);
+    auto *liveOuter = new QVBoxLayout(liveTab);
+    liveOuter->setContentsMargins(0, 0, 0, 0);
+
+    live_idle_ = new QLabel(
+        tr("No session is streaming yet. The live counters appear once a "
+           "stream is running."), liveTab);
+    live_idle_->setWordWrap(true);
+    live_idle_->setStyleSheet(theme::css(theme::muted(liveTab)));
+    liveOuter->addWidget(live_idle_);
+
+    auto *scroll = new QScrollArea(liveTab);
+    scroll->setWidgetResizable(true);
+    scroll->setFrameShape(QFrame::NoFrame);
+    live_body_ = new QWidget(scroll);
+    auto *col = new QVBoxLayout(live_body_);
+    col->setContentsMargins(theme::SpaceRow, theme::SpaceRow,
+                            theme::SpaceRow, theme::SpaceRow);
+    col->setSpacing(theme::SpaceGroup);
+
+    auto group = [&](const QString &title) {
+        auto *g = new QGroupBox(title, live_body_);
+        auto *f = new QFormLayout(g);
+        f->setLabelAlignment(Qt::AlignLeft);
+        f->setHorizontalSpacing(theme::SpaceGroup);
+        col->addWidget(g);
+        return f;
+    };
+
+    QFormLayout *f;
+    f = group(tr("Performance"));
+    v_decoded_   = addRow(f, tr("Decoded frame rate"), live_body_);
+    v_dec_total_ = addRow(f, tr("Frames decoded"), live_body_);
+    v_session_   = addRow(f, tr("Session time"), live_body_);
+    v_freeze_    = addRow(f, tr("Video freeze"), live_body_);
+
+    f = group(tr("Network"));
+    v_bitrate_    = addRow(f, tr("Video bitrate"), live_body_);
+    v_vpkts_      = addRow(f, tr("Video packets"), live_body_);
+    v_prate_      = addRow(f, tr("Packet rate"), live_body_);
+    v_loss_       = addRow(f, tr("Chunk loss"), live_body_);
+    v_orphan_     = addRow(f, tr("Lost pictures (orphan)"), live_body_);
+    v_trunc_      = addRow(f, tr("Truncated pictures"), live_body_);
+    v_kernel_     = addRow(f, tr("Kernel drops"), live_body_);
+    v_rtt_        = addRow(f, tr("Control RTT"), live_body_);
+    v_rtt_spread_ = addRow(f, tr("RTT avg / p90 / jitter"), live_body_);
+
+    f = group(tr("Video"));
+    v_res_     = addRow(f, tr("Resolution"), live_body_);
+    v_codec_   = addRow(f, tr("Codec"), live_body_);
+    v_decerr_  = addRow(f, tr("Decode errors"), live_body_);
+    v_dropped_ = addRow(f, tr("Decoder drops"), live_body_);
+
+    f = group(tr("Audio"));
+    v_acodec_   = addRow(f, tr("Codec"), live_body_);
+    v_arate_    = addRow(f, tr("Frame rate"), live_body_);
+    v_abitrate_ = addRow(f, tr("Bitrate"), live_body_);
+    v_alost_    = addRow(f, tr("Lost"), live_body_);
+    v_adup_     = addRow(f, tr("Duplicates dropped"), live_body_);
+    v_aring_    = addRow(f, tr("Ring overflow"), live_body_);
+    v_aerr_     = addRow(f, tr("Errors"), live_body_);
+
+    f = group(tr("Input"));
+    v_moves_  = addRow(f, tr("Mouse moves"), live_body_);
+    v_clicks_ = addRow(f, tr("Clicks (L / R)"), live_body_);
+    v_keys_   = addRow(f, tr("Keys"), live_body_);
+    v_queue_  = addRow(f, tr("Queue depth"), live_body_);
+    v_last_   = addRow(f, tr("Last action"), live_body_);
+    v_pad_    = addRow(f, tr("Gamepad"), live_body_);
+
+    auto *latGroup = new QGroupBox(tr("Latency (last 10 s window, ms)"), live_body_);
+    auto *latLay = new QVBoxLayout(latGroup);
+    latency_ = new QTableWidget(0, 5, latGroup);
+    latency_->setHorizontalHeaderLabels(
+        { tr("Stage"), QStringLiteral("p50"), QStringLiteral("p90"),
+          QStringLiteral("p99"), tr("max") });
+    latency_->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Stretch);
+    latency_->verticalHeader()->setVisible(false);
+    latency_->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    latency_->setSelectionMode(QAbstractItemView::NoSelection);
+    latLay->addWidget(latency_);
+    col->addWidget(latGroup);
+    col->addStretch(1);
+
+    scroll->setWidget(live_body_);
+    liveOuter->addWidget(scroll, 1);
+    tabs->addTab(liveTab, tr("Live"));
+
+    /* ================================================ the SESSION tab ==== */
+    auto *grantTab = new QWidget(tabs);
+    auto *gl = new QVBoxLayout(grantTab);
+    summary_ = new QLabel(grantTab);
     summary_->setTextInteractionFlags(Qt::TextSelectableByMouse);
     summary_->setWordWrap(true);
-
-    channels_ = new QTableWidget(0, 4, this);
+    channels_ = new QTableWidget(0, 4, grantTab);
+    channels_->setHorizontalHeaderLabels(
+        { tr("Channel"), tr("Granted"), tr("Transport"), tr("Port") });
     channels_->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
     channels_->verticalHeader()->setVisible(false);
     channels_->setEditTriggers(QAbstractItemView::NoEditTriggers);
     channels_->setSelectionMode(QAbstractItemView::NoSelection);
+    gl->addWidget(summary_);
+    gl->addWidget(channels_, 1);
+    tabs->addTab(grantTab, tr("Session"));
 
-    auto *lay = new QVBoxLayout(this);
-    lay->addWidget(summary_);
-    lay->addWidget(channels_, 1);
+    auto *root = new QVBoxLayout(this);
+    root->setContentsMargins(theme::SpaceRow, theme::SpaceRow,
+                             theme::SpaceRow, theme::SpaceRow);
+    root->addWidget(tabs);
 
-    timer_ = new QTimer(this);
-    timer_->setInterval(1000);
-    connect(timer_, &QTimer::timeout, this, &MetricsWindow::refresh);
-    retranslate();
-}
-
-/* QT5 - the static texts, re-set on a language switch. The dynamic ones are
- * re-produced by refresh(), which runs from here too. */
-void MetricsWindow::retranslate()
-{
-    setWindowTitle(tr("Halyard metrics"));
-    channels_->setHorizontalHeaderLabels(
-        { tr("Channel"), tr("Granted"), tr("Transport"), tr("Port") });
     refresh();
 }
 
 void MetricsWindow::changeEvent(QEvent *e)
 {
-    if (e->type() == QEvent::LanguageChange) retranslate();
+    if (e->type() == QEvent::LanguageChange) build();
     QWidget::changeEvent(e);
 }
 
@@ -68,10 +224,129 @@ void MetricsWindow::hideEvent(QHideEvent *e)
 
 void MetricsWindow::refresh()
 {
-    shadow_session_caps c;
-    const bool have = ctrl_session_caps(&c);
+    refreshLive();
+    refreshGrant();
+}
 
-    if (!have) {
+/* ======================================================== the live tab === */
+
+void MetricsWindow::refreshLive()
+{
+    shadow_session_caps caps;
+    const bool have = ctrl_session_caps(&caps);
+    live_idle_->setVisible(!have);
+    live_body_->setVisible(have);
+    if (!have) return;
+
+    session_stats_t s;
+    session_stats_get(&s);
+    const int64_t now = latency_now_us();
+
+    rm_decoded_.sample(s.h264_frames_decoded, now);
+    rm_vbytes_.sample(s.rtp_video_bytes, now);
+    rm_vpkts_.sample(s.rtp_video_packets, now);
+    rm_adecoded_.sample(s.opus_decoded, now);
+    rm_abytes_.sample(s.rtp_audio_bytes, now);
+
+    /* Performance */
+    v_decoded_->setText(QStringLiteral("%1 fps").arg(rm_decoded_.value(), 0, 'f', 1));
+    v_dec_total_->setText(QString::number(s.h264_frames_decoded));
+    v_session_->setText(QStringLiteral("%1:%2")
+                            .arg(s.session_seconds / 60)
+                            .arg(s.session_seconds % 60, 2, 10, QLatin1Char('0')));
+    v_freeze_->setText(s.rtp_video_stuck_secs > 0
+                           ? tr("%1 s without a frame").arg(s.rtp_video_stuck_secs)
+                           : tr("live"));
+
+    /* Network */
+    v_bitrate_->setText(QStringLiteral("%1 Mb/s")
+                            .arg(rm_vbytes_.value() * 8.0 / 1e6, 0, 'f', 1));
+    v_vpkts_->setText(QString::number(s.rtp_video_packets));
+    v_prate_->setText(QStringLiteral("%1 /s").arg(rm_vpkts_.value(), 0, 'f', 0));
+    if (s.chunks_expected > 0)
+        v_loss_->setText(QStringLiteral("%1 %  (%2 / %3)")
+                             .arg(100.0 * s.chunks_missing / s.chunks_expected, 0, 'f', 2)
+                             .arg(s.chunks_missing).arg(s.chunks_expected));
+    else
+        v_loss_->setText(QStringLiteral("—"));
+    v_orphan_->setText(QString::number(s.chunks_orphan_lost));
+    v_trunc_->setText(QString::number(s.frames_trunc));
+    v_kernel_->setText(s.kernel_drops_valid ? QString::number(s.kernel_drops)
+                                            : tr("n/a on this platform"));
+    v_rtt_->setText(s.ctrl_rtt_us > 0
+                        ? QStringLiteral("%1 ms").arg(s.ctrl_rtt_us / 1000.0, 0, 'f', 1)
+                        : QStringLiteral("—"));
+    v_rtt_spread_->setText(QStringLiteral("%1 / %2 / %3 ms")
+                               .arg(s.ctrl_rtt_avg_us / 1000.0, 0, 'f', 1)
+                               .arg(s.ctrl_rtt_p90_us / 1000.0, 0, 'f', 1)
+                               .arg(s.ctrl_rtt_jitter_us / 1000.0, 0, 'f', 1));
+
+    /* Video */
+    v_res_->setText(s.h264_width > 0
+                        ? QStringLiteral("%1 × %2").arg(s.h264_width).arg(s.h264_height)
+                        : QStringLiteral("—"));
+    v_codec_->setText(QStringLiteral("%1  (%2)")
+                          .arg(QString::fromUtf8(ctrl_session_glue_codec()),
+                               ctrl_session_glue_hw() ? tr("hardware") : tr("software")));
+    v_decerr_->setText(QString::number(s.h264_decode_errors));
+    v_dropped_->setText(QString::number(s.dec_queue_dropped));
+
+    /* Audio */
+    v_acodec_->setText(QString::fromUtf8(ctrl_session_glue_codec_audio()));
+    v_arate_->setText(QStringLiteral("%1 /s").arg(rm_adecoded_.value(), 0, 'f', 0));
+    v_abitrate_->setText(QStringLiteral("%1 kb/s")
+                             .arg(rm_abytes_.value() * 8.0 / 1e3, 0, 'f', 0));
+    v_alost_->setText(QString::number(s.opus_lost));
+    v_adup_->setText(QString::number(s.opus_dup_skipped));
+    v_aring_->setText(QString::number(s.opus_ring_full));
+    v_aerr_->setText(QString::number(s.opus_errors));
+
+    /* Input */
+    shadow_input_debug dbg;
+    shadow_input_get_debug(&dbg);
+    v_moves_->setText(QString::number(dbg.n_mouse_moves));
+    v_clicks_->setText(QStringLiteral("%1 / %2").arg(dbg.n_clicks_left).arg(dbg.n_clicks_right));
+    v_keys_->setText(QString::number(dbg.n_keypress));
+    v_queue_->setText(QString::number(dbg.queue_depth));
+    v_last_->setText(QString::fromUtf8(dbg.last_action));
+    v_pad_->setText(ctrl_gamepad_active() ? tr("connected") : tr("absent"));
+
+    /* Latency: one row per stage ever fed, with the last window's percentiles. */
+    int rows = 0;
+    for (int e = 0; e < LAT_NB; e++) {
+        latency_report_t r;
+        const int fed = latency_read((latency_stage_t)e, &r);
+        if (!fed && r.n_session == 0) continue;   /* never fed: skip */
+        if (latency_->rowCount() <= rows) latency_->insertRow(rows);
+        auto put = [&](int c, const QString &t) {
+            auto *it = latency_->item(rows, c);
+            if (!it) { it = new QTableWidgetItem; latency_->setItem(rows, c, it); }
+            it->setText(t);
+        };
+        put(0, tr_m(stageLabel(e)));
+        if (!fed) {
+            put(1, QStringLiteral("—")); put(2, QStringLiteral("—"));
+            put(3, QStringLiteral("—"));
+            put(4, QStringLiteral("%1").arg(r.worst_session_us / 1000.0, 0, 'f', 1));
+        } else {
+            put(1, QStringLiteral("%1").arg(r.p50_us / 1000.0, 0, 'f', 1));
+            put(2, QStringLiteral("%1").arg(r.p90_us / 1000.0, 0, 'f', 1));
+            put(3, QStringLiteral("%1").arg(r.p99_us / 1000.0, 0, 'f', 1));
+            put(4, QStringLiteral("%1").arg(r.worst_session_us / 1000.0, 0, 'f', 1));
+        }
+        rows++;
+    }
+    latency_->setRowCount(rows);
+    if (!latency_enabled() && rows == 0)
+        latency_->setRowCount(0);
+}
+
+/* ======================================================= the grant tab === */
+
+void MetricsWindow::refreshGrant()
+{
+    shadow_session_caps c;
+    if (!ctrl_session_caps(&c)) {
         summary_->setText(tr("No session has completed its bootstrap yet.\n\n"
                              "The grant snapshot appears once the server has "
                              "answered the eight channel announcements."));
@@ -79,9 +354,6 @@ void MetricsWindow::refresh()
         return;
     }
 
-    /* The server's own build, from the Capabilities reply. Every byte-exact
-     * decision in this client is dated against ONE build, so a client talking
-     * to a different one should be able to see the number rather than guess. */
     summary_->setText(
         tr("Session %1   ·   server %2.%3.%4   ·   port base %5\n"
            "%6 of 8 channels granted\n\n"
@@ -105,24 +377,16 @@ void MetricsWindow::refresh()
                  : c.audio_codec == 2 ? QStringLiteral("FLAC")
                                       : QString::number(c.audio_codec)));
 
-    /* The body order, which is what `SHADOW_CHAN_IDX_*` indexes - NOT the
-     * server's channel numbers. Mixing the two is the mistake that caused a
-     * wrong-channel bug (SRV5), so the names are spelled out here in the one
-     * order this array uses. QT_TR_NOOP so lupdate can extract them: a
-     * `tr()` of a variable is invisible to it, and the names stayed English
-     * in every language until this was spotted. */
     static const char *kNames[8] = {
         QT_TR_NOOP("video"), QT_TR_NOOP("cursor"), QT_TR_NOOP("input"),
         QT_TR_NOOP("audio"), QT_TR_NOOP("controller"), QT_TR_NOOP("clipboard"),
         QT_TR_NOOP("microphone"), QT_TR_NOOP("file transfer"),
     };
-
     channels_->setRowCount(8);
     for (int i = 0; i < 8; i++) {
         const shadow_chan_caps &ch = c.chan[i];
         channels_->setItem(i, 0, new QTableWidgetItem(tr(kNames[i])));
-        channels_->setItem(i, 1, new QTableWidgetItem(
-            ch.granted ? tr("yes") : tr("no")));
+        channels_->setItem(i, 1, new QTableWidgetItem(ch.granted ? tr("yes") : tr("no")));
         channels_->setItem(i, 2, new QTableWidgetItem(
             ch.granted ? (ch.tcp ? QStringLiteral("TCP") : QStringLiteral("UDP"))
                        : QStringLiteral("—")));

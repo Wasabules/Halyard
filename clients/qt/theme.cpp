@@ -1,6 +1,7 @@
 #include "theme.hpp"
 
 #include <QFontDatabase>
+#include <QGraphicsDropShadowEffect>
 #include <QGuiApplication>
 #include <QPainter>
 #include <QPainterPath>
@@ -93,6 +94,115 @@ QFont monoFont(const QWidget *context)
     const QFont base = context ? context->font() : QGuiApplication::font();
     f.setPointSizeF(base.pointSizeF() * 0.88);
     return f;
+}
+
+/* ================================================================ surfaces */
+
+QColor surface(const QWidget *context)
+{
+    const QPalette pal = basePalette(context);
+    /* A card lifts off the window: toward the text colour on a dark theme,
+     * toward white on a light one. Derived, so it tracks the system. */
+    const QColor win = pal.color(QPalette::Window);
+    return win.lightnessF() < 0.5 ? mix(win, pal.color(QPalette::WindowText), 0.07)
+                                  : mix(win, QColor(255, 255, 255), 0.65);
+}
+
+QColor surfaceAlt(const QWidget *context)
+{
+    const QPalette pal = basePalette(context);
+    const QColor win = pal.color(QPalette::Window);
+    return win.lightnessF() < 0.5 ? mix(win, pal.color(QPalette::WindowText), 0.13)
+                                  : mix(win, QColor(255, 255, 255), 0.85);
+}
+
+QColor border(const QWidget *context)
+{
+    const QPalette pal = basePalette(context);
+    return mix(pal.color(QPalette::Window), pal.color(QPalette::WindowText), 0.18);
+}
+
+QColor accent(const QWidget *context)
+{
+    /* The sail's blue. Lightness from the window, like every other accent here,
+     * so it stays legible on both themes. */
+    const QPalette pal = basePalette(context);
+    const bool dark = pal.color(QPalette::Window).lightnessF() < 0.5;
+    return QColor::fromHsl(210, 160, dark ? 160 : 110);
+}
+
+QString appStyleSheet(const QWidget *context)
+{
+    const QColor sf = surface(context), sa = surfaceAlt(context);
+    const QColor bd = border(context),  ac = accent(context);
+    const QColor tx = basePalette(context).color(QPalette::WindowText);
+    const QColor mu = muted(context);
+
+    return QStringLiteral(R"(
+QWidget[card="true"] {
+    background: %1; border: 1px solid %2; border-radius: 12px;
+}
+QWidget[cardHover="true"]:hover { border-color: %3; }
+
+QPushButton {
+    background: %4; border: 1px solid %2; border-radius: 7px;
+    padding: 7px 16px; color: %5;
+}
+QPushButton:hover    { border-color: %3; }
+QPushButton:pressed  { background: %1; }
+QPushButton:disabled { color: %6; border-color: %2; }
+QPushButton[accent="true"] {
+    background: %3; border: 1px solid %3; color: #ffffff; font-weight: bold;
+}
+QPushButton[accent="true"]:hover   { background: %7; border-color: %7; }
+QPushButton[accent="true"]:disabled{ background: %4; color: %6; border-color: %2; }
+
+QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox, QKeySequenceEdit {
+    background: %4; border: 1px solid %2; border-radius: 6px; padding: 5px 8px;
+    selection-background-color: %3;
+}
+QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus {
+    border-color: %3;
+}
+
+QLabel[pill="ok"], QLabel[pill="off"], QLabel[pill="busy"] {
+    border-radius: 9px; padding: 2px 10px; font-size: 11px; font-weight: bold;
+}
+QLabel[pill="ok"]   { background: rgba(80,180,120,55);  color: %5; }
+QLabel[pill="busy"] { background: rgba(230,180,80,55);  color: %5; }
+QLabel[pill="off"]  { background: rgba(140,140,150,45); color: %6; }
+
+QLabel[dim="true"] { color: %6; }
+QLabel[h1="true"]  { font-size: 26px; font-weight: bold; }
+QLabel[h2="true"]  { font-size: 15px; font-weight: bold; }
+
+QTabWidget::pane { border: 1px solid %2; border-radius: 8px; }
+QTabBar::tab {
+    background: transparent; padding: 7px 14px; border: none; color: %6;
+}
+QTabBar::tab:selected { color: %5; border-bottom: 2px solid %3; }
+
+QGroupBox {
+    border: 1px solid %2; border-radius: 9px; margin-top: 10px; padding-top: 8px;
+}
+QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 4px; color: %6; }
+
+QProgressBar {
+    border: 1px solid %2; border-radius: 6px; text-align: center; background: %4;
+}
+QProgressBar::chunk { background: %3; border-radius: 5px; }
+)")
+        .arg(sf.name(), bd.name(), ac.name(), sa.name(), tx.name(), mu.name(),
+             ac.lighter(115).name());
+}
+
+QGraphicsDropShadowEffect *elevation(QWidget *on, int radius)
+{
+    auto *e = new QGraphicsDropShadowEffect(on);
+    e->setBlurRadius(radius);
+    e->setOffset(0, 3);
+    e->setColor(QColor(0, 0, 0, 90));
+    return e;
 }
 
 /* ==================================================================== mark */

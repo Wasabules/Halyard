@@ -65,24 +65,32 @@ public slots:
      * root. */
     void listRemote(const QString &dir);
 
-    /* One file each. `remoteDir` is where an upload lands; the basename is
-     * taken from the local path. Emits transferStarted/progress/transferDone,
-     * then re-lists `remoteDir` so the view is current. */
-    void upload(const QString &localPath, const QString &remoteDir);
-    void download(const QString &remotePath, const QString &localDir,
+    /* One file each, carrying a caller-assigned `id` so the transfer panel can
+     * follow exactly this row through started/progress/done - names are not
+     * unique (the same file sent twice) and the queue runs several. `remoteDir`
+     * is where an upload lands; the basename is taken from the local path. Emits
+     * transferStarted/progress/transferDone, then re-lists `remoteDir`. */
+    void upload(int id, const QString &localPath, const QString &remoteDir);
+    void download(int id, const QString &remotePath, const QString &localDir,
                   quint64 knownSize);
 
     void makeDir(const QString &remoteParent, const QString &name);
     void removeEntry(const QString &remotePath, bool isDir, const QString &listAfter);
     void rename(const QString &fromPath, const QString &toPath, const QString &listAfter);
 
+    /* FM2 - lift the Downloads-root confinement for this session, so the whole
+     * VM filesystem can be browsed. The credential already grants it (KB §3.50);
+     * ft_path's confinement is a seatbelt, and this unbuckles it deliberately.
+     * `then` re-lists that directory once the mode is set. */
+    void setAllowAbsolute(bool on, const QString &then);
+
 signals:
     void connected(bool ok, const QString &message);
     void listed(const QString &dir, const QList<halyard::FtEntry> &entries,
                 bool truncated);
-    void transferStarted(const QString &what);   /* a label for the progress bar */
-    void progress(qint64 done, qint64 total);
-    void transferDone(bool ok, const QString &message);
+    void transferStarted(int id, const QString &name, bool upload);
+    void progress(int id, qint64 done, qint64 total);
+    void transferDone(int id, bool ok, const QString &message);
     void actionDone(bool ok, const QString &message);
     void failed(const QString &message);         /* list/connect errors */
 
@@ -93,6 +101,7 @@ private:
 
     shadow_ft        *ft_ = nullptr;
     std::atomic<bool> cancel_{false};
+    int               current_id_ = -1;   /* the transfer onProgress reports on */
 };
 
 }  // namespace halyard

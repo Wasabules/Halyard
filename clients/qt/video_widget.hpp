@@ -39,6 +39,7 @@
 #pragma once
 
 #include <QWidget>
+#include <QImage>
 #include <QVideoFrame>
 
 class QVideoWidget;
@@ -63,6 +64,38 @@ public slots:
     /* The overlay reflects the window's state so its label is right. */
     void setFullscreenState(bool on);
 
+    /* OV2 - the picture currently on screen, as an image, for the screenshot
+     * tool. Taken from the sink's own frame, so what is saved is the DECODED
+     * picture: no overlay, no HUD, no local cursor in the file. Null before the
+     * first frame. */
+    QImage currentFrameImage() const;
+
+    /* OV5 - pictures this widget has put on screen, for the HUD. */
+    quint64 framesPresented() const { return presented_; }
+
+    /* OV6 - which pointer is drawn over the video.
+     *   CursorNone  : nothing (the VM paints its own inside the picture)
+     *   CursorVmImage: the bitmap the VM sends on :base+20, used as the real
+     *                  mouse cursor so it follows the pointer with no lag and
+     *                  no second position to track
+     *   CursorLocal : this desktop's arrow
+     * The VM image needs the cursor channel to have delivered a shape; until it
+     * does, this falls back to the local arrow rather than leaving nothing. */
+public:
+    enum CursorSource { CursorNone = 0, CursorVmImage = 1, CursorLocal = 2 };
+
+public slots:
+    void setCursorSource(int src);
+    int  cursorSource() const { return cursorSrc_; }
+
+    /* IN4 - hide the LOCAL system cursor over the video. On a remote desktop the
+     * VM draws its own cursor inside the picture, so the local one is a second,
+     * lagging cursor; hiding it leaves only the VM's. */
+    void setLocalCursorHidden(bool hidden);
+
+    /* OV4 - show/hide the control bar for immersive fullscreen. */
+    void setChromeVisible(bool on);
+
 signals:
     /* IN3 - the overlay's actions. The main window owns the window state and the
      * session, so it does the fullscreen toggle and the disconnect; this widget
@@ -77,25 +110,25 @@ protected:
     bool eventFilter(QObject *obj, QEvent *ev) override;
     void keyPressEvent(QKeyEvent *e) override;
     void keyReleaseEvent(QKeyEvent *e) override;
-    void resizeEvent(QResizeEvent *e) override;
 
 private:
     /* Widget point -> decoded-frame point, accounting for the letterbox. Returns
      * false when the point is on a black bar (outside the video). */
     bool mapToFrame(const QPointF &widgetPt, int &fx, int &fy) const;
     void postKey(QKeyEvent *e, bool pressed);
-    void placeOverlay();
 
     QVideoWidget *video_ = nullptr;
     QVideoSink   *sink_  = nullptr;
     QLabel       *status_ = nullptr;
+    QWidget      *bar_ = nullptr;
+    int           cursorSrc_ = CursorLocal;
+    class QTimer *cursorTimer_ = nullptr;
+    quint32       lastCursorSeq_ = 0;
+    void applyCursor();
 
-    /* IN3 - the overlay. `menuBtn_` is pinned top-right, always clickable;
-     * `overlay_` is the panel it shows. Children of `this`, stacked ABOVE the
-     * video child, so they are never hidden by it. */
-    class QWidget     *overlay_ = nullptr;
-    class QToolButton *menuBtn_ = nullptr;
-    class QPushButton *fsBtn_   = nullptr;
+    /* IN3 - the Fullscreen button, kept so its label flips in fullscreen. The
+     * rest of the control bar is wired in place. */
+    class QPushButton *fsBtn_ = nullptr;
 
     int frameW_ = 0, frameH_ = 0;   /* last decoded size, for the coord map */
 
