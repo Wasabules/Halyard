@@ -119,6 +119,7 @@ const char *shadow_ft_strerror(shadow_ft_err e)
 
 #if defined(SHADOW_HAVE_FILETRANSFER) && SHADOW_HAVE_FILETRANSFER
 
+#include <errno.h>
 #include <fcntl.h>      /* O_RDONLY & co: sftp_open takes POSIX open flags */
 #include <libssh/libssh.h>
 #include <libssh/sftp.h>
@@ -136,7 +137,42 @@ struct shadow_ft {
     char         *secret;        /* owned; zeroed before free */
     size_t        secret_len;
     bool          allow_absolute;
+    /* FM4: the last server-side error, in words. A SHADOW_FT_REMOTE enum says
+     * only "the VM refused it"; this says WHY (sftp status + libssh message) so
+     * the UI can show it instead of a generic line. Never holds a credential. */
+    char          detail[256];
 };
+
+/* Record why the server refused, from libssh. `where` names the step. Safe when
+ * `ft` is null. The SFTP status code is the protocol's (e.g. 3 = permission
+ * denied, 4 = failure, 13 = no such file). */
+static void ft_note(shadow_ft *ft, const char *where)
+{
+    if (!ft) return;
+    const int code = ft->sftp ? sftp_get_error(ft->sftp) : -1;
+    const char *msg = ft->ssh ? ssh_get_error(ft->ssh) : "";
+    /* FM5: status 0 is SSH_FX_OK - the server is NOT complaining, so the fault
+     * is on this side (a misread return value, a bad argument). Saying so turns
+     * a contradictory "the VM answered an SFTP error (status 0)" into a sentence
+     * that points at the real culprit; that contradiction is what took one
+     * upload bug far longer to find than it should have. */
+    if (code == 0)
+        snprintf(ft->detail, sizeof ft->detail,
+                 "%s: the server reported no error (status 0) - the fault is "
+                 "on the client side%s%s", where,
+                 (msg && *msg) ? "; libssh says: " : "", msg ? msg : "");
+    else
+        snprintf(ft->detail, sizeof ft->detail, "%s: SFTP status %d%s%s",
+                 where, code, (msg && *msg) ? " - " : "", msg ? msg : "");
+}
+
+/* A local-file failure, from errno. The path is NOT included: it is the user's
+ * own and may be long, and the reason is what matters. */
+static void ft_note_local(shadow_ft *ft, const char *where)
+{
+    if (!ft) return;
+    snprintf(ft->detail, sizeof ft->detail, "%s: %s", where, strerror(errno));
+}
 
 /* Zero that a compiler may not elide. `memset` on a buffer about to be freed is
  * exactly the call optimisers remove; this one cannot be. */
@@ -292,8 +328,9 @@ shadow_ft_err shadow_ft_list(shadow_ft *ft, const char *dir,
         if (!vet(ft, d, &e)) return e;
     }
 
+    ft->detail[0] = 0;
     sftp_dir h = sftp_opendir(ft->sftp, d);
-    if (!h) return SHADOW_FT_REMOTE;
+    if (!h) { ft_note(ft, "open directory"); return SHADOW_FT_REMOTE; }
 
     size_t n = 0;
     sftp_attributes a;
@@ -328,11 +365,12 @@ shadow_ft_err shadow_ft_get(shadow_ft *ft, const char *remote,
     uint64_t total = 0;
     { shadow_ft_stat st; if (shadow_ft_stat_remote(ft, r, &st) == SHADOW_FT_OK) total = st.size; }
 
+    ft->detail[0] = 0;
     sftp_file f = sftp_open(ft->sftp, r, O_RDONLY, 0);
-    if (!f) return SHADOW_FT_REMOTE;
+    if (!f) { ft_note(ft, "open the remote file"); return SHADOW_FT_REMOTE; }
 
     FILE *lf = fopen(local_path, "wb");
-    if (!lf) { sftp_close(f); return SHADOW_FT_LOCAL_IO; }
+    if (!lf) { ft_note_local(ft, "create the local file"); sftp_close(f); return SHADOW_FT_LOCAL_IO; }
 
     unsigned char *buf = (unsigned char *)malloc(FT_CHUNK);
     if (!buf) { fclose(lf); sftp_close(f); return SHADOW_FT_LOCAL_IO; }
@@ -341,10 +379,10 @@ shadow_ft_err shadow_ft_get(shadow_ft *ft, const char *remote,
     shadow_ft_err rc = SHADOW_FT_OK;
     for (;;) {
         const ssize_t got = sftp_read(f, buf, FT_CHUNK);
-        if (got < 0)  { rc = SHADOW_FT_REMOTE; break; }
+        if (got < 0)  { ft_note(ft, "read from the VM"); rc = SHADOW_FT_REMOTE; break; }
         if (got == 0) break;                         /* EOF */
         if (fwrite(buf, 1, (size_t)got, lf) != (size_t)got) {
-            rc = SHADOW_FT_LOCAL_IO; break;
+            ft_note_local(ft, "write the local file"); rc = SHADOW_FT_LOCAL_IO; break;
         }
         done += (uint64_t)got;
         if (cb && !cb(done, total, user)) { rc = SHADOW_FT_CANCELLED; break; }
@@ -367,15 +405,16 @@ shadow_ft_err shadow_ft_put(shadow_ft *ft, const char *local_path,
     const char *r = vet(ft, remote, &e);
     if (!r) return e;
 
+    ft->detail[0] = 0;
     FILE *lf = fopen(local_path, "rb");
-    if (!lf) return SHADOW_FT_LOCAL_IO;
+    if (!lf) { ft_note_local(ft, "open the local file"); return SHADOW_FT_LOCAL_IO; }
 
     uint64_t total = 0;
     if (fseek(lf, 0, SEEK_END) == 0) { long sz = ftell(lf); if (sz > 0) total = (uint64_t)sz; }
     rewind(lf);
 
     sftp_file f = sftp_open(ft->sftp, r, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-    if (!f) { fclose(lf); return SHADOW_FT_REMOTE; }
+    if (!f) { ft_note(ft, "create the file on the VM"); fclose(lf); return SHADOW_FT_REMOTE; }
 
     unsigned char *buf = (unsigned char *)malloc(FT_CHUNK);
     if (!buf) { sftp_close(f); fclose(lf); return SHADOW_FT_LOCAL_IO; }
@@ -385,9 +424,37 @@ shadow_ft_err shadow_ft_put(shadow_ft *ft, const char *local_path,
     for (;;) {
         const size_t got = fread(buf, 1, FT_CHUNK, lf);
         if (got == 0) { if (ferror(lf)) rc = SHADOW_FT_LOCAL_IO; break; }
-        /* WRITE is uncapped per call server-side, but we keep to the read chunk
-         * so progress is reported at the same granularity in both directions. */
-        if (sftp_write(f, buf, got) != (ssize_t)got) { rc = SHADOW_FT_REMOTE; break; }
+
+        /* === FM5 2026-10-03 - A SHORT WRITE IS NOT A FAILURE ===============
+         *
+         * This used to be `if (sftp_write(f, buf, got) != (ssize_t)got) fail`,
+         * and EVERY upload failed with "the VM answered an SFTP error" while
+         * the server's own status was 0 = OK - the contradiction that gave it
+         * away. `sftp_write` returns HOW MANY bytes it wrote, and is free to
+         * write fewer than asked: libssh splits at the negotiated maximum
+         * packet, which is below our 64 KiB read chunk, so the very first
+         * chunk of any file larger than that came back short and was read as
+         * an error. The file was created, the write "failed", and the partial
+         * file was then unlinked - which is why nothing ever appeared and the
+         * cause was invisible.
+         *
+         * Only a NEGATIVE return is an error. A zero-length write would be
+         * progress-free and is refused too, so a stalled server cannot spin
+         * this loop for ever. */
+        size_t off = 0;
+        while (off < got) {
+            const ssize_t w = sftp_write(f, buf + off, got - off);
+            if (w < 0) { ft_note(ft, "write to the VM"); rc = SHADOW_FT_REMOTE; break; }
+            if (w == 0) {
+                snprintf(ft->detail, sizeof ft->detail,
+                         "write to the VM: the server accepted 0 of %u bytes",
+                         (unsigned)(got - off));
+                rc = SHADOW_FT_REMOTE;
+                break;
+            }
+            off += (size_t)w;
+        }
+        if (rc != SHADOW_FT_OK) break;
         done += (uint64_t)got;
         if (cb && !cb(done, total, user)) { rc = SHADOW_FT_CANCELLED; break; }
     }
@@ -417,6 +484,7 @@ shadow_ft_err shadow_ft_stat_remote(shadow_ft *ft, const char *remote,
     if (!out) return SHADOW_FT_ARG;
     memset(out, 0, sizeof *out);
     /* stat, never lstat: the server answers status 8 UNSUPPORTED to LSTAT. */
+    ft->detail[0] = 0;
     sftp_attributes a = sftp_stat(ft->sftp, r);
     if (!a) return SHADOW_FT_OK;                 /* absent, not an error */
     out->exists = true;
@@ -432,7 +500,10 @@ shadow_ft_err shadow_ft_stat_remote(shadow_ft *ft, const char *remote,
         shadow_ft_err e = SHADOW_FT_OK;                       \
         const char *r = vet(ft, remote, &e);                  \
         if (!r) return e;                                     \
-        return (call) == 0 ? SHADOW_FT_OK : SHADOW_FT_REMOTE; \
+        ft->detail[0] = 0;                                    \
+        if ((call) == 0) return SHADOW_FT_OK;                 \
+        ft_note(ft, #fn);                                     \
+        return SHADOW_FT_REMOTE;                              \
     }
 FT_SIMPLE(shadow_ft_mkdir,  sftp_mkdir(ft->sftp, r, 0755))
 FT_SIMPLE(shadow_ft_remove, sftp_unlink(ft->sftp, r))
@@ -445,7 +516,15 @@ shadow_ft_err shadow_ft_rename(shadow_ft *ft, const char *from, const char *to)
     shadow_ft_err e = SHADOW_FT_OK;
     const char *a = vet(ft, from, &e); if (!a) return e;
     const char *b = vet(ft, to,   &e); if (!b) return e;
-    return sftp_rename(ft->sftp, a, b) == 0 ? SHADOW_FT_OK : SHADOW_FT_REMOTE;
+    ft->detail[0] = 0;
+    if (sftp_rename(ft->sftp, a, b) == 0) return SHADOW_FT_OK;
+    ft_note(ft, "rename");
+    return SHADOW_FT_REMOTE;
+}
+
+const char *shadow_ft_error_detail(const shadow_ft *ft)
+{
+    return (ft && ft->detail[0]) ? ft->detail : "";
 }
 
 shadow_ft_err shadow_ft_selftest(const char *host, uint16_t port,

@@ -89,6 +89,13 @@ typedef enum {
 /* A stable, allocation-free description. NEVER contains the secret. */
 const char *shadow_ft_strerror(shadow_ft_err e);
 
+/* FM4: the last operation's server-side or local reason, in words, or "" when
+ * there is none. It refines the enum - "the VM answered an SFTP error" becomes
+ * "create the file on the VM: SFTP status 3 - permission denied" - so a UI can
+ * show WHY, not just THAT. Bound to the handle, overwritten by the next call,
+ * and NEVER contains the credential. Read it right after a non-OK return. */
+const char *shadow_ft_error_detail(const shadow_ft *ft);
+
 /* === Opening ===============================================================
  *
  * `secret`/`secret_len` is the announcement-reply field, verbatim. It is copied
