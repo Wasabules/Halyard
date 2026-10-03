@@ -135,6 +135,7 @@ cmake --build build_qt --target halyard_lupdate   # extract into clients/qt/i18n
 | `theme.{hpp,cpp}` | every colour, spacing and font, derived from the palette; the drawn app mark |
 | `about_dialog`, `metrics_window`, `step_list_widget` | identity and build info, live grants, bootstrap progress |
 | `ft_worker.{hpp,cpp}`, `file_manager_window.{hpp,cpp}` | the SFTP worker thread and the two-pane file manager |
+| `qt_input_map.hpp` | Qt key -> evdev scancode, physical not character (IN1) |
 | `core_scope.hpp`, `plane_copy.hpp` | RAII over core's `_free()` functions; the stride-aware plane copy |
 
 ## File transfer
@@ -161,9 +162,24 @@ Settings > General > Audio output lists the WASAPI endpoints
 it is gone. Not a settings-table row, because the device list is discovered at
 runtime, but persisted and overridden by env.txt the same way.
 
+## Input and the stream
+
+Keyboard, mouse and wheel are forwarded through core's `shadow_input` queue
+(IN1): keys map PHYSICAL, not by character, so a non-US layout types correctly
+(`qt_input_map.hpp` explains why and `tests/test_qt_input_map.cpp` pins it);
+mouse coordinates map into the decoded resolution, past the letterbox. The
+Windows system-shortcut hook (Alt+Tab, Win, Ctrl+Esc, Alt+Esc) forwards those
+keys to the VM while the stream has focus (IN2), with `halyard_ui_keys_blocked()`
+defined from Qt focus state as the escape hatch. A stream overlay - a hamburger
+button, always mouse-reachable - gives Fullscreen / Settings / File transfer /
+Disconnect, and F11 toggles fullscreen locally (IN3); both are guaranteed ways
+out of a fullscreen stream even with the hook swallowing Alt+Tab.
+
 ## What is deliberately NOT here yet
 
-No pause menu and no input forwarding yet; no audio INPUT (microphone) device
-selection; no keyboard-shortcut editor. The measurement the choice of framework
-hangs on also still stands: end-to-end latency of this path against what the
-Borealis client does today.
+No microphone forwarding: KB §3.37 has the mic channel (`+32`) identified but
+its format UNPROVEN - the official client opens the socket and sends no bytes -
+so implementing it would be shipping unmeasured protocol, which the house rules
+forbid. No keyboard-shortcut editor (the overlay and F11 cover the needed
+actions). The framework-latency measurement still stands: end-to-end latency of
+this path against what the Borealis client does today.
