@@ -170,71 +170,53 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
      * painted rather than being a label. */
     {
         auto *page = new QWidget(this);
-        auto *cols = new QHBoxLayout(page);
-        cols->setContentsMargins(0, 0, 0, 0);
-        cols->setSpacing(0);
-
-        /* ---- the hero ---------------------------------------------------- */
-        pair_hero_ = new QWidget(page);
-        pair_hero_->setFixedWidth(330);
-        {
-            /* The accent, darkened, as a flat panel. Deliberately not a
-             * gradient built from two invented colours: the accent is derived
-             * from the system palette (theme::accent) so it already tracks a
-             * dark or light desktop, and a hand-picked second stop would be
-             * the one thing on this screen that does not. */
-            const QColor a = halyard::theme::accent(pair_hero_);
-            pair_hero_->setStyleSheet(
-                QStringLiteral("background: qlineargradient(x1:0,y1:0,x2:0,y2:1,"
-                               "stop:0 %1, stop:1 %2);")
-                    .arg(a.darker(140).name(), a.darker(190).name()));
-
-            auto *hl = new QVBoxLayout(pair_hero_);
-            hl->setContentsMargins(36, 44, 36, 36);
-            hl->setSpacing(halyard::theme::SpaceRow);
-
-            auto *mark = new QLabel(pair_hero_);
-            /* Drawn in white: the mark takes its ink from the palette, and on
-             * a light desktop that is near-black - invisible on this panel. */
-            mark->setPixmap(halyard::theme::appIcon(QColor(255, 255, 255))
-                                .pixmap(72, 72));
-
-            auto *title = new QLabel(str(SHADOW_APP_NAME), pair_hero_);
-            QFont tf = title->font();
-            tf.setPixelSize(30);
-            tf.setBold(true);
-            title->setFont(tf);
-            title->setStyleSheet(QStringLiteral("color: #ffffff;"));
-
-            pair_tagline_ = new QLabel(pair_hero_);
-            pair_tagline_->setWordWrap(true);
-            pair_tagline_->setStyleSheet(
-                QStringLiteral("color: rgba(255,255,255,190);"));
-
-            auto *version = new QLabel(str(SHADOW_VERSION), pair_hero_);
-            version->setStyleSheet(QStringLiteral("color: rgba(255,255,255,120);"));
-
-            hl->addWidget(mark);
-            hl->addSpacing(8);
-            hl->addWidget(title);
-            hl->addWidget(pair_tagline_);
-            hl->addStretch(1);
-            hl->addWidget(version);
-        }
-        cols->addWidget(pair_hero_);
-
-        /* ---- the work ---------------------------------------------------- */
-        auto *right = new QWidget(page);
-        auto *outer = new QVBoxLayout(right);
+        auto *outer = new QVBoxLayout(page);
         outer->setAlignment(Qt::AlignCenter);
 
-        auto *card = new QFrame(right);
+        auto *card = new QFrame(page);
+
         card->setProperty("card", true);
         card->setGraphicsEffect(halyard::theme::elevation(card, 24));
-        card->setMaximumWidth(460);
+        card->setMaximumWidth(520);
         auto *lay = new QVBoxLayout(card);
         lay->setContentsMargins(32, 28, 32, 28);
         lay->setSpacing(halyard::theme::SpaceRow);
+
+        /* === UI8 2026-10-03 — THE HERO IS GONE ==========================
+         *
+         * It was a 330 px blue column carrying a mark, a name, a tagline and
+         * a version, and it was wrong twice.
+         *
+         * Wrong in code: the gradient was set with a SELECTOR-LESS
+         * stylesheet, which Qt applies to the widget AND EVERY DESCENDANT -
+         * so each label repainted its own slice of the gradient and the
+         * panel came out as four lighter rectangles floating on a darker
+         * one. The same trap as the step rows' triple left border, two days
+         * apart.
+         *
+         * Wrong in design, and that is the part worth keeping: even painted
+         * correctly it was a tall empty slab whose job was to say the name of
+         * an application the person had already launched. The sign-in screen
+         * has one thing to do and the card was already doing it.
+         *
+         * So the identity is a mark and a name at the top of the card, at the
+         * size a heading deserves, and the window is one centred column. */
+        {
+            auto *mark = new QLabel(card);
+            mark->setPixmap(halyard::theme::appTileIcon().pixmap(44, 44));
+            mark->setAlignment(Qt::AlignCenter);
+            auto *name = new QLabel(str(SHADOW_APP_NAME), card);
+            name->setProperty("h1", true);
+            name->setAlignment(Qt::AlignCenter);
+            pair_tagline_ = new QLabel(card);
+            pair_tagline_->setProperty("dim", true);
+            pair_tagline_->setAlignment(Qt::AlignCenter);
+            pair_tagline_->setWordWrap(true);
+            lay->addWidget(mark);
+            lay->addWidget(name);
+            lay->addWidget(pair_tagline_);
+            lay->addSpacing(halyard::theme::SpaceGroup);
+        }
 
         pair_heading_ = new QLabel(card);
         pair_heading_->setProperty("h2", true);
@@ -330,7 +312,6 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
         lay->addLayout(btnRow);
 
         outer->addWidget(card);
-        cols->addWidget(right, 1);
         stack_->addWidget(page);
     }
 
@@ -346,12 +327,19 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
                                 halyard::theme::SpacePage, halyard::theme::SpaceGroup);
         lay->setSpacing(halyard::theme::SpaceRow);
 
+        /* === UI8 2026-10-03 — THE PAGE SAID ITS NAME TWICE ================
+         *
+         * D1 put the page name in the shared header, and this row kept its
+         * own copy; "Your machines" appeared twice, one line apart, and so
+         * did the count (here and in the status bar). Shrinking the second
+         * title to h2 made it look deliberate rather than fixing it.
+         *
+         * The title goes. The row stays because the filter and the count
+         * hang off it, and the count stays HERE rather than in the header
+         * because it belongs next to the thing it counts. */
         auto *head = new QHBoxLayout;
         machines_title_ = new QLabel(page);
-        /* D1 - h2 and not h1: the header above now carries the page name, and
-         * two 26px titles one under the other read as a mistake. This one
-         * stays because it is where the filter and the count hang. */
-        machines_title_->setProperty("h2", true);
+        machines_title_->setVisible(false);
         machines_subtitle_ = new QLabel(page);
         machines_subtitle_->setProperty("dim", true);
         head->addWidget(machines_title_);
@@ -689,7 +677,6 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
     applyShortcuts();
 
     retranslate();
-    updateHeroVisibility();
     setPage(PagePairing);
 
     /* ============================ the three workers ====================== */
@@ -842,7 +829,6 @@ MainWindow::~MainWindow()
  * they happen and follow the new language from their next update. */
 void MainWindow::retranslate()
 {
-    machines_title_->setText(tr("Your machines"));
     machines_filter_->setPlaceholderText(tr("Filter..."));
     retry_btn_->setText(tr("Start over"));
     pair_tagline_->setText(tr("Your Shadow cloud PC, on anything you own."));
@@ -1330,7 +1316,6 @@ void MainWindow::resizeEvent(QResizeEvent *e)
 {
     QMainWindow::resizeEvent(e);
     repositionOverlays();
-    updateHeroVisibility();   /* UI4 */
 }
 
 void MainWindow::openAbout()
@@ -1356,14 +1341,6 @@ void MainWindow::updateHeader(int index)
      * other use for. The data centre is what we do know, and it is the part
      * that matters for a stream. */
     header_account_->setText(datacentre_);
-}
-
-/* UI4 - the hero is the first thing to go when there is no room. 820 px is
- * where the 330 px panel starts squeezing the 460 px card below its own
- * minimum; under that the content matters and the decoration does not. */
-void MainWindow::updateHeroVisibility()
-{
-    if (pair_hero_) pair_hero_->setVisible(width() >= 820);
 }
 
 void MainWindow::setPage(int index)
@@ -1452,21 +1429,26 @@ void MainWindow::onPairingNeeded(const QString &userCode, const QString &uri,
      * written here: it is the bar and the countdown under the code, and saying
      * it a third time in a sentence that is read once was the version people
      * missed. */
+    /* UI8 - the URL as text and not as a link to read: a 60-character
+     * auth URL wrapped over two lines was the widest thing in the card and
+     * the one nobody was going to retype. The button opens it; the line now
+     * only says what to do. */
     pair_hint_->setText(
-        haveQr ? tr("Or open <a href=\"%1\">%1</a> and enter this code.%2")
-                     .arg(pair_uri_.toHtmlEscaped(),
-                          copied ? tr(" The code is already on your clipboard.")
+        haveQr ? tr("Or open the sign-in page and enter this code.%1")
+                     .arg(copied ? tr(" It is already on your clipboard.")
                                  : QString())
-               : tr("Open <a href=\"%1\">%1</a> and enter this code.%2")
-                     .arg(pair_uri_.toHtmlEscaped(),
-                          copied ? tr(" The code is already on your clipboard.")
+               : tr("Open the sign-in page and enter this code.%1")
+                     .arg(copied ? tr(" It is already on your clipboard.")
                                  : QString()));
 
-    copy_code_btn_->setText(copied ? tr("Code copied — copy again")
-                                   : tr("Copy the code"));
-    open_page_btn_->setText(pair_uri_complete_.isEmpty()
-                                ? tr("Open the sign-in page")
-                                : tr("Open the sign-in page (code prefilled)"));
+    /* UI8 - short labels. "Open the sign-in page (code prefilled)" clipped
+     * its own text at any card width that still fitted on a laptop, and the
+     * parenthesis was repeating what the line under the QR already says. The
+     * copy feedback moves to the hint for the same reason: a button whose
+     * caption changes to past tense is a button that has stopped saying what
+     * pressing it does. */
+    copy_code_btn_->setText(tr("Copy the code"));
+    open_page_btn_->setText(tr("Open the page"));
     pair_cells_->setCode(userCode);
     pair_cells_->setVisible(true);
     pair_validity_->setVisible(true);
@@ -1735,7 +1717,9 @@ void MainWindow::onMachinesFetched(const QVariantList &rows)
     machines_empty_->setVisible(ids.isEmpty());
     machines_empty_->setText(tr("No machine on this account."));
     machines_subtitle_->setText(tr("%n machine(s)", "", ids.size()));
-    statusBar()->showMessage(tr("%n machine(s)", "", ids.size()));
+    /* UI8 - not in the status bar as well: the count was on screen twice,
+     * fifteen pixels apart. */
+    statusBar()->clearMessage();
     setPage(PageMachines);
 }
 

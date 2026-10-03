@@ -139,7 +139,6 @@ private:
     bool ownWindowOverVideo() const;
     /* KEY1 - every shortcut, from the one table in shortcuts.hpp. Re-run
      * when the settings window changes a binding. */
-    void updateHeroVisibility();
     void updateHeader(int index);   /* D1 */
     QString sessionTimeLeft() const;   /* CAPS2 */
     QScreen *fullscreenTarget() const;   /* SCR1 */
@@ -157,7 +156,6 @@ private:
     QLabel *pair_hint_ = nullptr;
     QPushButton *copy_code_btn_ = nullptr;
     QLabel      *pair_countdown_ = nullptr;
-    QWidget     *pair_hero_    = nullptr;
     QLabel      *pair_tagline_ = nullptr;
     QLabel      *pair_heading_ = nullptr;
     QLabel      *qr_caption_   = nullptr;

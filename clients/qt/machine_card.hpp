@@ -89,6 +89,7 @@ protected:
 private:
     QString      id_;
     bool         maintenance_ = false;
+    bool         has_datacentre_ = false;
     QLabel      *pill_ = nullptr;
     QLabel      *last_used_ = nullptr;
     class QGraphicsDropShadowEffect *shadow_ = nullptr;

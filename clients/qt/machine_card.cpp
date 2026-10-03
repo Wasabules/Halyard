@@ -74,6 +74,7 @@ MachineCard::MachineCard(const Info &info, QWidget *parent)
     /* UI6/VMK1 - where it runs, and on what. The data centre is the
      * machine's own now; the hardware tier used to be invisible because the
      * parser only used it as a fallback for an empty name. */
+    has_datacentre_ = !datacentre.isEmpty();
     if (!datacentre.isEmpty()) {
         auto *dc = new QLabel(datacentre, this);
         dc->setProperty("dim", true);
@@ -128,7 +129,11 @@ void MachineCard::setLastUsed(const QDateTime &when)
     else                text = tr("used on %1")
                                    .arg(when.date().toString(QLocale().dateFormat(
                                        QLocale::ShortFormat)));
-    last_used_->setText(QStringLiteral("\u00b7  ") + text);
+    /* UI8 - the separator only when there IS something to separate from. It
+     * was unconditional, and the server sends no state and often no data
+     * centre, so the row routinely opened with an orphaned middle dot. */
+    const bool alone = !pill_ && !has_datacentre_;
+    last_used_->setText(alone ? text : QStringLiteral("\u00b7  ") + text);
 }
 
 /* UI6 - 16 -> 26 of blur over 120 ms. The card does not MOVE: a translation

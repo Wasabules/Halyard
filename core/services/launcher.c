@@ -118,6 +118,7 @@ void vminfo_free(VmInfo *v) {
     free(v->id); free(v->alias); free(v->name); free(v->state); free(v->raw_json);
     /* VMK1 - the five keys the parser gained. */
     free(v->hwconfig); free(v->datacenter); free(v->provider); free(v->tags);
+    free(v->speedtest_url);
     memset(v, 0, sizeof(*v));
 }
 
@@ -139,7 +140,20 @@ static void parse_vm(json_t *jvm, VmInfo *out) {
      * its hardware tier - which is the more interesting of the two when an
      * account has several. */
     out->hwconfig   = jstrdup(jvm, "hwconfig");
-    out->datacenter = jstrdup(jvm, "datacenter");
+    /* VMK1 - `datacenter` is an OBJECT, not a string: {name, timezone,
+     * messaging_url, signaling_url, speedtest_url, turn_servers, ...}. The
+     * first version read it with `jstrdup` and silently got NULL, so the
+     * cards showed nothing and the bug looked like "the server does not send
+     * it". A plain string is still accepted, because an API that nests a
+     * field today may flatten it tomorrow. */
+    {
+        json_t *dc = json_object_get(jvm, "datacenter");
+        if (dc && json_is_string(dc)) out->datacenter = strdup(json_string_value(dc));
+        else if (dc && json_is_object(dc)) {
+            out->datacenter    = jstrdup(dc, "name");
+            out->speedtest_url = jstrdup(dc, "speedtest_url");
+        }
+    }
     out->provider   = jstrdup(jvm, "provider");
     out->tags       = json_array_join(json_object_get(jvm, "tags"));
     {

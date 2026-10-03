@@ -907,32 +907,24 @@
         <translation>Scannez avec un téléphone - le code est inclus</translation>
     </message>
     <message>
-        <source>Or open &lt;a href=&quot;%1&quot;&gt;%1&lt;/a&gt; and enter this code.%2</source>
-        <translation>Ou ouvrez &lt;a href=&quot;%1&quot;&gt;%1&lt;/a&gt; et saisissez ce code.%2</translation>
+        <source>Or open the sign-in page and enter this code.%1</source>
+        <translation>Ou ouvrez la page de connexion et saisissez ce code.%1</translation>
     </message>
     <message>
-        <source> The code is already on your clipboard.</source>
-        <translation> Le code est déjà dans votre presse-papiers.</translation>
+        <source> It is already on your clipboard.</source>
+        <translation> Il est déjà dans votre presse-papiers.</translation>
     </message>
     <message>
-        <source>Open &lt;a href=&quot;%1&quot;&gt;%1&lt;/a&gt; and enter this code.%2</source>
-        <translation>Ouvrez &lt;a href=&quot;%1&quot;&gt;%1&lt;/a&gt; et saisissez ce code.%2</translation>
+        <source>Open the sign-in page and enter this code.%1</source>
+        <translation>Ouvrez la page de connexion et saisissez ce code.%1</translation>
     </message>
     <message>
-        <source>Code copied — copy again</source>
-        <translation>Code copié — copier à nouveau</translation>
+        <source>Open the page</source>
+        <translation>Ouvrir la page</translation>
     </message>
     <message>
         <source>Copy the code</source>
         <translation>Copier le code</translation>
-    </message>
-    <message>
-        <source>Open the sign-in page</source>
-        <translation>Ouvrir la page de connexion</translation>
-    </message>
-    <message>
-        <source>Open the sign-in page (code prefilled)</source>
-        <translation>Ouvrir la page de connexion (code pré-rempli)</translation>
     </message>
     <message>
         <source>this code expires in %1</source>

@@ -31,7 +31,9 @@ typedef struct {
     char *name;        // model / plan name (may be NULL)
     char *state;       // "running" / "stopped" / etc. (may be NULL)
     char *hwconfig;    // VMK1: the hardware tier, e.g. "Neo" (may be NULL)
-    char *datacenter;  // VMK1: THIS machine's data centre (may be NULL)
+    char *datacenter;  // VMK1: THIS machine's data centre NAME (may be NULL)
+    char *speedtest_url;  // VMK1: from the same object; the "re-run the test"
+                          //       endpoint the official client offers
     char *provider;    // VMK1: may be NULL
     char *tags;        // VMK1: joined "a,b" (may be NULL)
     bool  maintenance; // VMK1: the server says this machine is unavailable
